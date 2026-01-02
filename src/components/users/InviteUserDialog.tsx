@@ -54,8 +54,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     fullName: "",
     role: "worker" as AppRole,
     password: "",
-    unitId: "",
-    floorId: "",
+    unitId: "__none__",
+    floorId: "__none__",
   });
 
   // Owners can assign admin roles, admins can only assign worker/supervisor
@@ -64,7 +64,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     : ASSIGNABLE_ROLES.filter(r => r !== 'admin');
 
   // Filter floors based on selected unit
-  const filteredFloors = formData.unitId 
+  const filteredFloors = formData.unitId && formData.unitId !== "__none__"
     ? floors.filter(f => f.unit_id === formData.unitId)
     : floors;
 
@@ -134,8 +134,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         .from('profiles')
         .update({ 
           factory_id: profile.factory_id,
-          assigned_unit_id: formData.unitId || null,
-          assigned_floor_id: formData.floorId || null,
+          assigned_unit_id: formData.unitId && formData.unitId !== "__none__" ? formData.unitId : null,
+          assigned_floor_id: formData.floorId && formData.floorId !== "__none__" ? formData.floorId : null,
         })
         .eq('id', authData.user.id);
 
@@ -161,7 +161,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       toast.success(`User ${formData.fullName} invited successfully`);
       onSuccess();
       onOpenChange(false);
-      setFormData({ email: "", fullName: "", role: "worker", password: "", unitId: "", floorId: "" });
+      setFormData({ email: "", fullName: "", role: "worker", password: "", unitId: "__none__", floorId: "__none__" });
     } catch (error) {
       console.error("Error inviting user:", error);
       toast.error("Failed to invite user");
@@ -259,13 +259,13 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               </Label>
               <Select
                 value={formData.unitId}
-                onValueChange={(value) => setFormData({ ...formData, unitId: value, floorId: "" })}
+                onValueChange={(value) => setFormData({ ...formData, unitId: value, floorId: "__none__" })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No assignment</SelectItem>
+                  <SelectItem value="__none__">No assignment</SelectItem>
                   {units.map((unit) => (
                     <SelectItem key={unit.id} value={unit.id}>
                       {unit.name}
@@ -283,13 +283,13 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               <Select
                 value={formData.floorId}
                 onValueChange={(value) => setFormData({ ...formData, floorId: value })}
-                disabled={!formData.unitId}
+                disabled={!formData.unitId || formData.unitId === "__none__"}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select floor" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No assignment</SelectItem>
+                  <SelectItem value="__none__">No assignment</SelectItem>
                   {filteredFloors.map((floor) => (
                     <SelectItem key={floor.id} value={floor.id}>
                       {floor.name}

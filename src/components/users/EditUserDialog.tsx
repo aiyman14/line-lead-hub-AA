@@ -76,8 +76,8 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
   const [formData, setFormData] = useState({
     role: "worker" as AppRole,
     isActive: true,
-    unitId: "",
-    floorId: "",
+    unitId: "__none__",
+    floorId: "__none__",
   });
 
   // Owners can assign admin roles, admins can only assign worker/supervisor
@@ -89,7 +89,7 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
   const isOwnerOrHigher = user?.role === 'owner' || user?.role === 'superadmin';
 
   // Filter floors based on selected unit
-  const filteredFloors = formData.unitId 
+  const filteredFloors = formData.unitId && formData.unitId !== "__none__"
     ? floors.filter(f => f.unit_id === formData.unitId)
     : floors;
 
@@ -104,8 +104,8 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
       setFormData({
         role: (user.role as AppRole) || 'worker',
         isActive: user.is_active,
-        unitId: user.assigned_unit_id || "",
-        floorId: user.assigned_floor_id || "",
+        unitId: user.assigned_unit_id || "__none__",
+        floorId: user.assigned_floor_id || "__none__",
       });
     }
   }, [user]);
@@ -167,8 +167,8 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
         .from('profiles')
         .update({ 
           is_active: formData.isActive,
-          assigned_unit_id: formData.unitId || null,
-          assigned_floor_id: formData.floorId || null,
+          assigned_unit_id: formData.unitId && formData.unitId !== "__none__" ? formData.unitId : null,
+          assigned_floor_id: formData.floorId && formData.floorId !== "__none__" ? formData.floorId : null,
         })
         .eq('id', user.id);
 
@@ -307,13 +307,13 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
                 </Label>
                 <Select
                   value={formData.unitId}
-                  onValueChange={(value) => setFormData({ ...formData, unitId: value, floorId: "" })}
+                  onValueChange={(value) => setFormData({ ...formData, unitId: value, floorId: "__none__" })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select unit" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No assignment</SelectItem>
+                    <SelectItem value="__none__">No assignment</SelectItem>
                     {units.map((unit) => (
                       <SelectItem key={unit.id} value={unit.id}>
                         {unit.name}
@@ -331,13 +331,13 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
                 <Select
                   value={formData.floorId}
                   onValueChange={(value) => setFormData({ ...formData, floorId: value })}
-                  disabled={!formData.unitId}
+                  disabled={!formData.unitId || formData.unitId === "__none__"}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select floor" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No assignment</SelectItem>
+                    <SelectItem value="__none__">No assignment</SelectItem>
                     {filteredFloors.map((floor) => (
                       <SelectItem key={floor.id} value={floor.id}>
                         {floor.name}
