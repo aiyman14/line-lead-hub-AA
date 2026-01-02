@@ -107,14 +107,19 @@ export const STAGE_PROGRESS_OPTIONS = [
   { value: 100, label: '100%' },
 ] as const;
 
-// Default stages
+// Default stages (AppSheet specification)
 export const DEFAULT_STAGES = [
-  { code: 'CUT', name: 'Cutting', sequence: 1 },
-  { code: 'SEW', name: 'Sewing', sequence: 2 },
-  { code: 'FINISH', name: 'Finishing', sequence: 3 },
-  { code: 'QC', name: 'Quality Check', sequence: 4 },
-  { code: 'PACK', name: 'Packing', sequence: 5 },
-  { code: 'SHIP', name: 'Shipping', sequence: 6 },
+  { code: 'PRE_PROD', name: 'Pre Production', sequence: 1 },
+  { code: 'MAT_INHOUSE', name: 'Materials In-House', sequence: 2 },
+  { code: 'CUT', name: 'Cutting', sequence: 3 },
+  { code: 'SEW', name: 'Sewing', sequence: 4 },
+  { code: 'PROCESS', name: 'Process (Wash/Print/Embroidery)', sequence: 5 },
+  { code: 'FINISH', name: 'Finishing', sequence: 6 },
+  { code: 'PACK', name: 'Packing', sequence: 7 },
+  { code: 'FINAL_QC', name: 'Final QC', sequence: 8 },
+  { code: 'READY_SHIP', name: 'Ready for Shipment', sequence: 9 },
+  { code: 'SHIPPED', name: 'Shipped', sequence: 10 },
+  { code: 'ON_HOLD', name: 'On Hold', sequence: 11 },
 ];
 
 // Default blocker types
