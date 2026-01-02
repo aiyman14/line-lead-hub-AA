@@ -93,6 +93,20 @@ export const SHIFTS = [
   { value: 'overtime', label: 'Overtime' },
 ] as const;
 
+// Stage Progress Options (fixed percentage values)
+export const STAGE_PROGRESS_OPTIONS = [
+  { value: 0, label: '0%' },
+  { value: 5, label: '5%' },
+  { value: 15, label: '15%' },
+  { value: 25, label: '25%' },
+  { value: 50, label: '50%' },
+  { value: 60, label: '60%' },
+  { value: 75, label: '75%' },
+  { value: 80, label: '80%' },
+  { value: 90, label: '90%' },
+  { value: 100, label: '100%' },
+] as const;
+
 // Default stages
 export const DEFAULT_STAGES = [
   { code: 'CUT', name: 'Cutting', sequence: 1 },

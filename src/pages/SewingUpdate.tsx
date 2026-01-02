@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,8 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Factory, ArrowLeft, AlertTriangle, CheckCircle } from "lucide-react";
-import { SHIFTS, BLOCKER_IMPACTS } from "@/lib/constants";
+import { Loader2, Factory, ArrowLeft, AlertTriangle, CheckCircle, Upload, X, Image as ImageIcon } from "lucide-react";
+import { SHIFTS, BLOCKER_IMPACTS, STAGE_PROGRESS_OPTIONS } from "@/lib/constants";
 
 interface Line {
   id: string;
@@ -76,6 +76,9 @@ export default function SewingUpdate() {
   const [blockerOwner, setBlockerOwner] = useState("");
   const [blockerImpact, setBlockerImpact] = useState("medium");
   const [notes, setNotes] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -276,7 +279,7 @@ export default function SewingUpdate() {
                 <SelectContent>
                   {lines.map((line) => (
                     <SelectItem key={line.id} value={line.id}>
-                      {line.line_id} {line.name ? `- ${line.name}` : ''}
+                      {line.name || line.line_id}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -428,16 +431,18 @@ export default function SewingUpdate() {
               </div>
               <div className="mobile-form-field">
                 <Label>Progress %</Label>
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  max="100"
-                  placeholder="0"
-                  value={stageProgress}
-                  onChange={(e) => setStageProgress(e.target.value)}
-                  className="h-12"
-                />
+                <Select value={stageProgress} onValueChange={setStageProgress}>
+                  <SelectTrigger className="h-12">
+                    <SelectValue placeholder="Select progress" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STAGE_PROGRESS_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value.toString()}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -549,6 +554,80 @@ export default function SewingUpdate() {
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
             />
+          </CardContent>
+        </Card>
+
+        {/* Photo Upload */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ImageIcon className="h-4 w-4" />
+              Photos (Optional)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                if (photos.length + files.length > 2) {
+                  toast({
+                    variant: "destructive",
+                    title: "Maximum 2 photos allowed",
+                  });
+                  return;
+                }
+                const newPhotos = [...photos, ...files].slice(0, 2);
+                setPhotos(newPhotos);
+                setPhotoPreviewUrls(newPhotos.map(file => URL.createObjectURL(file)));
+              }}
+            />
+            
+            {photoPreviewUrls.length > 0 && (
+              <div className="flex gap-3 flex-wrap">
+                {photoPreviewUrls.map((url, index) => (
+                  <div key={index} className="relative group">
+                    <img
+                      src={url}
+                      alt={`Preview ${index + 1}`}
+                      className="h-24 w-24 object-cover rounded-lg border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newPhotos = photos.filter((_, i) => i !== index);
+                        const newUrls = photoPreviewUrls.filter((_, i) => i !== index);
+                        setPhotos(newPhotos);
+                        setPhotoPreviewUrls(newUrls);
+                      }}
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {photos.length < 2 && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full h-12"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {photos.length === 0 ? 'Add Photos' : 'Add Another Photo'}
+              </Button>
+            )}
+            
+            <p className="text-xs text-muted-foreground">
+              You can upload up to 2 photos (optional)
+            </p>
           </CardContent>
         </Card>
 
