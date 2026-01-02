@@ -28,6 +28,7 @@ interface WorkOrder {
   order_qty: number;
   target_per_hour: number | null;
   target_per_day: number | null;
+  line_id: string | null;
 }
 
 interface Stage {
@@ -89,6 +90,25 @@ export default function SewingUpdate() {
     }
   }, [profile?.factory_id, profile]);
 
+  // Filter work orders by selected line
+  const filteredWorkOrders = selectedLine 
+    ? workOrders.filter(wo => wo.line_id === selectedLine)
+    : [];
+
+  // Auto-select work order when line is selected and only one PO exists
+  useEffect(() => {
+    if (selectedLine) {
+      const lineWorkOrders = workOrders.filter(wo => wo.line_id === selectedLine);
+      if (lineWorkOrders.length === 1) {
+        setSelectedWorkOrder(lineWorkOrders[0].id);
+      } else if (!lineWorkOrders.find(wo => wo.id === selectedWorkOrder)) {
+        setSelectedWorkOrder("");
+      }
+    } else {
+      setSelectedWorkOrder("");
+    }
+  }, [selectedLine, workOrders]);
+
   // Auto-fill target when work order is selected
   useEffect(() => {
     if (selectedWorkOrder) {
@@ -123,7 +143,7 @@ export default function SewingUpdate() {
           .order('line_id'),
         supabase
           .from('work_orders')
-          .select('id, po_number, buyer, style, item, order_qty, target_per_hour, target_per_day')
+          .select('id, po_number, buyer, style, item, order_qty, target_per_hour, target_per_day, line_id')
           .eq('factory_id', profile.factory_id)
           .eq('is_active', true)
           .order('po_number'),
@@ -288,12 +308,16 @@ export default function SewingUpdate() {
 
             <div className="mobile-form-field">
               <Label>Work Order / PO</Label>
-              <Select value={selectedWorkOrder} onValueChange={setSelectedWorkOrder}>
+              <Select 
+                value={selectedWorkOrder} 
+                onValueChange={setSelectedWorkOrder}
+                disabled={!selectedLine || filteredWorkOrders.length === 0}
+              >
                 <SelectTrigger className="h-12">
-                  <SelectValue placeholder="Select work order" />
+                  <SelectValue placeholder={!selectedLine ? "Select a line first" : filteredWorkOrders.length === 0 ? "No POs for this line" : "Select work order"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {workOrders.map((wo) => (
+                  {filteredWorkOrders.map((wo) => (
                     <SelectItem key={wo.id} value={wo.id}>
                       {wo.po_number} - {wo.buyer} / {wo.style}
                     </SelectItem>

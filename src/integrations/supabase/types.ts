@@ -857,6 +857,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           item: string | null
+          line_id: string | null
           order_qty: number
           planned_ex_factory: string | null
           po_number: string
@@ -876,6 +877,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           item?: string | null
+          line_id?: string | null
           order_qty?: number
           planned_ex_factory?: string | null
           po_number: string
@@ -895,6 +897,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           item?: string | null
+          line_id?: string | null
           order_qty?: number
           planned_ex_factory?: string | null
           po_number?: string
@@ -911,6 +914,13 @@ export type Database = {
             columns: ["factory_id"]
             isOneToOne: false
             referencedRelation: "factory_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "lines"
             referencedColumns: ["id"]
           },
         ]
