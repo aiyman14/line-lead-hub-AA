@@ -1,0 +1,271 @@
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Loader2, Users as UsersIcon, Search, UserPlus, Shield, Mail, Phone } from "lucide-react";
+import { ROLE_LABELS } from "@/lib/constants";
+
+interface User {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+  role: string | null;
+  unit_name: string | null;
+  floor_name: string | null;
+  created_at: string;
+}
+
+export default function UsersPage() {
+  const { profile, isAdminOrHigher } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    if (profile?.factory_id) {
+      fetchUsers();
+    }
+  }, [profile?.factory_id]);
+
+  async function fetchUsers() {
+    if (!profile?.factory_id) return;
+    setLoading(true);
+
+    try {
+      // Fetch profiles
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('factory_id', profile.factory_id)
+        .order('full_name');
+
+      // Fetch user roles
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id, role')
+        .eq('factory_id', profile.factory_id);
+
+      const roleMap = new Map<string, string>();
+      roles?.forEach(r => {
+        const existingRole = roleMap.get(r.user_id);
+        // Keep highest role
+        const roleOrder = ['superadmin', 'owner', 'admin', 'supervisor', 'worker'];
+        if (!existingRole || roleOrder.indexOf(r.role) < roleOrder.indexOf(existingRole)) {
+          roleMap.set(r.user_id, r.role);
+        }
+      });
+
+      const formattedUsers: User[] = (profiles || []).map(p => ({
+        id: p.id,
+        full_name: p.full_name,
+        email: p.email,
+        phone: p.phone,
+        avatar_url: p.avatar_url,
+        is_active: p.is_active,
+        role: roleMap.get(p.id) || 'worker',
+        unit_name: null,
+        floor_name: null,
+        created_at: p.created_at,
+      }));
+
+      setUsers(formattedUsers);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const filteredUsers = users.filter(user =>
+    user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.role || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const getRoleBadgeVariant = (role: string | null) => {
+    switch (role) {
+      case 'owner':
+      case 'superadmin':
+        return 'primary';
+      case 'admin':
+        return 'info';
+      case 'supervisor':
+        return 'warning';
+      default:
+        return 'neutral';
+    }
+  };
+
+  const activeUsers = users.filter(u => u.is_active);
+  const adminCount = users.filter(u => ['admin', 'owner', 'superadmin'].includes(u.role || '')).length;
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 lg:p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <UsersIcon className="h-6 w-6" />
+            Users
+          </h1>
+          <p className="text-muted-foreground">Manage factory users and roles</p>
+        </div>
+        {isAdminOrHigher() && (
+          <Button>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Invite User
+          </Button>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold">{users.length}</p>
+            <p className="text-sm text-muted-foreground">Total Users</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-success">{activeUsers.length}</p>
+            <p className="text-sm text-muted-foreground">Active</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-primary">{adminCount}</p>
+            <p className="text-sm text-muted-foreground">Admins</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search users..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      {/* Users Table */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Unit / Floor</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage src={user.avatar_url || undefined} />
+                          <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                            {getInitials(user.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{user.full_name}</p>
+                          <p className="text-xs text-muted-foreground">{user.email}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge variant={getRoleBadgeVariant(user.role) as any} size="sm">
+                        <Shield className="h-3 w-3 mr-1" />
+                        {ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] || 'Worker'}
+                      </StatusBadge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1 text-sm">
+                          <Mail className="h-3 w-3 text-muted-foreground" />
+                          <span className="truncate max-w-[150px]">{user.email}</span>
+                        </div>
+                        {user.phone && (
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Phone className="h-3 w-3" />
+                            {user.phone}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {user.unit_name || user.floor_name ? (
+                        <div className="text-sm">
+                          {user.unit_name && <span>{user.unit_name}</span>}
+                          {user.unit_name && user.floor_name && <span> / </span>}
+                          {user.floor_name && <span>{user.floor_name}</span>}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {user.is_active ? (
+                        <StatusBadge variant="success" size="sm">Active</StatusBadge>
+                      ) : (
+                        <StatusBadge variant="default" size="sm">Inactive</StatusBadge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredUsers.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      No users found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
