@@ -120,7 +120,13 @@ export default function FactorySetup() {
 
       setUnits(unitsRes.data || []);
       setFloors(floorsRes.data || []);
-      setLines(linesRes.data || []);
+      // Sort lines numerically by extracting the number from line_id
+      const sortedLines = (linesRes.data || []).sort((a, b) => {
+        const numA = parseInt(a.line_id.replace(/\D/g, '') || '0', 10);
+        const numB = parseInt(b.line_id.replace(/\D/g, '') || '0', 10);
+        return numA - numB;
+      });
+      setLines(sortedLines);
       setStages(stagesRes.data || []);
       setBlockerTypes(blockerTypesRes.data || []);
     } catch (error) {
