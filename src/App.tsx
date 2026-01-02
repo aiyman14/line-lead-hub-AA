@@ -21,6 +21,7 @@ import Lines from "./pages/Lines";
 import WorkOrdersView from "./pages/WorkOrdersView";
 import Insights from "./pages/Insights";
 import UsersPage from "./pages/Users";
+import AllSubmissions from "./pages/AllSubmissions";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -52,6 +53,7 @@ const App = () => (
               <Route path="/setup/work-orders" element={<WorkOrders />} />
               <Route path="/setup/dropdowns" element={<DropdownSettings />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/submissions" element={<AllSubmissions />} />
               <Route path="/my-submissions" element={<Dashboard />} />
             </Route>
             
