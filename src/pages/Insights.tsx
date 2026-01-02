@@ -19,6 +19,7 @@ import { LineDrillDown } from "@/components/insights/LineDrillDown";
 import { ExportInsights } from "@/components/insights/ExportInsights";
 import { EmailScheduleSettings } from "@/components/insights/EmailScheduleSettings";
 import { LineEfficiencyTargets } from "@/components/insights/LineEfficiencyTargets";
+import { NotificationPreferences } from "@/components/NotificationPreferences";
 
 interface DailyData {
   date: string;
@@ -1130,6 +1131,9 @@ export default function Insights() {
         />
         <EmailScheduleSettings />
       </div>
+
+      {/* Notification Preferences */}
+      <NotificationPreferences />
     </div>
   );
 }
