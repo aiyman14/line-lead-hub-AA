@@ -2,95 +2,146 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+/* Production Portal Design System
+   Industrial-modern aesthetic for factory floor environments
+   Colors optimized for visibility in various lighting conditions
 */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-
+    /* Core backgrounds - Dark industrial slate */
+    --background: 220 20% 97%;
+    --foreground: 220 25% 10%;
+    
+    /* Card surfaces */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
+    --card-foreground: 220 25% 10%;
+    
+    /* Popovers/Dropdowns */
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-
+    --popover-foreground: 220 25% 10%;
+    
+    /* Primary - Industrial blue */
+    --primary: 217 91% 45%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary - Slate */
+    --secondary: 215 20% 94%;
+    --secondary-foreground: 220 25% 25%;
+    
+    /* Muted surfaces */
+    --muted: 215 20% 94%;
+    --muted-foreground: 215 15% 45%;
+    
+    /* Accent - Amber/Orange for alerts and highlights */
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 100%;
+    
+    /* Destructive - Red */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Success - Green */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    
+    /* Warning - Amber */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 10%;
+    
+    /* Info - Blue */
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+    
+    /* Borders and inputs */
+    --border: 215 25% 88%;
+    --input: 215 25% 88%;
+    --ring: 217 91% 45%;
+    
+    /* Radius */
     --radius: 0.5rem;
-
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    
+    /* Chart colors */
+    --chart-1: 217 91% 45%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 262 83% 58%;
+    
+    /* Sidebar */
+    --sidebar-background: 220 25% 12%;
+    --sidebar-foreground: 215 20% 85%;
+    --sidebar-primary: 217 91% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 25% 18%;
+    --sidebar-accent-foreground: 215 20% 95%;
+    --sidebar-border: 220 20% 20%;
+    --sidebar-ring: 217 91% 55%;
+    
+    /* Custom tokens for Production Portal */
+    --factory-slate: 220 25% 12%;
+    --factory-slate-light: 220 20% 22%;
+    --metric-positive: 142 76% 36%;
+    --metric-negative: 0 84% 60%;
+    --metric-neutral: 215 15% 45%;
+    --blocker-critical: 0 84% 60%;
+    --blocker-high: 25 95% 53%;
+    --blocker-medium: 38 92% 50%;
+    --blocker-low: 142 76% 36%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    /* Dark mode - Primary view for factory floors */
+    --background: 220 25% 8%;
+    --foreground: 215 20% 95%;
+    
+    --card: 220 25% 12%;
+    --card-foreground: 215 20% 95%;
+    
+    --popover: 220 25% 14%;
+    --popover-foreground: 215 20% 95%;
+    
+    --primary: 217 91% 55%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 220 25% 18%;
+    --secondary-foreground: 215 20% 90%;
+    
+    --muted: 220 20% 20%;
+    --muted-foreground: 215 15% 55%;
+    
+    --accent: 38 92% 55%;
+    --accent-foreground: 0 0% 10%;
+    
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 10%;
+    
+    --info: 217 91% 65%;
+    --info-foreground: 0 0% 100%;
+    
+    --border: 220 20% 22%;
+    --input: 220 20% 22%;
+    --ring: 217 91% 55%;
+    
+    --sidebar-background: 220 25% 6%;
+    --sidebar-foreground: 215 20% 85%;
+    --sidebar-primary: 217 91% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 220 25% 14%;
+    --sidebar-accent-foreground: 215 20% 95%;
+    --sidebar-border: 220 20% 15%;
+    --sidebar-ring: 217 91% 55%;
+    
+    --factory-slate: 220 25% 6%;
+    --factory-slate-light: 220 20% 14%;
   }
 }
 
@@ -99,7 +150,252 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Typography scale */
+  h1 {
+    @apply text-3xl font-bold tracking-tight;
+  }
+  
+  h2 {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  
+  h3 {
+    @apply text-xl font-semibold;
+  }
+  
+  h4 {
+    @apply text-lg font-medium;
+  }
+  
+  /* Mono font for numbers and codes */
+  .font-mono {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+}
+
+@layer components {
+  /* KPI Card variants */
+  .kpi-card {
+    @apply relative overflow-hidden rounded-lg border bg-card p-4 shadow-sm transition-all duration-200;
+  }
+  
+  .kpi-card:hover {
+    @apply shadow-md -translate-y-0.5;
+  }
+  
+  .kpi-card-positive {
+    @apply border-l-4;
+    border-left-color: hsl(var(--success));
+  }
+  
+  .kpi-card-negative {
+    @apply border-l-4;
+    border-left-color: hsl(var(--destructive));
+  }
+  
+  .kpi-card-warning {
+    @apply border-l-4;
+    border-left-color: hsl(var(--warning));
+  }
+  
+  .kpi-card-neutral {
+    @apply border-l-4;
+    border-left-color: hsl(var(--primary));
+  }
+  
+  /* Status badges */
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  
+  .status-badge-success {
+    @apply bg-success/10 text-success;
+  }
+  
+  .status-badge-warning {
+    @apply bg-warning/10 text-warning;
+  }
+  
+  .status-badge-danger {
+    @apply bg-destructive/10 text-destructive;
+  }
+  
+  .status-badge-info {
+    @apply bg-primary/10 text-primary;
+  }
+  
+  /* Data table styles */
+  .data-table {
+    @apply w-full text-sm;
+  }
+  
+  .data-table th {
+    @apply bg-muted/50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground;
+  }
+  
+  .data-table td {
+    @apply px-4 py-3 border-b border-border;
+  }
+  
+  .data-table tr:hover td {
+    @apply bg-muted/30;
+  }
+  
+  /* Mobile form optimizations */
+  .mobile-form-field {
+    @apply space-y-1.5;
+  }
+  
+  .mobile-form-field label {
+    @apply text-sm font-medium text-foreground;
+  }
+  
+  .mobile-form-field input,
+  .mobile-form-field select {
+    @apply h-12 text-base;
+  }
+  
+  /* Blocker impact colors */
+  .blocker-critical {
+    @apply bg-destructive/10 text-destructive border-destructive/30;
+  }
+  
+  .blocker-high {
+    @apply bg-orange-500/10 text-orange-600 border-orange-500/30;
+  }
+  
+  .blocker-medium {
+    @apply bg-warning/10 text-warning border-warning/30;
+  }
+  
+  .blocker-low {
+    @apply bg-success/10 text-success border-success/30;
+  }
+  
+  /* Shimmer loading effect */
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+  
+  .shimmer::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--foreground) / 0.05),
+      transparent
+    );
+    animation: shimmer 2s infinite;
+  }
+  
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  
+  /* Industrial gradient backgrounds */
+  .gradient-industrial {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--factory-slate)) 0%,
+      hsl(var(--factory-slate-light)) 100%
+    );
+  }
+  
+  .gradient-primary {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary)) 0%,
+      hsl(217 91% 35%) 100%
+    );
+  }
+  
+  /* Pulse animation for alerts */
+  .pulse-alert {
+    animation: pulse-alert 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes pulse-alert {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
+  }
+  
+  /* Progress bar animations */
+  .progress-bar {
+    @apply h-2 rounded-full bg-muted overflow-hidden;
+  }
+  
+  .progress-bar-fill {
+    @apply h-full rounded-full transition-all duration-500 ease-out;
+  }
+  
+  /* Factory floor-friendly tap targets */
+  .tap-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Number display for KPIs */
+  .kpi-number {
+    @apply font-mono text-3xl font-bold tracking-tight;
+  }
+  
+  .kpi-label {
+    @apply text-xs font-medium uppercase tracking-wider text-muted-foreground;
+  }
+  
+  /* Scrollbar styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-muted/30 rounded-full;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+@layer utilities {
+  /* Quick utility for industrial borders */
+  .border-industrial {
+    @apply border-2 border-border;
+  }
+  
+  /* Focus ring for accessibility */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;
+  }
+  
+  /* Glassmorphism effect */
+  .glass {
+    @apply bg-background/80 backdrop-blur-sm;
+  }
+  
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-info;
   }
 }

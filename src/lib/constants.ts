@@ -1,0 +1,159 @@
+// Production Portal Constants
+
+export const APP_NAME = "Production Portal";
+export const APP_DESCRIPTION = "Garment Factory Production Tracking System";
+
+// Role definitions
+export const ROLES = {
+  WORKER: 'worker',
+  SUPERVISOR: 'supervisor',
+  ADMIN: 'admin',
+  OWNER: 'owner',
+  SUPERADMIN: 'superadmin',
+} as const;
+
+export type AppRole = typeof ROLES[keyof typeof ROLES];
+
+// Role display names
+export const ROLE_LABELS: Record<AppRole, string> = {
+  worker: 'Worker',
+  supervisor: 'Supervisor',
+  admin: 'Admin',
+  owner: 'Owner',
+  superadmin: 'Super Admin',
+};
+
+// Blocker impact levels
+export const BLOCKER_IMPACTS = {
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  CRITICAL: 'critical',
+} as const;
+
+export type BlockerImpact = typeof BLOCKER_IMPACTS[keyof typeof BLOCKER_IMPACTS];
+
+export const BLOCKER_IMPACT_LABELS: Record<BlockerImpact, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  critical: 'Critical',
+};
+
+export const BLOCKER_IMPACT_COLORS: Record<BlockerImpact, string> = {
+  low: 'blocker-low',
+  medium: 'blocker-medium',
+  high: 'blocker-high',
+  critical: 'blocker-critical',
+};
+
+// Blocker status
+export const BLOCKER_STATUS = {
+  OPEN: 'open',
+  IN_PROGRESS: 'in_progress',
+  RESOLVED: 'resolved',
+} as const;
+
+export type BlockerStatus = typeof BLOCKER_STATUS[keyof typeof BLOCKER_STATUS];
+
+export const BLOCKER_STATUS_LABELS: Record<BlockerStatus, string> = {
+  open: 'Open',
+  in_progress: 'In Progress',
+  resolved: 'Resolved',
+};
+
+// Subscription tiers
+export const SUBSCRIPTION_TIERS = {
+  STARTER: 'starter',
+  PROFESSIONAL: 'professional',
+  ENTERPRISE: 'enterprise',
+  UNLIMITED: 'unlimited',
+} as const;
+
+export type SubscriptionTier = typeof SUBSCRIPTION_TIERS[keyof typeof SUBSCRIPTION_TIERS];
+
+export const TIER_LABELS: Record<SubscriptionTier, string> = {
+  starter: 'Starter',
+  professional: 'Professional',
+  enterprise: 'Enterprise',
+  unlimited: 'Unlimited',
+};
+
+export const TIER_LIMITS: Record<SubscriptionTier, number> = {
+  starter: 10,
+  professional: 30,
+  enterprise: 80,
+  unlimited: 999,
+};
+
+// Shifts
+export const SHIFTS = [
+  { value: 'day', label: 'Day Shift' },
+  { value: 'night', label: 'Night Shift' },
+  { value: 'overtime', label: 'Overtime' },
+] as const;
+
+// Default stages
+export const DEFAULT_STAGES = [
+  { code: 'CUT', name: 'Cutting', sequence: 1 },
+  { code: 'SEW', name: 'Sewing', sequence: 2 },
+  { code: 'FINISH', name: 'Finishing', sequence: 3 },
+  { code: 'QC', name: 'Quality Check', sequence: 4 },
+  { code: 'PACK', name: 'Packing', sequence: 5 },
+  { code: 'SHIP', name: 'Shipping', sequence: 6 },
+];
+
+// Default blocker types
+export const DEFAULT_BLOCKER_TYPES = [
+  { code: 'MATERIAL', name: 'Material Shortage', default_owner: 'Procurement', default_impact: 'high' as BlockerImpact },
+  { code: 'MACHINE', name: 'Machine Breakdown', default_owner: 'Maintenance', default_impact: 'high' as BlockerImpact },
+  { code: 'MANPOWER', name: 'Manpower Issue', default_owner: 'HR', default_impact: 'medium' as BlockerImpact },
+  { code: 'QUALITY', name: 'Quality Issue', default_owner: 'QC', default_impact: 'high' as BlockerImpact },
+  { code: 'PLANNING', name: 'Planning Issue', default_owner: 'Planning', default_impact: 'medium' as BlockerImpact },
+  { code: 'POWER', name: 'Power Outage', default_owner: 'Maintenance', default_impact: 'critical' as BlockerImpact },
+  { code: 'OTHER', name: 'Other', default_owner: 'Production', default_impact: 'low' as BlockerImpact },
+];
+
+// Navigation items per role
+export const NAV_ITEMS = {
+  worker: [
+    { path: '/update/sewing', label: 'Sewing Update', icon: 'Factory' },
+    { path: '/update/finishing', label: 'Finishing Update', icon: 'Package' },
+    { path: '/my-submissions', label: 'My Submissions', icon: 'FileText' },
+  ],
+  supervisor: [
+    { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+    { path: '/update/sewing', label: 'Sewing Update', icon: 'Factory' },
+    { path: '/update/finishing', label: 'Finishing Update', icon: 'Package' },
+    { path: '/today', label: 'Today Updates', icon: 'CalendarDays' },
+    { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
+    { path: '/lines', label: 'Lines', icon: 'Rows3' },
+  ],
+  admin: [
+    { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+    { path: '/today', label: 'Today Updates', icon: 'CalendarDays' },
+    { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
+    { path: '/week', label: 'This Week', icon: 'Calendar' },
+    { path: '/lines', label: 'Lines', icon: 'Rows3' },
+    { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
+    { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
+    { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
+    { path: '/users', label: 'Users', icon: 'Users' },
+  ],
+  owner: [
+    { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+    { path: '/today', label: 'Today Updates', icon: 'CalendarDays' },
+    { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
+    { path: '/week', label: 'This Week', icon: 'Calendar' },
+    { path: '/lines', label: 'Lines', icon: 'Rows3' },
+    { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
+    { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
+    { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
+    { path: '/users', label: 'Users', icon: 'Users' },
+  ],
+  superadmin: [
+    { path: '/admin/tenants', label: 'Tenants', icon: 'Building2' },
+    { path: '/admin/plans', label: 'Plans', icon: 'CreditCard' },
+    { path: '/admin/support', label: 'Support', icon: 'HeadphonesIcon' },
+  ],
+};
