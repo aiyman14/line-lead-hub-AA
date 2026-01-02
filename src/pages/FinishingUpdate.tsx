@@ -360,7 +360,7 @@ export default function FinishingUpdate() {
   }
 
   return (
-    <div className="p-4 lg:p-6 max-w-2xl mx-auto pb-24">
+    <div className="p-4 lg:p-6 max-w-2xl mx-auto pb-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
@@ -699,23 +699,21 @@ export default function FinishingUpdate() {
         </Card>
 
         {/* Submit Button */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t">
-          <div className="max-w-2xl mx-auto px-4">
-            <Button 
-              type="submit" 
-              className="w-full h-14 text-lg"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                "Submit Update"
-              )}
-            </Button>
-          </div>
+        <div className="sticky bottom-0 bg-background border-t py-4">
+          <Button 
+            type="submit" 
+            className="w-full h-14 text-lg"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit Update"
+            )}
+          </Button>
         </div>
       </form>
     </div>
