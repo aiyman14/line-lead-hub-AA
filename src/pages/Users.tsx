@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,8 +14,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Users as UsersIcon, Search, UserPlus, Shield, Mail, Phone } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Loader2, Users as UsersIcon, Search, UserPlus, Shield, Mail, Phone, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { ROLE_LABELS } from "@/lib/constants";
+import { InviteUserDialog } from "@/components/users/InviteUserDialog";
+import { EditUserDialog } from "@/components/users/EditUserDialog";
 
 interface User {
   id: string;
@@ -31,10 +39,13 @@ interface User {
 }
 
 export default function UsersPage() {
-  const { profile, isAdminOrHigher } = useAuth();
+  const { profile, isAdminOrHigher, user: currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -123,6 +134,11 @@ export default function UsersPage() {
   const activeUsers = users.filter(u => u.is_active);
   const adminCount = users.filter(u => ['admin', 'owner', 'superadmin'].includes(u.role || '')).length;
 
+  function handleEditUser(user: User) {
+    setSelectedUser(user);
+    setShowEditDialog(true);
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -143,7 +159,7 @@ export default function UsersPage() {
           <p className="text-muted-foreground">Manage factory users and roles</p>
         </div>
         {isAdminOrHigher() && (
-          <Button>
+          <Button onClick={() => setShowInviteDialog(true)}>
             <UserPlus className="h-4 w-4 mr-2" />
             Invite User
           </Button>
@@ -195,6 +211,7 @@ export default function UsersPage() {
                   <TableHead>Contact</TableHead>
                   <TableHead>Unit / Floor</TableHead>
                   <TableHead className="text-center">Status</TableHead>
+                  {isAdminOrHigher() && <TableHead className="w-[50px]"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -209,7 +226,12 @@ export default function UsersPage() {
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-medium">{user.full_name}</p>
+                          <p className="font-medium">
+                            {user.full_name}
+                            {user.id === currentUser?.id && (
+                              <span className="text-muted-foreground text-xs ml-2">(you)</span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground">{user.email}</p>
                         </div>
                       </div>
@@ -252,11 +274,37 @@ export default function UsersPage() {
                         <StatusBadge variant="default" size="sm">Inactive</StatusBadge>
                       )}
                     </TableCell>
+                    {isAdminOrHigher() && (
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit User
+                            </DropdownMenuItem>
+                            {user.id !== currentUser?.id && user.role !== 'owner' && user.role !== 'superadmin' && (
+                              <DropdownMenuItem 
+                                onClick={() => handleEditUser(user)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Remove Access
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {filteredUsers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={isAdminOrHigher() ? 6 : 5} className="text-center py-8 text-muted-foreground">
                       No users found
                     </TableCell>
                   </TableRow>
@@ -266,6 +314,19 @@ export default function UsersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialogs */}
+      <InviteUserDialog
+        open={showInviteDialog}
+        onOpenChange={setShowInviteDialog}
+        onSuccess={fetchUsers}
+      />
+      <EditUserDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        user={selectedUser}
+        onSuccess={fetchUsers}
+      />
     </div>
   );
 }
