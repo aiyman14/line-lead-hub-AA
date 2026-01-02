@@ -11,6 +11,9 @@ import Dashboard from "./pages/Dashboard";
 import SewingUpdate from "./pages/SewingUpdate";
 import FinishingUpdate from "./pages/FinishingUpdate";
 import FactorySetup from "./pages/FactorySetup";
+import SetupHome from "./pages/SetupHome";
+import WorkOrders from "./pages/WorkOrders";
+import DropdownSettings from "./pages/DropdownSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,7 +40,10 @@ const App = () => (
               <Route path="/lines" element={<Dashboard />} />
               <Route path="/work-orders" element={<Dashboard />} />
               <Route path="/insights" element={<Dashboard />} />
-              <Route path="/setup" element={<FactorySetup />} />
+              <Route path="/setup" element={<SetupHome />} />
+              <Route path="/setup/factory" element={<FactorySetup />} />
+              <Route path="/setup/work-orders" element={<WorkOrders />} />
+              <Route path="/setup/dropdowns" element={<DropdownSettings />} />
               <Route path="/users" element={<Dashboard />} />
               <Route path="/my-submissions" element={<Dashboard />} />
             </Route>

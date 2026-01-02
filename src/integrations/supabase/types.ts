@@ -58,6 +58,60 @@ export type Database = {
           },
         ]
       }
+      blocker_impact_options: {
+        Row: {
+          created_at: string | null
+          factory_id: string
+          id: string
+          is_active: boolean | null
+          label: string
+          sort_order: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          factory_id: string
+          id?: string
+          is_active?: boolean | null
+          label: string
+          sort_order?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          factory_id?: string
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
+      blocker_owner_options: {
+        Row: {
+          created_at: string | null
+          factory_id: string
+          id: string
+          is_active: boolean | null
+          label: string
+          sort_order: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          factory_id: string
+          id?: string
+          is_active?: boolean | null
+          label: string
+          sort_order?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          factory_id?: string
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
       blocker_types: {
         Row: {
           code: string
@@ -290,6 +344,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      next_milestone_options: {
+        Row: {
+          created_at: string | null
+          factory_id: string
+          id: string
+          is_active: boolean | null
+          label: string
+          sort_order: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          factory_id: string
+          id?: string
+          is_active?: boolean | null
+          label: string
+          sort_order?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          factory_id?: string
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          sort_order?: number | null
+        }
+        Relationships: []
       }
       notifications: {
         Row: {
@@ -631,6 +712,33 @@ export type Database = {
           },
         ]
       }
+      stage_progress_options: {
+        Row: {
+          created_at: string | null
+          factory_id: string
+          id: string
+          is_active: boolean | null
+          label: string
+          sort_order: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          factory_id: string
+          id?: string
+          is_active?: boolean | null
+          label: string
+          sort_order?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          factory_id?: string
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
       stages: {
         Row: {
           code: string
@@ -833,6 +941,7 @@ export type Database = {
       blocker_status: "open" | "in_progress" | "resolved"
       subscription_tier: "starter" | "professional" | "enterprise" | "unlimited"
       update_type: "sewing" | "finishing"
+      work_order_status: "not_started" | "in_progress" | "completed" | "on_hold"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -965,6 +1074,7 @@ export const Constants = {
       blocker_status: ["open", "in_progress", "resolved"],
       subscription_tier: ["starter", "professional", "enterprise", "unlimited"],
       update_type: ["sewing", "finishing"],
+      work_order_status: ["not_started", "in_progress", "completed", "on_hold"],
     },
   },
 } as const
