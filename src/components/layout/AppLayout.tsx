@@ -2,8 +2,8 @@ import { Outlet, Navigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export function AppLayout() {
   const { user, loading, factory, profile } = useAuth();
@@ -34,12 +34,7 @@ export function AppLayout() {
             
             <div className="flex-1" />
             
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-                3
-              </span>
-            </Button>
+            <NotificationBell />
             
             {factory && (
               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-sm">

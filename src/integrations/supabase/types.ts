@@ -185,6 +185,56 @@ export type Database = {
           },
         ]
       }
+      email_schedules: {
+        Row: {
+          created_at: string | null
+          day_of_week: number | null
+          email: string
+          factory_id: string
+          id: string
+          is_active: boolean | null
+          last_sent_at: string | null
+          schedule_type: string
+          send_time: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_week?: number | null
+          email: string
+          factory_id: string
+          id?: string
+          is_active?: boolean | null
+          last_sent_at?: string | null
+          schedule_type: string
+          send_time?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          day_of_week?: number | null
+          email?: string
+          factory_id?: string
+          id?: string
+          is_active?: boolean | null
+          last_sent_at?: string | null
+          schedule_type?: string
+          send_time?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_schedules_factory_id_fkey"
+            columns: ["factory_id"]
+            isOneToOne: false
+            referencedRelation: "factory_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       factory_accounts: {
         Row: {
           created_at: string | null
@@ -290,6 +340,7 @@ export type Database = {
           is_active: boolean | null
           line_id: string
           name: string | null
+          target_efficiency: number | null
           target_per_day: number | null
           target_per_hour: number | null
           unit_id: string | null
@@ -303,6 +354,7 @@ export type Database = {
           is_active?: boolean | null
           line_id: string
           name?: string | null
+          target_efficiency?: number | null
           target_per_day?: number | null
           target_per_hour?: number | null
           unit_id?: string | null
@@ -316,6 +368,7 @@ export type Database = {
           is_active?: boolean | null
           line_id?: string
           name?: string | null
+          target_efficiency?: number | null
           target_per_day?: number | null
           target_per_hour?: number | null
           unit_id?: string | null
