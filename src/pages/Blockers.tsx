@@ -17,6 +17,7 @@ interface Blocker {
   type: 'sewing' | 'finishing';
   line_name: string;
   po_number: string | null;
+  blocker_type_name: string | null;
   description: string | null;
   impact: string | null;
   owner: string | null;
@@ -63,14 +64,14 @@ export default function Blockers() {
       const [sewingRes, finishingRes] = await Promise.all([
         supabase
           .from('production_updates_sewing')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style), blocker_types(name)')
           .eq('factory_id', profile.factory_id)
           .eq('has_blocker', true)
           .order('submitted_at', { ascending: false })
           .limit(100),
         supabase
           .from('production_updates_finishing')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style), blocker_types(name)')
           .eq('factory_id', profile.factory_id)
           .eq('has_blocker', true)
           .order('submitted_at', { ascending: false })
@@ -82,6 +83,7 @@ export default function Blockers() {
         type: 'sewing',
         line_name: b.lines?.name || b.lines?.line_id || 'Unknown',
         po_number: b.work_orders?.po_number || null,
+        blocker_type_name: (b.blocker_types as any)?.name || null,
         description: b.blocker_description,
         impact: b.blocker_impact,
         owner: b.blocker_owner,
@@ -101,6 +103,7 @@ export default function Blockers() {
         type: 'finishing',
         line_name: b.lines?.name || b.lines?.line_id || 'Unknown',
         po_number: b.work_orders?.po_number || null,
+        blocker_type_name: (b.blocker_types as any)?.name || null,
         description: b.blocker_description,
         impact: b.blocker_impact,
         owner: b.blocker_owner,
@@ -162,7 +165,6 @@ export default function Blockers() {
   });
 
   const openBlockers = blockers.filter(b => b.status === 'open');
-  const inProgressBlockers = blockers.filter(b => b.status === 'in_progress');
   const resolvedBlockers = blockers.filter(b => b.status === 'resolved');
 
   const getImpactColor = (impact: string | null) => {
@@ -211,17 +213,11 @@ export default function Blockers() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-destructive">{openBlockers.length}</p>
             <p className="text-sm text-muted-foreground">Open</p>
-          </CardContent>
-        </Card>
-        <Card className="border-warning/30 bg-warning/5">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-warning">{inProgressBlockers.length}</p>
-            <p className="text-sm text-muted-foreground">In Progress</p>
           </CardContent>
         </Card>
         <Card className="border-success/30 bg-success/5">
@@ -262,7 +258,6 @@ export default function Blockers() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="open">Open ({openBlockers.length})</TabsTrigger>
-          <TabsTrigger value="in_progress">In Progress ({inProgressBlockers.length})</TabsTrigger>
           <TabsTrigger value="resolved">Resolved ({resolvedBlockers.length})</TabsTrigger>
           <TabsTrigger value="all">All ({blockers.length})</TabsTrigger>
         </TabsList>
@@ -302,14 +297,14 @@ export default function Blockers() {
                           {blocker.status === 'resolved' && (
                             <StatusBadge variant="success" size="sm">Resolved</StatusBadge>
                           )}
-                          {blocker.po_number && (
-                            <span className="text-xs text-muted-foreground">{blocker.po_number}</span>
-                          )}
                         </div>
-                        <p className="text-sm text-foreground mb-2">
-                          {blocker.description || 'No description provided'}
+                        <p className="text-base font-medium text-foreground mb-2">
+                          {blocker.blocker_type_name || 'Unknown Blocker'}
                         </p>
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                          {blocker.po_number && (
+                            <span>PO: <span className="font-mono">{blocker.po_number}</span></span>
+                          )}
                           {blocker.owner && (
                             <span>Owner: <span className="font-medium text-foreground">{blocker.owner}</span></span>
                           )}
