@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { KPICard } from "@/components/ui/kpi-card";
@@ -86,6 +87,7 @@ interface ActiveBlocker {
 }
 
 export default function Dashboard() {
+  const { t } = useTranslation();
   const { profile, factory, isAdminOrHigher, hasRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     updatesToday: 0,
@@ -316,8 +318,8 @@ export default function Dashboard() {
     return (
       <div className="p-4 lg:p-6 space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Hello, {profile?.full_name.split(' ')[0]}!</h1>
-          <p className="text-muted-foreground">Submit your production updates below</p>
+          <h1 className="text-2xl font-bold">{t('dashboard.hello')}, {profile?.full_name.split(' ')[0]}!</h1>
+          <p className="text-muted-foreground">{t('dashboard.submitUpdates')}</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -328,8 +330,8 @@ export default function Dashboard() {
                   <Factory className="h-7 w-7 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg">Sewing Update</h3>
-                  <p className="text-sm text-muted-foreground">Submit line production data</p>
+                  <h3 className="font-semibold text-lg">{t('nav.sewingUpdate')}</h3>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.submitLineData')}</p>
                 </div>
                 <ChevronRight className="ml-auto h-5 w-5 text-muted-foreground" />
               </CardContent>
@@ -343,8 +345,8 @@ export default function Dashboard() {
                   <Package className="h-7 w-7 text-info" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg">Finishing Update</h3>
-                  <p className="text-sm text-muted-foreground">QC, packing & shipping data</p>
+                  <h3 className="font-semibold text-lg">{t('nav.finishingUpdate')}</h3>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.qcPackingData')}</p>
                 </div>
                 <ChevronRight className="ml-auto h-5 w-5 text-muted-foreground" />
               </CardContent>
@@ -354,12 +356,12 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Today's Summary</CardTitle>
+            <CardTitle className="text-lg">{t('dashboard.todaysSummary')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-center py-8 text-muted-foreground">
               <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>Your submissions will appear here</p>
+              <p>{t('dashboard.yourSubmissions')}</p>
             </div>
           </CardContent>
         </Card>
@@ -373,7 +375,7 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Daily Control Dashboard</h1>
+          <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
           <p className="text-muted-foreground">
             {new Date().toLocaleDateString('en-US', {
               weekday: 'long',
@@ -387,13 +389,13 @@ export default function Dashboard() {
           <Link to="/update/sewing">
             <Button size="sm" variant="outline">
               <Plus className="h-4 w-4 mr-1" />
-              Sewing
+              {t('dashboard.sewing')}
             </Button>
           </Link>
           <Link to="/update/finishing">
             <Button size="sm" variant="outline">
               <Plus className="h-4 w-4 mr-1" />
-              Finishing
+              {t('dashboard.finishing')}
             </Button>
           </Link>
         </div>
@@ -402,35 +404,35 @@ export default function Dashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
-          title="Updates Today"
+          title={t('dashboard.updatesToday')}
           value={stats.updatesToday}
           icon={TrendingUp}
           variant="neutral"
-          subtitle={`${stats.totalLines} lines tracked`}
+          subtitle={`${stats.totalLines} ${t('dashboard.linesTracked')}`}
           href="/today"
         />
         <KPICard
-          title="Blockers Today"
+          title={t('dashboard.blockersToday')}
           value={stats.blockersToday}
           icon={AlertTriangle}
           variant={stats.blockersToday > 0 ? "warning" : "positive"}
-          subtitle={stats.blockersToday > 0 ? "Requires attention" : "All clear"}
+          subtitle={stats.blockersToday > 0 ? t('dashboard.requiresAttention') : t('dashboard.allClear')}
           href="/blockers"
         />
         <KPICard
-          title="Missing Today"
+          title={t('dashboard.missingToday')}
           value={stats.missingToday}
           icon={Rows3}
           variant={stats.missingToday > 0 ? "negative" : "positive"}
-          subtitle={stats.missingToday > 0 ? "Lines pending" : "All submitted"}
+          subtitle={stats.missingToday > 0 ? t('dashboard.linesPending') : t('dashboard.allSubmitted')}
           href="/lines"
         />
         <KPICard
-          title="Work Orders"
+          title={t('dashboard.workOrders')}
           value={stats.activeWorkOrders}
           icon={ClipboardList}
           variant="neutral"
-          subtitle="Active orders"
+          subtitle={t('dashboard.activeOrders')}
           href="/work-orders"
         />
       </div>
@@ -440,13 +442,13 @@ export default function Dashboard() {
         <Link to="/update/sewing">
           <Button className="w-full h-14 text-base" variant="default">
             <Factory className="h-5 w-5 mr-2" />
-            Sewing
+            {t('dashboard.sewing')}
           </Button>
         </Link>
         <Link to="/update/finishing">
           <Button className="w-full h-14 text-base" variant="secondary">
             <Package className="h-5 w-5 mr-2" />
-            Finishing
+            {t('dashboard.finishing')}
           </Button>
         </Link>
       </div>
@@ -456,10 +458,10 @@ export default function Dashboard() {
         {/* Recent Updates */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg">Recent Updates</CardTitle>
+            <CardTitle className="text-lg">{t('dashboard.recentUpdates')}</CardTitle>
             <Link to="/today">
               <Button variant="ghost" size="sm">
-                View All
+                {t('common.viewAll')}
                 <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </Link>

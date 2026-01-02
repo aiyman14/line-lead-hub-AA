@@ -25,7 +25,21 @@
     "success": "সফল",
     "collapse": "সংকুচিত",
     "menu": "মেনু",
-    "logout": "লগ আউট"
+    "logout": "লগ আউট",
+    "required": "আবশ্যক",
+    "optional": "ঐচ্ছিক",
+    "goToDashboard": "ড্যাশবোর্ডে যান",
+    "selectLine": "লাইন নির্বাচন করুন",
+    "selectPO": "PO নির্বাচন করুন",
+    "selectLineFirst": "প্রথমে একটি লাইন নির্বাচন করুন",
+    "noPOsForLine": "এই লাইনের জন্য কোনো PO নেই",
+    "noFactoryAssigned": "কোনো ফ্যাক্টরি অ্যাসাইন করা নেই",
+    "needFactoryAssigned": "আপনাকে উৎপাদন আপডেট জমা দেওয়ার আগে একটি ফ্যাক্টরিতে অ্যাসাইন করতে হবে। অনুগ্রহ করে আপনার প্রশাসকের সাথে যোগাযোগ করুন।",
+    "submissionSuccess": "আপনার আপডেট রেকর্ড করা হয়েছে।",
+    "submissionFailed": "জমা দেওয়া ব্যর্থ হয়েছে",
+    "pleaseTryAgain": "আবার চেষ্টা করুন।",
+    "fillRequiredFields": "সকল প্রয়োজনীয় ক্ষেত্র পূরণ করুন",
+    "fixErrors": "নিচের ত্রুটিগুলো সংশোধন করুন"
   },
   "app": {
     "name": "প্রোডাকশন পোর্টাল",
@@ -43,7 +57,11 @@
     "hasAccount": "ইতিমধ্যে অ্যাকাউন্ট আছে?",
     "loginSuccess": "সফলভাবে লগ ইন হয়েছে",
     "signupSuccess": "সফলভাবে অ্যাকাউন্ট তৈরি হয়েছে",
-    "logoutSuccess": "সফলভাবে লগ আউট হয়েছে"
+    "logoutSuccess": "সফলভাবে লগ আউট হয়েছে",
+    "welcomeBack": "আবার স্বাগতম",
+    "createAccount": "অ্যাকাউন্ট তৈরি করুন",
+    "enterCredentials": "আপনার অ্যাকাউন্টে প্রবেশ করতে তথ্য দিন",
+    "fillDetails": "শুরু করতে আপনার বিবরণ পূরণ করুন"
   },
   "nav": {
     "dashboard": "ড্যাশবোর্ড",
@@ -92,28 +110,82 @@
     "sewing": "সেলাই",
     "finishing": "ফিনিশিং",
     "submitLineData": "লাইন উৎপাদন ডেটা জমা দিন",
-    "qcPackingData": "QC, প্যাকিং ও শিপিং ডেটা"
+    "qcPackingData": "QC, প্যাকিং ও শিপিং ডেটা",
+    "noUpdatesYet": "এখনো কোনো আপডেট জমা দেওয়া হয়নি",
+    "noActiveBlockers": "কোনো সক্রিয় ব্লকার নেই"
   },
   "sewing": {
-    "title": "সেলাই আপডেট",
+    "title": "দৈনিক উৎপাদন আপডেট",
+    "pageTitle": "সেলাই আপডেট",
     "output": "আউটপুট",
     "target": "টার্গেট",
     "efficiency": "দক্ষতা",
     "manpower": "জনবল",
+    "mPower": "এম পাওয়ার",
     "reject": "রিজেক্ট",
+    "rejectToday": "আজকের রিজেক্ট",
     "rework": "রিওয়ার্ক",
+    "reworkToday": "আজকের রিওয়ার্ক",
     "stageProgress": "পর্যায় অগ্রগতি",
     "otHours": "ওভারটাইম ঘণ্টা",
-    "otManpower": "ওভারটাইম জনবল"
+    "otManpower": "ওভারটাইম জনবল",
+    "perHourTarget": "প্রতি ঘণ্টা টার্গেট",
+    "dayProduction": "দৈনিক উৎপাদন",
+    "totalProduction": "মোট উৎপাদন",
+    "overTime": "ওভারটাইম",
+    "selectReferences": "রেফারেন্স নির্বাচন করুন",
+    "lineNo": "লাইন নং",
+    "poId": "PO আইডি",
+    "autoFilledDetails": "স্বয়ংক্রিয় পূরণ বিবরণ",
+    "productionNumbers": "উৎপাদন সংখ্যা",
+    "trackingFields": "ট্র্যাকিং ক্ষেত্র",
+    "currentStage": "বর্তমান পর্যায়",
+    "estimatedExFactory": "আনুমানিক এক্স-ফ্যাক্টরি",
+    "nextMilestone": "পরবর্তী মাইলস্টোন",
+    "blockerSection": "ব্লকার বিভাগ",
+    "blockerToday": "আজ ব্লকার আছে?",
+    "blockerType": "ব্লকারের ধরন",
+    "blockerOwner": "ব্লকারের দায়িত্বশীল",
+    "blockerImpact": "ব্লকারের প্রভাব",
+    "blockerResolution": "ব্লকার সমাধানের তারিখ",
+    "actionTakenToday": "আজ গৃহীত পদক্ষেপ",
+    "photosNotes": "ফটো ও নোট",
+    "uploadPhotos": "ফটো আপলোড করুন",
+    "remarks": "মন্তব্য",
+    "buyer": "ক্রেতা",
+    "style": "স্টাইল",
+    "item": "আইটেম",
+    "orderQty": "অর্ডার পরিমাণ",
+    "color": "রঙ",
+    "smv": "SMV",
+    "unit": "ইউনিট",
+    "floor": "ফ্লোর"
   },
   "finishing": {
-    "title": "ফিনিশিং আপডেট",
+    "title": "ফিনিশিং দৈনিক আপডেট",
+    "pageTitle": "ফিনিশিং আপডেট",
     "qcPass": "QC পাস",
+    "dayQcPass": "দৈনিক QC পাস",
+    "totalQcPass": "মোট QC পাস",
     "qcFail": "QC ফেইল",
     "poly": "পলি",
+    "dayPoly": "দৈনিক পলি",
+    "totalPoly": "মোট পলি",
     "carton": "কার্টন",
+    "dayCarton": "দৈনিক কার্টন",
+    "totalCarton": "মোট কার্টন",
     "packed": "প্যাক করা",
-    "shipped": "শিপ করা"
+    "shipped": "শিপ করা",
+    "finishingMetrics": "ফিনিশিং মেট্রিক্স",
+    "mPower": "এম পাওয়ার",
+    "perHourTarget": "প্রতি ঘণ্টা টার্গেট",
+    "averageProduction": "গড় উৎপাদন",
+    "dayOverTime": "দৈনিক ওভারটাইম",
+    "totalOverTime": "মোট ওভারটাইম",
+    "dayHour": "দৈনিক ঘণ্টা",
+    "totalHour": "মোট ঘণ্টা",
+    "styleNo": "স্টাইল নং",
+    "orderQuantity": "অর্ডার পরিমাণ"
   },
   "blockers": {
     "title": "ব্লকারস",
@@ -126,7 +198,14 @@
     "type": "ধরন",
     "description_label": "বিবরণ",
     "resolve": "সমাধান",
-    "noBlockers": "কোনো ব্লকার পাওয়া যায়নি"
+    "markResolved": "সমাধান হিসেবে চিহ্নিত করুন",
+    "noBlockers": "কোনো ব্লকার পাওয়া যায়নি",
+    "openBlockers": "খোলা ব্লকার",
+    "resolvedBlockers": "সমাধানকৃত ব্লকার",
+    "blockerDetails": "ব্লকারের বিবরণ",
+    "reportedOn": "রিপোর্ট করা হয়েছে",
+    "line": "লাইন",
+    "resolveConfirm": "আপনি কি নিশ্চিত যে এই ব্লকারটি সমাধান হিসেবে চিহ্নিত করতে চান?"
   },
   "blocker_impact": {
     "low": "কম",
@@ -143,7 +222,12 @@
     "status": "স্ট্যাটাস",
     "submitted": "জমা হয়েছে",
     "pending": "বাকি আছে",
-    "output": "আউটপুট"
+    "output": "আউটপুট",
+    "activeLines": "সক্রিয় লাইন",
+    "submittedToday": "আজ জমা হয়েছে",
+    "pendingSubmission": "জমা বাকি আছে",
+    "currentPO": "বর্তমান PO",
+    "searchPlaceholder": "লাইন অনুসন্ধান করুন..."
   },
   "workOrders": {
     "title": "ওয়ার্ক অর্ডার",
@@ -156,7 +240,12 @@
     "balance": "বাকি",
     "status": "স্ট্যাটাস",
     "exFactory": "এক্স-ফ্যাক্টরি",
-    "progress": "অগ্রগতি"
+    "plannedExFactory": "পরিকল্পিত এক্স-ফ্যাক্টরি",
+    "progress": "অগ্রগতি",
+    "line": "লাইন",
+    "totalOrders": "মোট অর্ডার",
+    "totalQuantity": "মোট পরিমাণ",
+    "searchPlaceholder": "ওয়ার্ক অর্ডার অনুসন্ধান করুন..."
   },
   "insights": {
     "title": "উৎপাদন ইনসাইটস",
@@ -167,7 +256,20 @@
     "linePerformance": "লাইন পারফরম্যান্স",
     "dailyTrend": "দৈনিক ট্রেন্ড",
     "periodComparison": "সময়কাল তুলনা",
-    "export": "এক্সপোর্ট"
+    "export": "এক্সপোর্ট",
+    "exportCSV": "CSV হিসেবে এক্সপোর্ট",
+    "exportText": "টেক্সট রিপোর্ট হিসেবে এক্সপোর্ট",
+    "dateRange": "তারিখ পরিসীমা",
+    "last7Days": "গত ৭ দিন",
+    "last14Days": "গত ১৪ দিন",
+    "last30Days": "গত ৩০ দিন",
+    "custom": "কাস্টম",
+    "currentPeriod": "বর্তমান",
+    "previousPeriod": "পূর্ববর্তী",
+    "noChange": "কোনো পরিবর্তন নেই",
+    "totalQcPass": "মোট QC পাস",
+    "avgManpower": "গড় জনবল",
+    "daysWithData": "ডেটা সহ দিন"
   },
   "preferences": {
     "title": "আমার পছন্দসমূহ",
@@ -194,7 +296,10 @@
     "dropdowns": "ড্রপডাউন সেটিংস",
     "cutoffTime": "কাটঅফ সময়",
     "activeLines": "সক্রিয় লাইন",
-    "activePOs": "সক্রিয় PO"
+    "activePOs": "সক্রিয় PO",
+    "quickStats": "দ্রুত পরিসংখ্যান",
+    "setupLinks": "সেটআপ লিঙ্ক",
+    "noFactoryAccess": "আপনার ফ্যাক্টরি সেটআপে প্রবেশাধিকার নেই।"
   },
   "users": {
     "title": "ব্যবহারকারী",
@@ -203,7 +308,12 @@
     "email": "ইমেইল",
     "role": "ভূমিকা",
     "status": "স্ট্যাটাস",
-    "lastActive": "সর্বশেষ সক্রিয়"
+    "lastActive": "সর্বশেষ সক্রিয়",
+    "totalUsers": "মোট ব্যবহারকারী",
+    "activeUsers": "সক্রিয় ব্যবহারকারী",
+    "admins": "অ্যাডমিন",
+    "searchPlaceholder": "ব্যবহারকারী অনুসন্ধান করুন...",
+    "noUsersFound": "কোনো ব্যবহারকারী পাওয়া যায়নি"
   },
   "submissions": {
     "title": "সব জমাসমূহ",
@@ -213,7 +323,9 @@
     "type": "ধরন",
     "output": "আউটপুট",
     "submittedBy": "জমাদানকারী",
-    "submittedAt": "জমার সময়"
+    "submittedAt": "জমার সময়",
+    "searchPlaceholder": "জমা অনুসন্ধান করুন...",
+    "noSubmissions": "কোনো জমা পাওয়া যায়নি"
   },
   "week": {
     "title": "এই সপ্তাহ",
@@ -221,7 +333,10 @@
     "sewingOutput": "সেলাই আউটপুট",
     "finishingQC": "ফিনিশিং QC পাস",
     "totalUpdates": "মোট আপডেট",
-    "totalBlockers": "মোট ব্লকার"
+    "totalBlockers": "মোট ব্লকার",
+    "dailyBreakdown": "দৈনিক বিশ্লেষণ",
+    "day": "দিন",
+    "updates": "আপডেট"
   },
   "factory": {
     "label": "ফ্যাক্টরি"
@@ -238,5 +353,44 @@
     "hoursAgo_plural": "{{count}} ঘণ্টা আগে",
     "daysAgo": "{{count}} দিন আগে",
     "daysAgo_plural": "{{count}} দিন আগে"
+  },
+  "index": {
+    "heroTitle": "গার্মেন্টস ফ্যাক্টরির জন্য রিয়েল-টাইম উৎপাদন ট্র্যাকিং",
+    "heroSubtitle": "আপনার দৈনিক উৎপাদন আপডেট সহজ করুন, ব্লকার ট্র্যাক করুন এবং কার্যকর ইনসাইট পান — সব এক জায়গায়।",
+    "getStarted": "শুরু করুন",
+    "signIn": "সাইন ইন",
+    "features": "বৈশিষ্ট্যসমূহ",
+    "lineTracking": "লাইন ট্র্যাকিং",
+    "lineTrackingDesc": "রিয়েল-টাইমে প্রতি লাইনে সেলাই ও ফিনিশিং আউটপুট ট্র্যাক করুন।",
+    "blockerManagement": "ব্লকার ম্যানেজমেন্ট",
+    "blockerManagementDesc": "প্রভাব ট্র্যাকিং সহ উৎপাদন ব্লকার লগ ও সমাধান করুন।",
+    "smartInsights": "স্মার্ট ইনসাইটস",
+    "smartInsightsDesc": "দক্ষতা মেট্রিক্স সহ দৈনিক ও সাপ্তাহিক রিপোর্ট পান।",
+    "roleBasedAccess": "ভূমিকা-ভিত্তিক অ্যাক্সেস",
+    "roleBasedAccessDesc": "কর্মী, সুপারভাইজার এবং অ্যাডমিনরা তাদের প্রয়োজনীয় তথ্য দেখতে পান।",
+    "mobileFirst": "মোবাইল ফার্স্ট",
+    "mobileFirstDesc": "ফ্যাক্টরি ফ্লোরে ব্যবহারের জন্য অপটিমাইজড।",
+    "multiTenant": "মাল্টি-টেন্যান্ট",
+    "multiTenantDesc": "এক প্ল্যাটফর্ম থেকে একাধিক ফ্যাক্টরি পরিচালনা করুন।",
+    "ctaTitle": "আপনার উৎপাদন সহজ করতে প্রস্তুত?",
+    "ctaSubtitle": "আপনার বিনামূল্যে অ্যাকাউন্ট তৈরি করুন এবং আজই ট্র্যাকিং শুরু করুন।",
+    "createAccount": "বিনামূল্যে অ্যাকাউন্ট তৈরি করুন"
+  },
+  "notFound": {
+    "title": "পৃষ্ঠা পাওয়া যায়নি",
+    "description": "আপনি যে পৃষ্ঠাটি খুঁজছেন সেটি বিদ্যমান নেই বা সরিয়ে নেওয়া হয়েছে।",
+    "goHome": "হোমে যান"
+  },
+  "dropdowns": {
+    "title": "ড্রপডাউন সেটিংস",
+    "description": "ফর্মে ব্যবহৃত ড্রপডাউন অপশন পরিচালনা করুন",
+    "stages": "পর্যায়সমূহ",
+    "blockerTypes": "ব্লকারের ধরন",
+    "stageProgress": "পর্যায় অগ্রগতি",
+    "nextMilestone": "পরবর্তী মাইলস্টোন",
+    "blockerOwner": "ব্লকারের দায়িত্বশীল",
+    "blockerImpact": "ব্লকারের প্রভাব",
+    "addOption": "অপশন যোগ করুন",
+    "noOptions": "কোনো অপশন কনফিগার করা নেই"
   }
 }

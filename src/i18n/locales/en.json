@@ -25,7 +25,21 @@
     "success": "Success",
     "collapse": "Collapse",
     "menu": "Menu",
-    "logout": "Log Out"
+    "logout": "Log Out",
+    "required": "Required",
+    "optional": "Optional",
+    "goToDashboard": "Go to Dashboard",
+    "selectLine": "Select Line",
+    "selectPO": "Select PO",
+    "selectLineFirst": "Select a line first",
+    "noPOsForLine": "No POs for this line",
+    "noFactoryAssigned": "No Factory Assigned",
+    "needFactoryAssigned": "You need to be assigned to a factory before you can submit production updates. Please contact your administrator.",
+    "submissionSuccess": "Your update has been recorded.",
+    "submissionFailed": "Submission failed",
+    "pleaseTryAgain": "Please try again.",
+    "fillRequiredFields": "Please fill all required fields",
+    "fixErrors": "Please fix the errors below"
   },
   "app": {
     "name": "Production Portal",
@@ -43,7 +57,11 @@
     "hasAccount": "Already have an account?",
     "loginSuccess": "Logged in successfully",
     "signupSuccess": "Account created successfully",
-    "logoutSuccess": "Logged out successfully"
+    "logoutSuccess": "Logged out successfully",
+    "welcomeBack": "Welcome Back",
+    "createAccount": "Create Account",
+    "enterCredentials": "Enter your credentials to access your account",
+    "fillDetails": "Fill in your details to get started"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -92,28 +110,82 @@
     "sewing": "Sewing",
     "finishing": "Finishing",
     "submitLineData": "Submit line production data",
-    "qcPackingData": "QC, packing & shipping data"
+    "qcPackingData": "QC, packing & shipping data",
+    "noUpdatesYet": "No updates submitted yet",
+    "noActiveBlockers": "No active blockers"
   },
   "sewing": {
-    "title": "Sewing Update",
+    "title": "Daily Production Update",
+    "pageTitle": "Sewing Update",
     "output": "Output",
     "target": "Target",
     "efficiency": "Efficiency",
     "manpower": "Manpower",
+    "mPower": "M Power",
     "reject": "Reject",
+    "rejectToday": "Reject Today",
     "rework": "Rework",
+    "reworkToday": "Rework Today",
     "stageProgress": "Stage Progress",
     "otHours": "OT Hours",
-    "otManpower": "OT Manpower"
+    "otManpower": "OT Manpower",
+    "perHourTarget": "Per Hour Target",
+    "dayProduction": "Day Production",
+    "totalProduction": "Total Production",
+    "overTime": "Over Time",
+    "selectReferences": "Select References",
+    "lineNo": "Line No",
+    "poId": "PO ID",
+    "autoFilledDetails": "Auto-filled Details",
+    "productionNumbers": "Production Numbers",
+    "trackingFields": "Tracking Fields",
+    "currentStage": "Current Stage",
+    "estimatedExFactory": "Estimated Ex-Factory",
+    "nextMilestone": "Next Milestone",
+    "blockerSection": "Blocker Section",
+    "blockerToday": "Blocker Today?",
+    "blockerType": "Blocker Type",
+    "blockerOwner": "Blocker Owner",
+    "blockerImpact": "Blocker Impact",
+    "blockerResolution": "Blocker Resolution Date",
+    "actionTakenToday": "Action Taken Today",
+    "photosNotes": "Photos & Notes",
+    "uploadPhotos": "Upload Photos",
+    "remarks": "Remarks",
+    "buyer": "Buyer",
+    "style": "Style",
+    "item": "Item",
+    "orderQty": "Order Qty",
+    "color": "Color",
+    "smv": "SMV",
+    "unit": "Unit",
+    "floor": "Floor"
   },
   "finishing": {
-    "title": "Finishing Update",
+    "title": "Finishing Daily Update",
+    "pageTitle": "Finishing Update",
     "qcPass": "QC Pass",
+    "dayQcPass": "Day QC Pass",
+    "totalQcPass": "Total QC Pass",
     "qcFail": "QC Fail",
     "poly": "Poly",
+    "dayPoly": "Day Poly",
+    "totalPoly": "Total Poly",
     "carton": "Carton",
+    "dayCarton": "Day Carton",
+    "totalCarton": "Total Carton",
     "packed": "Packed",
-    "shipped": "Shipped"
+    "shipped": "Shipped",
+    "finishingMetrics": "Finishing Metrics",
+    "mPower": "M Power",
+    "perHourTarget": "Per Hour Target",
+    "averageProduction": "Average Production",
+    "dayOverTime": "Day Over Time",
+    "totalOverTime": "Total Over Time",
+    "dayHour": "Day Hour",
+    "totalHour": "Total Hour",
+    "styleNo": "Style No",
+    "orderQuantity": "Order Quantity"
   },
   "blockers": {
     "title": "Blockers",
@@ -126,7 +198,14 @@
     "type": "Type",
     "description_label": "Description",
     "resolve": "Resolve",
-    "noBlockers": "No blockers found"
+    "markResolved": "Mark as Resolved",
+    "noBlockers": "No blockers found",
+    "openBlockers": "Open Blockers",
+    "resolvedBlockers": "Resolved Blockers",
+    "blockerDetails": "Blocker Details",
+    "reportedOn": "Reported on",
+    "line": "Line",
+    "resolveConfirm": "Are you sure you want to mark this blocker as resolved?"
   },
   "blocker_impact": {
     "low": "Low",
@@ -143,7 +222,12 @@
     "status": "Status",
     "submitted": "Submitted",
     "pending": "Pending",
-    "output": "Output"
+    "output": "Output",
+    "activeLines": "Active Lines",
+    "submittedToday": "Submitted Today",
+    "pendingSubmission": "Pending Submission",
+    "currentPO": "Current PO",
+    "searchPlaceholder": "Search lines..."
   },
   "workOrders": {
     "title": "Work Orders",
@@ -156,7 +240,12 @@
     "balance": "Balance",
     "status": "Status",
     "exFactory": "Ex-Factory",
-    "progress": "Progress"
+    "plannedExFactory": "Planned Ex-Factory",
+    "progress": "Progress",
+    "line": "Line",
+    "totalOrders": "Total Orders",
+    "totalQuantity": "Total Quantity",
+    "searchPlaceholder": "Search work orders..."
   },
   "insights": {
     "title": "Production Insights",
@@ -167,7 +256,20 @@
     "linePerformance": "Line Performance",
     "dailyTrend": "Daily Trend",
     "periodComparison": "Period Comparison",
-    "export": "Export"
+    "export": "Export",
+    "exportCSV": "Export as CSV",
+    "exportText": "Export as Text Report",
+    "dateRange": "Date Range",
+    "last7Days": "Last 7 Days",
+    "last14Days": "Last 14 Days",
+    "last30Days": "Last 30 Days",
+    "custom": "Custom",
+    "currentPeriod": "Current",
+    "previousPeriod": "Previous",
+    "noChange": "No change",
+    "totalQcPass": "Total QC Pass",
+    "avgManpower": "Avg Manpower",
+    "daysWithData": "Days with Data"
   },
   "preferences": {
     "title": "My Preferences",
@@ -194,7 +296,10 @@
     "dropdowns": "Dropdown Settings",
     "cutoffTime": "Cutoff Time",
     "activeLines": "Active Lines",
-    "activePOs": "Active POs"
+    "activePOs": "Active POs",
+    "quickStats": "Quick Stats",
+    "setupLinks": "Setup Links",
+    "noFactoryAccess": "You do not have access to factory setup."
   },
   "users": {
     "title": "Users",
@@ -203,7 +308,12 @@
     "email": "Email",
     "role": "Role",
     "status": "Status",
-    "lastActive": "Last Active"
+    "lastActive": "Last Active",
+    "totalUsers": "Total Users",
+    "activeUsers": "Active Users",
+    "admins": "Admins",
+    "searchPlaceholder": "Search users...",
+    "noUsersFound": "No users found"
   },
   "submissions": {
     "title": "All Submissions",
@@ -213,7 +323,9 @@
     "type": "Type",
     "output": "Output",
     "submittedBy": "Submitted By",
-    "submittedAt": "Submitted At"
+    "submittedAt": "Submitted At",
+    "searchPlaceholder": "Search submissions...",
+    "noSubmissions": "No submissions found"
   },
   "week": {
     "title": "This Week",
@@ -221,7 +333,10 @@
     "sewingOutput": "Sewing Output",
     "finishingQC": "Finishing QC Pass",
     "totalUpdates": "Total Updates",
-    "totalBlockers": "Total Blockers"
+    "totalBlockers": "Total Blockers",
+    "dailyBreakdown": "Daily Breakdown",
+    "day": "Day",
+    "updates": "Updates"
   },
   "factory": {
     "label": "Factory"
@@ -238,5 +353,44 @@
     "hoursAgo_plural": "{{count}} hours ago",
     "daysAgo": "{{count}} day ago",
     "daysAgo_plural": "{{count}} days ago"
+  },
+  "index": {
+    "heroTitle": "Real-time Production Tracking for Garment Factories",
+    "heroSubtitle": "Streamline your daily production updates, track blockers, and get actionable insights — all in one place.",
+    "getStarted": "Get Started",
+    "signIn": "Sign In",
+    "features": "Features",
+    "lineTracking": "Line Tracking",
+    "lineTrackingDesc": "Track sewing and finishing output per line in real-time.",
+    "blockerManagement": "Blocker Management",
+    "blockerManagementDesc": "Log and resolve production blockers with impact tracking.",
+    "smartInsights": "Smart Insights",
+    "smartInsightsDesc": "Get daily and weekly reports with efficiency metrics.",
+    "roleBasedAccess": "Role-Based Access",
+    "roleBasedAccessDesc": "Workers, supervisors, and admins see what they need.",
+    "mobileFirst": "Mobile First",
+    "mobileFirstDesc": "Optimized for use on the factory floor.",
+    "multiTenant": "Multi-Tenant",
+    "multiTenantDesc": "Manage multiple factories from one platform.",
+    "ctaTitle": "Ready to streamline your production?",
+    "ctaSubtitle": "Create your free account and start tracking today.",
+    "createAccount": "Create Free Account"
+  },
+  "notFound": {
+    "title": "Page Not Found",
+    "description": "The page you're looking for doesn't exist or has been moved.",
+    "goHome": "Go Home"
+  },
+  "dropdowns": {
+    "title": "Dropdown Settings",
+    "description": "Manage dropdown options used in forms",
+    "stages": "Stages",
+    "blockerTypes": "Blocker Types",
+    "stageProgress": "Stage Progress",
+    "nextMilestone": "Next Milestone",
+    "blockerOwner": "Blocker Owner",
+    "blockerImpact": "Blocker Impact",
+    "addOption": "Add Option",
+    "noOptions": "No options configured"
   }
 }
