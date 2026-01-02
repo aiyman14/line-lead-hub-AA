@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import SewingUpdate from "./pages/SewingUpdate";
+import FinishingUpdate from "./pages/FinishingUpdate";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,7 +29,7 @@ const App = () => (
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/update/sewing" element={<SewingUpdate />} />
-              <Route path="/update/finishing" element={<SewingUpdate />} />
+              <Route path="/update/finishing" element={<FinishingUpdate />} />
               <Route path="/today" element={<Dashboard />} />
               <Route path="/blockers" element={<Dashboard />} />
               <Route path="/week" element={<Dashboard />} />
