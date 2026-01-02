@@ -1,0 +1,209 @@
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Bell, Check, AlertTriangle, Info, CheckCircle2, Clock, Trash2 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
+
+interface Notification {
+  id: string;
+  title: string;
+  message: string | null;
+  type: string;
+  is_read: boolean | null;
+  created_at: string | null;
+  data: unknown;
+}
+
+export function NotificationBell() {
+  const { user, profile } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+      subscribeToNotifications();
+    }
+  }, [user]);
+
+  async function fetchNotifications() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error("Error fetching notifications:", error);
+      return;
+    }
+
+    setNotifications(data as Notification[] || []);
+    setUnreadCount(data?.filter((n) => !n.is_read).length || 0);
+  }
+
+  function subscribeToNotifications() {
+    if (!user) return;
+
+    const channel = supabase
+      .channel("notifications-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log("New notification received:", payload);
+          const newNotification = payload.new as Notification;
+          setNotifications((prev) => [newNotification, ...prev].slice(0, 20));
+          setUnreadCount((prev) => prev + 1);
+          
+          // Show toast for new notification
+          toast(newNotification.title, {
+            description: newNotification.message || undefined,
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }
+
+  async function markAsRead(notificationId: string) {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", notificationId);
+
+    if (!error) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    }
+  }
+
+  async function markAllAsRead() {
+    if (!user) return;
+
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", user.id)
+      .eq("is_read", false);
+
+    if (!error) {
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+      toast.success("All notifications marked as read");
+    }
+  }
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case "blocker":
+        return <AlertTriangle className="h-4 w-4 text-warning" />;
+      case "success":
+        return <CheckCircle2 className="h-4 w-4 text-success" />;
+      case "reminder":
+        return <Clock className="h-4 w-4 text-info" />;
+      default:
+        return <Info className="h-4 w-4 text-muted-foreground" />;
+    }
+  };
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative">
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-80">
+        <DropdownMenuLabel className="flex items-center justify-between">
+          <span>Notifications</span>
+          {unreadCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto py-1 px-2 text-xs"
+              onClick={markAllAsRead}
+            >
+              <Check className="h-3 w-3 mr-1" />
+              Mark all read
+            </Button>
+          )}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <ScrollArea className="h-[300px]">
+          {notifications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <Bell className="h-8 w-8 mb-2 opacity-50" />
+              <p className="text-sm">No notifications yet</p>
+            </div>
+          ) : (
+            notifications.map((notification) => (
+              <DropdownMenuItem
+                key={notification.id}
+                className={`flex flex-col items-start gap-1 p-3 cursor-pointer ${
+                  !notification.is_read ? "bg-muted/50" : ""
+                }`}
+                onClick={() => {
+                  if (!notification.is_read) {
+                    markAsRead(notification.id);
+                  }
+                }}
+              >
+                <div className="flex items-start gap-2 w-full">
+                  {getNotificationIcon(notification.type)}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm truncate">{notification.title}</p>
+                      {!notification.is_read && (
+                        <Badge variant="default" className="h-1.5 w-1.5 p-0 rounded-full" />
+                      )}
+                    </div>
+                    {notification.message && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {notification.message}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {notification.created_at ? formatDistanceToNow(new Date(notification.created_at), { addSuffix: true }) : ""}
+                    </p>
+                  </div>
+                </div>
+              </DropdownMenuItem>
+            ))
+          )}
+        </ScrollArea>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

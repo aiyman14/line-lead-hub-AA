@@ -17,6 +17,8 @@ import {
 import { PeriodComparison } from "@/components/insights/PeriodComparison";
 import { LineDrillDown } from "@/components/insights/LineDrillDown";
 import { ExportInsights } from "@/components/insights/ExportInsights";
+import { EmailScheduleSettings } from "@/components/insights/EmailScheduleSettings";
+import { LineEfficiencyTargets } from "@/components/insights/LineEfficiencyTargets";
 
 interface DailyData {
   date: string;
@@ -1116,6 +1118,18 @@ export default function Insights() {
           )}
         </CardContent>
       </Card>
+
+      {/* Settings Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <LineEfficiencyTargets 
+          linePerformance={linePerformance.map(l => ({
+            lineId: l.lineId,
+            lineName: l.lineName,
+            efficiency: l.efficiency,
+          }))}
+        />
+        <EmailScheduleSettings />
+      </div>
     </div>
   );
 }
