@@ -235,12 +235,11 @@ export default function Dashboard() {
         .sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())
         .slice(0, 5);
 
-      // Fetch all active blockers for today (separate query to get all, not just top 5)
+      // Fetch active blockers (open / not resolved) across all dates
       const { data: sewingBlockers } = await supabase
         .from('production_updates_sewing')
         .select('id, blocker_description, blocker_impact, submitted_at, lines(line_id, name)')
         .eq('factory_id', profile.factory_id)
-        .eq('production_date', today)
         .eq('has_blocker', true)
         .neq('blocker_status', 'resolved')
         .order('submitted_at', { ascending: false })
@@ -250,7 +249,6 @@ export default function Dashboard() {
         .from('production_updates_finishing')
         .select('id, blocker_description, blocker_impact, submitted_at, lines(line_id, name)')
         .eq('factory_id', profile.factory_id)
-        .eq('production_date', today)
         .eq('has_blocker', true)
         .neq('blocker_status', 'resolved')
         .order('submitted_at', { ascending: false })
@@ -296,7 +294,7 @@ export default function Dashboard() {
       });
 
       setRecentUpdates(allUpdates);
-      setActiveBlockers(blockers.slice(0, 3));
+      setActiveBlockers(blockers.slice(0, 5));
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
