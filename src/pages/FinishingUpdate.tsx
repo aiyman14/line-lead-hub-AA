@@ -88,8 +88,11 @@ export default function FinishingUpdate() {
   useEffect(() => {
     if (profile?.factory_id) {
       fetchFormData();
+    } else if (profile !== undefined) {
+      // User profile loaded but no factory assigned
+      setLoading(false);
     }
-  }, [profile?.factory_id]);
+  }, [profile?.factory_id, profile]);
 
   // Auto-fill blocker owner when blocker type is selected
   useEffect(() => {
@@ -220,6 +223,26 @@ export default function FinishingUpdate() {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!profile?.factory_id) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center p-4">
+        <Card className="max-w-md">
+          <CardContent className="pt-6 text-center">
+            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-2">No Factory Assigned</h2>
+            <p className="text-muted-foreground text-sm">
+              You need to be assigned to a factory before you can submit production updates.
+              Please contact your administrator.
+            </p>
+            <Button variant="outline" className="mt-4" onClick={() => navigate('/dashboard')}>
+              Go to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
