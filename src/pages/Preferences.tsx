@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "next-themes";
 import { NotificationPreferences } from "@/components/NotificationPreferences";
@@ -16,6 +17,7 @@ const LANGUAGES = [
 ] as const;
 
 export default function Preferences() {
+  const { t, i18n } = useTranslation();
   const { profile, loading } = useAuth();
   const { theme, setTheme } = useTheme();
   const [language, setLanguage] = useState<Language>(() => {
@@ -31,6 +33,7 @@ export default function Preferences() {
   const handleLanguageChange = (value: Language) => {
     setLanguage(value);
     localStorage.setItem('app-language', value);
+    i18n.changeLanguage(value);
   };
 
   if (loading) {
@@ -47,7 +50,7 @@ export default function Preferences() {
         <Card className="max-w-md">
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">
-              You need to be assigned to a factory to manage preferences.
+              {t('preferences.needFactory')}
             </p>
           </CardContent>
         </Card>
@@ -63,9 +66,9 @@ export default function Preferences() {
           <Settings2 className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">My Preferences</h1>
+          <h1 className="text-2xl font-bold">{t('preferences.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            Manage your personal notification and display settings
+            {t('preferences.description')}
           </p>
         </div>
       </div>
@@ -75,18 +78,18 @@ export default function Preferences() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Palette className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>Display Settings</CardTitle>
+            <CardTitle>{t('preferences.displaySettings')}</CardTitle>
           </div>
           <CardDescription>
-            Customize how the app looks and feels
+            {t('preferences.displayDescription')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Theme Selection */}
           <div className="space-y-3">
-            <Label className="text-base font-medium">Theme</Label>
+            <Label className="text-base font-medium">{t('preferences.theme')}</Label>
             <p className="text-sm text-muted-foreground">
-              Choose your preferred color scheme
+              {t('preferences.themeDescription')}
             </p>
             {mounted && (
               <RadioGroup
@@ -102,7 +105,7 @@ export default function Preferences() {
                 >
                   <RadioGroupItem value="light" id="theme-light" className="sr-only" />
                   <Sun className="h-6 w-6 mb-2" />
-                  <span className="text-sm font-medium">Light</span>
+                  <span className="text-sm font-medium">{t('preferences.light')}</span>
                 </Label>
                 
                 <Label
@@ -113,7 +116,7 @@ export default function Preferences() {
                 >
                   <RadioGroupItem value="dark" id="theme-dark" className="sr-only" />
                   <Moon className="h-6 w-6 mb-2" />
-                  <span className="text-sm font-medium">Dark</span>
+                  <span className="text-sm font-medium">{t('preferences.dark')}</span>
                 </Label>
                 
                 <Label
@@ -124,7 +127,7 @@ export default function Preferences() {
                 >
                   <RadioGroupItem value="system" id="theme-system" className="sr-only" />
                   <Monitor className="h-6 w-6 mb-2" />
-                  <span className="text-sm font-medium">System</span>
+                  <span className="text-sm font-medium">{t('preferences.system')}</span>
                 </Label>
               </RadioGroup>
             )}
@@ -134,14 +137,14 @@ export default function Preferences() {
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Globe className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-base font-medium">Language</Label>
+              <Label className="text-base font-medium">{t('preferences.language')}</Label>
             </div>
             <p className="text-sm text-muted-foreground">
-              Select your preferred language for the interface
+              {t('preferences.languageDescription')}
             </p>
             <Select value={language} onValueChange={handleLanguageChange}>
               <SelectTrigger className="w-full max-w-xs">
-                <SelectValue placeholder="Select language" />
+                <SelectValue placeholder={t('preferences.language')} />
               </SelectTrigger>
               <SelectContent>
                 {LANGUAGES.map((lang) => (
@@ -156,11 +159,6 @@ export default function Preferences() {
                 ))}
               </SelectContent>
             </Select>
-            {language === 'bn' && (
-              <p className="text-xs text-muted-foreground italic">
-                বাংলা ভাষা সমর্থন শীঘ্রই আসছে (Bangla language support coming soon)
-              </p>
-            )}
           </div>
         </CardContent>
       </Card>
@@ -170,10 +168,10 @@ export default function Preferences() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>Notification Settings</CardTitle>
+            <CardTitle>{t('preferences.notifications')}</CardTitle>
           </div>
           <CardDescription>
-            Choose which notifications you want to receive and how you want to receive them.
+            {t('preferences.notificationsDescription')}
           </CardDescription>
         </CardHeader>
         <CardContent>

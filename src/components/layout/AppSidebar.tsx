@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Factory,
   Package,
@@ -18,6 +19,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  UserCog,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,7 +37,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
-import { NAV_ITEMS, ROLE_LABELS } from "@/lib/constants";
+import { NAV_ITEMS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -54,9 +56,32 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Building2,
   CreditCard,
   HeadphonesIcon: Headphones,
+  UserCog,
+};
+
+// Map nav item labels to i18n keys
+const navLabelKeys: Record<string, string> = {
+  'Dashboard': 'nav.dashboard',
+  'Sewing Update': 'nav.sewingUpdate',
+  'Finishing Update': 'nav.finishingUpdate',
+  'My Submissions': 'nav.mySubmissions',
+  'My Preferences': 'nav.myPreferences',
+  'Today Updates': 'nav.todayUpdates',
+  'Blockers': 'nav.blockers',
+  'This Week': 'nav.thisWeek',
+  'All Submissions': 'nav.allSubmissions',
+  'Lines': 'nav.lines',
+  'Work Orders': 'nav.workOrders',
+  'Insights': 'nav.insights',
+  'Factory Setup': 'nav.factorySetup',
+  'Users': 'nav.users',
+  'Tenants': 'nav.tenants',
+  'Plans': 'nav.plans',
+  'Support': 'nav.support',
 };
 
 export function AppSidebar() {
+  const { t } = useTranslation();
   const { profile, roles, factory, signOut } = useAuth();
   const location = useLocation();
   const { state, toggleSidebar } = useSidebar();
@@ -81,6 +106,11 @@ export function AppSidebar() {
       .slice(0, 2);
   };
 
+  const getNavLabel = (label: string) => {
+    const key = navLabelKeys[label];
+    return key ? t(key) : label;
+  };
+
   return (
     <Sidebar
       className={cn(
@@ -97,7 +127,7 @@ export function AppSidebar() {
           {!collapsed && (
             <div className="flex flex-col">
               <span className="font-semibold text-sidebar-foreground">
-                Production Portal
+                {t('app.name')}
               </span>
               {factory && (
                 <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
@@ -113,7 +143,7 @@ export function AppSidebar() {
         <SidebarGroup>
           {!collapsed && (
             <SidebarGroupLabel className="text-sidebar-foreground/50">
-              Menu
+              {t('common.menu')}
             </SidebarGroupLabel>
           )}
           <SidebarGroupContent>
@@ -125,7 +155,7 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       isActive={isActive(item.path)}
-                      tooltip={collapsed ? item.label : undefined}
+                      tooltip={collapsed ? getNavLabel(item.label) : undefined}
                     >
                       <Link
                         to={item.path}
@@ -137,7 +167,7 @@ export function AppSidebar() {
                         )}
                       >
                         {Icon && <Icon className="h-5 w-5 shrink-0" />}
-                        {!collapsed && <span>{item.label}</span>}
+                        {!collapsed && <span>{getNavLabel(item.label)}</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -162,7 +192,7 @@ export function AppSidebar() {
                 {profile?.full_name}
               </span>
               <span className="truncate text-xs text-sidebar-foreground/60">
-                {ROLE_LABELS[highestRole as keyof typeof ROLE_LABELS]}
+                {t(`roles.${highestRole}`)}
               </span>
             </div>
           )}
@@ -188,7 +218,7 @@ export function AppSidebar() {
           ) : (
             <>
               <ChevronLeft className="h-4 w-4 mr-2" />
-              Collapse
+              {t('common.collapse')}
             </>
           )}
         </Button>
