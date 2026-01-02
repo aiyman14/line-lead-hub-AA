@@ -22,6 +22,7 @@ import WorkOrdersView from "./pages/WorkOrdersView";
 import Insights from "./pages/Insights";
 import UsersPage from "./pages/Users";
 import AllSubmissions from "./pages/AllSubmissions";
+import Preferences from "./pages/Preferences";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const App = () => (
               <Route path="/users" element={<UsersPage />} />
               <Route path="/submissions" element={<AllSubmissions />} />
               <Route path="/my-submissions" element={<Dashboard />} />
+              <Route path="/preferences" element={<Preferences />} />
             </Route>
             
             <Route path="*" element={<NotFound />} />

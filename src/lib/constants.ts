@@ -134,6 +134,7 @@ export const NAV_ITEMS = {
     { path: '/update/sewing', label: 'Sewing Update', icon: 'Factory' },
     { path: '/update/finishing', label: 'Finishing Update', icon: 'Package' },
     { path: '/my-submissions', label: 'My Submissions', icon: 'FileText' },
+    { path: '/preferences', label: 'My Preferences', icon: 'Settings' },
   ],
   supervisor: [
     { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
@@ -142,6 +143,7 @@ export const NAV_ITEMS = {
     { path: '/today', label: 'Today Updates', icon: 'CalendarDays' },
     { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
     { path: '/lines', label: 'Lines', icon: 'Rows3' },
+    { path: '/preferences', label: 'My Preferences', icon: 'Settings' },
   ],
   admin: [
     { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
@@ -154,6 +156,7 @@ export const NAV_ITEMS = {
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
+    { path: '/preferences', label: 'My Preferences', icon: 'Settings' },
   ],
   owner: [
     { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
@@ -166,6 +169,7 @@ export const NAV_ITEMS = {
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
+    { path: '/preferences', label: 'My Preferences', icon: 'Settings' },
   ],
   superadmin: [
     { path: '/admin/tenants', label: 'Tenants', icon: 'Building2' },
