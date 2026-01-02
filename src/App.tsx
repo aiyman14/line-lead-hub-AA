@@ -14,6 +14,13 @@ import FactorySetup from "./pages/FactorySetup";
 import SetupHome from "./pages/SetupHome";
 import WorkOrders from "./pages/WorkOrders";
 import DropdownSettings from "./pages/DropdownSettings";
+import TodayUpdates from "./pages/TodayUpdates";
+import Blockers from "./pages/Blockers";
+import ThisWeek from "./pages/ThisWeek";
+import Lines from "./pages/Lines";
+import WorkOrdersView from "./pages/WorkOrdersView";
+import Insights from "./pages/Insights";
+import UsersPage from "./pages/Users";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,17 +41,17 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/update/sewing" element={<SewingUpdate />} />
               <Route path="/update/finishing" element={<FinishingUpdate />} />
-              <Route path="/today" element={<Dashboard />} />
-              <Route path="/blockers" element={<Dashboard />} />
-              <Route path="/week" element={<Dashboard />} />
-              <Route path="/lines" element={<Dashboard />} />
-              <Route path="/work-orders" element={<Dashboard />} />
-              <Route path="/insights" element={<Dashboard />} />
+              <Route path="/today" element={<TodayUpdates />} />
+              <Route path="/blockers" element={<Blockers />} />
+              <Route path="/week" element={<ThisWeek />} />
+              <Route path="/lines" element={<Lines />} />
+              <Route path="/work-orders" element={<WorkOrdersView />} />
+              <Route path="/insights" element={<Insights />} />
               <Route path="/setup" element={<SetupHome />} />
               <Route path="/setup/factory" element={<FactorySetup />} />
               <Route path="/setup/work-orders" element={<WorkOrders />} />
               <Route path="/setup/dropdowns" element={<DropdownSettings />} />
-              <Route path="/users" element={<Dashboard />} />
+              <Route path="/users" element={<UsersPage />} />
               <Route path="/my-submissions" element={<Dashboard />} />
             </Route>
             
