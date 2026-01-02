@@ -24,9 +24,10 @@ import {
   Pencil,
   Trash2,
   Check,
-  X
+  X,
+  Factory
 } from "lucide-react";
-import { BLOCKER_IMPACTS, BLOCKER_IMPACT_LABELS } from "@/lib/constants";
+import { BLOCKER_IMPACTS, BLOCKER_IMPACT_LABELS, DEFAULT_STAGES, DEFAULT_BLOCKER_TYPES } from "@/lib/constants";
 
 // Types
 interface Unit {
@@ -73,7 +74,7 @@ interface BlockerType {
 }
 
 export default function FactorySetup() {
-  const { profile, isAdminOrHigher } = useAuth();
+  const { profile, isAdminOrHigher, user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -91,6 +92,11 @@ export default function FactorySetup() {
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Factory creation state
+  const [isCreatingFactory, setIsCreatingFactory] = useState(false);
+  const [newFactoryName, setNewFactoryName] = useState("");
+  const [newFactorySlug, setNewFactorySlug] = useState("");
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -249,6 +255,60 @@ export default function FactorySetup() {
     }
   }
 
+  async function handleCreateFactory() {
+    if (!user || !newFactoryName.trim() || !newFactorySlug.trim()) return;
+    
+    setIsCreatingFactory(true);
+    try {
+      // Create the factory
+      const { data: factory, error: factoryError } = await supabase
+        .from('factory_accounts')
+        .insert({
+          name: newFactoryName.trim(),
+          slug: newFactorySlug.trim().toLowerCase().replace(/\s+/g, '-'),
+        })
+        .select()
+        .single();
+
+      if (factoryError) throw factoryError;
+
+      // Update user's profile to assign them to the factory
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ factory_id: factory.id })
+        .eq('id', user.id);
+
+      if (profileError) throw profileError;
+
+      // Seed default stages
+      const stagesData = DEFAULT_STAGES.map(stage => ({
+        ...stage,
+        factory_id: factory.id,
+      }));
+      await supabase.from('stages').insert(stagesData);
+
+      // Seed default blocker types
+      const blockerTypesData = DEFAULT_BLOCKER_TYPES.map(bt => ({
+        code: bt.code,
+        name: bt.name,
+        default_owner: bt.default_owner,
+        default_impact: bt.default_impact,
+        factory_id: factory.id,
+      }));
+      await supabase.from('blocker_types').insert(blockerTypesData);
+
+      toast({ title: "Factory created!", description: "Default stages and blocker types have been added." });
+      
+      // Reload the page to refresh auth context
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Error creating factory:', error);
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setIsCreatingFactory(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -260,15 +320,58 @@ export default function FactorySetup() {
   if (!profile?.factory_id) {
     return (
       <div className="flex min-h-[400px] items-center justify-center p-4">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">No Factory Assigned</h2>
-            <p className="text-muted-foreground text-sm">
-              You need to be assigned to a factory to manage factory setup.
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/dashboard')}>
-              Go to Dashboard
+        <Card className="w-full max-w-lg">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <Factory className="h-8 w-8 text-primary" />
+            </div>
+            <CardTitle>Create Your Factory</CardTitle>
+            <CardDescription>
+              Set up your factory to start tracking production
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="factoryName">Factory Name</Label>
+              <Input
+                id="factoryName"
+                placeholder="e.g., Woventex Industries"
+                value={newFactoryName}
+                onChange={(e) => {
+                  setNewFactoryName(e.target.value);
+                  // Auto-generate slug from name
+                  setNewFactorySlug(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="factorySlug">Factory Slug (URL identifier)</Label>
+              <Input
+                id="factorySlug"
+                placeholder="e.g., woventex-industries"
+                value={newFactorySlug}
+                onChange={(e) => setNewFactorySlug(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Used in URLs. Only lowercase letters, numbers, and hyphens.
+              </p>
+            </div>
+            <Button 
+              className="w-full" 
+              onClick={handleCreateFactory}
+              disabled={isCreatingFactory || !newFactoryName.trim() || !newFactorySlug.trim()}
+            >
+              {isCreatingFactory ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Factory
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
