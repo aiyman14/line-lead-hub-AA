@@ -698,87 +698,135 @@ export type Database = {
       }
       production_updates_sewing: {
         Row: {
+          action_taken_today: string | null
           blocker_description: string | null
           blocker_impact: Database["public"]["Enums"]["blocker_impact"] | null
           blocker_owner: string | null
+          blocker_resolution_date: string | null
           blocker_status: Database["public"]["Enums"]["blocker_status"] | null
           blocker_type_id: string | null
+          buyer_name: string | null
+          color: string | null
           created_at: string | null
+          cumulative_good_total: number | null
+          estimated_ex_factory: string | null
           factory_id: string
+          factory_name: string | null
+          floor_name: string | null
           has_blocker: boolean | null
           id: string
+          item_name: string | null
           line_id: string
           manpower: number | null
+          next_milestone: string | null
           notes: string | null
+          order_qty: number | null
           ot_hours: number | null
           ot_manpower: number | null
           output_qty: number
+          per_hour_target: number | null
           photo_urls: string[] | null
+          po_number: string | null
           production_date: string
           reject_qty: number | null
           rework_qty: number | null
           shift: string | null
+          smv: number | null
           stage_id: string | null
           stage_progress: number | null
+          style_code: string | null
           submitted_at: string | null
           submitted_by: string | null
           target_qty: number | null
+          unit_name: string | null
           work_order_id: string | null
         }
         Insert: {
+          action_taken_today?: string | null
           blocker_description?: string | null
           blocker_impact?: Database["public"]["Enums"]["blocker_impact"] | null
           blocker_owner?: string | null
+          blocker_resolution_date?: string | null
           blocker_status?: Database["public"]["Enums"]["blocker_status"] | null
           blocker_type_id?: string | null
+          buyer_name?: string | null
+          color?: string | null
           created_at?: string | null
+          cumulative_good_total?: number | null
+          estimated_ex_factory?: string | null
           factory_id: string
+          factory_name?: string | null
+          floor_name?: string | null
           has_blocker?: boolean | null
           id?: string
+          item_name?: string | null
           line_id: string
           manpower?: number | null
+          next_milestone?: string | null
           notes?: string | null
+          order_qty?: number | null
           ot_hours?: number | null
           ot_manpower?: number | null
           output_qty?: number
+          per_hour_target?: number | null
           photo_urls?: string[] | null
+          po_number?: string | null
           production_date?: string
           reject_qty?: number | null
           rework_qty?: number | null
           shift?: string | null
+          smv?: number | null
           stage_id?: string | null
           stage_progress?: number | null
+          style_code?: string | null
           submitted_at?: string | null
           submitted_by?: string | null
           target_qty?: number | null
+          unit_name?: string | null
           work_order_id?: string | null
         }
         Update: {
+          action_taken_today?: string | null
           blocker_description?: string | null
           blocker_impact?: Database["public"]["Enums"]["blocker_impact"] | null
           blocker_owner?: string | null
+          blocker_resolution_date?: string | null
           blocker_status?: Database["public"]["Enums"]["blocker_status"] | null
           blocker_type_id?: string | null
+          buyer_name?: string | null
+          color?: string | null
           created_at?: string | null
+          cumulative_good_total?: number | null
+          estimated_ex_factory?: string | null
           factory_id?: string
+          factory_name?: string | null
+          floor_name?: string | null
           has_blocker?: boolean | null
           id?: string
+          item_name?: string | null
           line_id?: string
           manpower?: number | null
+          next_milestone?: string | null
           notes?: string | null
+          order_qty?: number | null
           ot_hours?: number | null
           ot_manpower?: number | null
           output_qty?: number
+          per_hour_target?: number | null
           photo_urls?: string[] | null
+          po_number?: string | null
           production_date?: string
           reject_qty?: number | null
           rework_qty?: number | null
           shift?: string | null
+          smv?: number | null
           stage_id?: string | null
           stage_progress?: number | null
+          style_code?: string | null
           submitted_at?: string | null
           submitted_by?: string | null
           target_qty?: number | null
+          unit_name?: string | null
           work_order_id?: string | null
         }
         Relationships: [
