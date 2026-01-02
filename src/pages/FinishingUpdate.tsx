@@ -700,7 +700,7 @@ export default function FinishingUpdate() {
 
         {/* Submit Button */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t">
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto flex justify-center">
             <Button 
               type="submit" 
               className="w-full h-14 text-lg"

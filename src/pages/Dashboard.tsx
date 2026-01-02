@@ -407,6 +407,7 @@ export default function Dashboard() {
           icon={TrendingUp}
           variant="neutral"
           subtitle={`${stats.totalLines} lines tracked`}
+          href="/today"
         />
         <KPICard
           title="Blockers Today"
@@ -414,6 +415,7 @@ export default function Dashboard() {
           icon={AlertTriangle}
           variant={stats.blockersToday > 0 ? "warning" : "positive"}
           subtitle={stats.blockersToday > 0 ? "Requires attention" : "All clear"}
+          href="/blockers"
         />
         <KPICard
           title="Missing Today"
@@ -421,6 +423,7 @@ export default function Dashboard() {
           icon={Rows3}
           variant={stats.missingToday > 0 ? "negative" : "positive"}
           subtitle={stats.missingToday > 0 ? "Lines pending" : "All submitted"}
+          href="/lines"
         />
         <KPICard
           title="Work Orders"
@@ -428,6 +431,7 @@ export default function Dashboard() {
           icon={ClipboardList}
           variant="neutral"
           subtitle="Active orders"
+          href="/work-orders"
         />
       </div>
 

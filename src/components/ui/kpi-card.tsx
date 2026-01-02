@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { LucideIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface KPICardProps {
   title: string;
@@ -13,6 +14,8 @@ interface KPICardProps {
   };
   variant?: "default" | "positive" | "negative" | "warning" | "neutral";
   className?: string;
+  href?: string;
+  onClick?: () => void;
 }
 
 export function KPICard({
@@ -23,7 +26,11 @@ export function KPICard({
   trend,
   variant = "default",
   className,
+  href,
+  onClick,
 }: KPICardProps) {
+  const navigate = useNavigate();
+
   const variantClasses = {
     default: "",
     positive: "kpi-card-positive",
@@ -40,13 +47,28 @@ export function KPICard({
       : "text-muted-foreground"
     : "";
 
+  const isClickable = href || onClick;
+
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+    } else if (href) {
+      navigate(href);
+    }
+  };
+
   return (
     <div
       className={cn(
         "kpi-card animate-fade-in",
         variantClasses[variant],
+        isClickable && "cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all",
         className
       )}
+      onClick={isClickable ? handleClick : undefined}
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onKeyDown={isClickable ? (e) => e.key === "Enter" && handleClick() : undefined}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
