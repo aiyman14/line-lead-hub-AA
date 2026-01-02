@@ -235,9 +235,30 @@ export default function Dashboard() {
         .sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())
         .slice(0, 5);
 
-      // Extract active blockers (not resolved)
+      // Fetch all active blockers for today (separate query to get all, not just top 5)
+      const { data: sewingBlockers } = await supabase
+        .from('production_updates_sewing')
+        .select('id, blocker_description, blocker_impact, submitted_at, lines(line_id, name)')
+        .eq('factory_id', profile.factory_id)
+        .eq('production_date', today)
+        .eq('has_blocker', true)
+        .neq('blocker_status', 'resolved')
+        .order('submitted_at', { ascending: false })
+        .limit(5);
+
+      const { data: finishingBlockers } = await supabase
+        .from('production_updates_finishing')
+        .select('id, blocker_description, blocker_impact, submitted_at, lines(line_id, name)')
+        .eq('factory_id', profile.factory_id)
+        .eq('production_date', today)
+        .eq('has_blocker', true)
+        .neq('blocker_status', 'resolved')
+        .order('submitted_at', { ascending: false })
+        .limit(5);
+
+      // Extract active blockers
       const blockers: ActiveBlocker[] = [];
-      sewingUpdates?.filter(u => u.has_blocker && u.blocker_status !== 'resolved').forEach(u => {
+      sewingBlockers?.forEach(u => {
         blockers.push({
           id: u.id,
           type: 'sewing',
@@ -247,7 +268,7 @@ export default function Dashboard() {
           created_at: u.submitted_at,
         });
       });
-      finishingUpdates?.filter(u => u.has_blocker && u.blocker_status !== 'resolved').forEach(u => {
+      finishingBlockers?.forEach(u => {
         blockers.push({
           id: u.id,
           type: 'finishing',
