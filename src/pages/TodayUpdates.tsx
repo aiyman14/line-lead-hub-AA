@@ -14,7 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Factory, Package, Search, Filter, Download, RefreshCw } from "lucide-react";
+import { Loader2, Factory, Package, Search, Download, RefreshCw } from "lucide-react";
+import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 
 interface SewingUpdate {
   id: string;
@@ -22,11 +23,19 @@ interface SewingUpdate {
   output_qty: number;
   target_qty: number | null;
   manpower: number | null;
+  reject_qty: number | null;
+  rework_qty: number | null;
   stage_progress: number | null;
+  ot_hours: number | null;
+  ot_manpower: number | null;
   has_blocker: boolean;
   blocker_description: string | null;
   blocker_impact: string | null;
+  blocker_owner: string | null;
+  blocker_status: string | null;
+  notes: string | null;
   submitted_at: string;
+  production_date: string;
   lines: { line_id: string; name: string | null } | null;
   work_orders: { po_number: string; buyer: string; style: string } | null;
 }
@@ -38,13 +47,78 @@ interface FinishingUpdate {
   total_qc_pass: number | null;
   m_power: number | null;
   day_poly: number | null;
+  total_poly: number | null;
+  per_hour_target: number | null;
+  average_production: number | null;
+  day_over_time: number | null;
+  total_over_time: number | null;
+  day_hour: number | null;
+  total_hour: number | null;
+  day_carton: number | null;
+  total_carton: number | null;
+  order_quantity: number | null;
   has_blocker: boolean;
   blocker_description: string | null;
   blocker_impact: string | null;
+  blocker_owner: string | null;
+  blocker_status: string | null;
+  remarks: string | null;
   submitted_at: string;
+  production_date: string;
+  buyer_name: string | null;
+  style_no: string | null;
+  item_name: string | null;
+  unit_name: string | null;
+  floor_name: string | null;
   lines: { line_id: string; name: string | null } | null;
   work_orders: { po_number: string; buyer: string; style: string } | null;
 }
+
+type ModalSubmission = {
+  id: string;
+  type: 'sewing' | 'finishing';
+  line_name: string;
+  po_number: string | null;
+  buyer?: string | null;
+  style?: string | null;
+  output_qty?: number;
+  target_qty?: number | null;
+  manpower?: number | null;
+  reject_qty?: number | null;
+  rework_qty?: number | null;
+  stage_progress?: number | null;
+  ot_hours?: number | null;
+  ot_manpower?: number | null;
+  has_blocker: boolean;
+  blocker_description: string | null;
+  blocker_impact: string | null;
+  blocker_owner: string | null;
+  blocker_status: string | null;
+  notes?: string | null;
+  submitted_at: string;
+  production_date: string;
+  // Finishing specific
+  buyer_name?: string | null;
+  style_no?: string | null;
+  item_name?: string | null;
+  order_quantity?: number | null;
+  unit_name?: string | null;
+  floor_name?: string | null;
+  m_power?: number | null;
+  per_hour_target?: number | null;
+  day_qc_pass?: number | null;
+  total_qc_pass?: number | null;
+  day_poly?: number | null;
+  total_poly?: number | null;
+  average_production?: number | null;
+  day_over_time?: number | null;
+  total_over_time?: number | null;
+  day_hour?: number | null;
+  total_hour?: number | null;
+  day_carton?: number | null;
+  total_carton?: number | null;
+  remarks?: string | null;
+};
 
 export default function TodayUpdates() {
   const { profile } = useAuth();
@@ -53,6 +127,8 @@ export default function TodayUpdates() {
   const [finishingUpdates, setFinishingUpdates] = useState<FinishingUpdate[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  const [selectedSubmission, setSelectedSubmission] = useState<ModalSubmission | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -109,6 +185,71 @@ export default function TodayUpdates() {
 
   const totalOutput = sewingUpdates.reduce((sum, u) => sum + (u.output_qty || 0), 0);
   const totalQcPass = finishingUpdates.reduce((sum, u) => sum + (u.day_qc_pass || 0), 0);
+
+  const handleSewingClick = (update: SewingUpdate) => {
+    setSelectedSubmission({
+      id: update.id,
+      type: 'sewing',
+      line_name: update.lines?.name || update.lines?.line_id || 'Unknown',
+      po_number: update.work_orders?.po_number || null,
+      buyer: update.work_orders?.buyer,
+      style: update.work_orders?.style,
+      output_qty: update.output_qty,
+      target_qty: update.target_qty,
+      manpower: update.manpower,
+      reject_qty: update.reject_qty,
+      rework_qty: update.rework_qty,
+      stage_progress: update.stage_progress,
+      ot_hours: update.ot_hours,
+      ot_manpower: update.ot_manpower,
+      has_blocker: update.has_blocker,
+      blocker_description: update.blocker_description,
+      blocker_impact: update.blocker_impact,
+      blocker_owner: update.blocker_owner,
+      blocker_status: update.blocker_status,
+      notes: update.notes,
+      submitted_at: update.submitted_at,
+      production_date: update.production_date,
+    });
+    setDetailModalOpen(true);
+  };
+
+  const handleFinishingClick = (update: FinishingUpdate) => {
+    setSelectedSubmission({
+      id: update.id,
+      type: 'finishing',
+      line_name: update.lines?.name || update.lines?.line_id || 'Unknown',
+      po_number: update.work_orders?.po_number || null,
+      buyer_name: update.buyer_name,
+      style_no: update.style_no,
+      item_name: update.item_name,
+      order_quantity: update.order_quantity,
+      unit_name: update.unit_name,
+      floor_name: update.floor_name,
+      m_power: update.m_power,
+      per_hour_target: update.per_hour_target,
+      day_qc_pass: update.day_qc_pass,
+      total_qc_pass: update.total_qc_pass,
+      day_poly: update.day_poly,
+      total_poly: update.total_poly,
+      average_production: update.average_production,
+      day_over_time: update.day_over_time,
+      total_over_time: update.total_over_time,
+      day_hour: update.day_hour,
+      total_hour: update.total_hour,
+      day_carton: update.day_carton,
+      total_carton: update.total_carton,
+      remarks: update.remarks,
+      has_blocker: update.has_blocker,
+      blocker_description: update.blocker_description,
+      blocker_impact: update.blocker_impact,
+      blocker_owner: update.blocker_owner,
+      blocker_status: update.blocker_status,
+      submitted_at: update.submitted_at,
+      production_date: update.production_date,
+    });
+    setDetailModalOpen(true);
+  };
 
   if (loading) {
     return (
@@ -231,7 +372,11 @@ export default function TodayUpdates() {
                     </TableHeader>
                     <TableBody>
                       {filteredSewing.map((update) => (
-                        <TableRow key={update.id}>
+                        <TableRow 
+                          key={update.id} 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleSewingClick(update)}
+                        >
                           <TableCell className="font-mono text-sm">{formatTime(update.submitted_at)}</TableCell>
                           <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
                           <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
@@ -285,7 +430,11 @@ export default function TodayUpdates() {
                     </TableHeader>
                     <TableBody>
                       {filteredFinishing.map((update) => (
-                        <TableRow key={update.id}>
+                        <TableRow 
+                          key={update.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleFinishingClick(update)}
+                        >
                           <TableCell className="font-mono text-sm">{formatTime(update.submitted_at)}</TableCell>
                           <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
                           <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
@@ -336,7 +485,11 @@ export default function TodayUpdates() {
                   </TableHeader>
                   <TableBody>
                     {filteredSewing.map((update) => (
-                      <TableRow key={update.id}>
+                      <TableRow 
+                        key={update.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleSewingClick(update)}
+                      >
                         <TableCell className="font-mono text-sm">{formatTime(update.submitted_at)}</TableCell>
                         <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
                         <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
@@ -386,7 +539,11 @@ export default function TodayUpdates() {
                   </TableHeader>
                   <TableBody>
                     {filteredFinishing.map((update) => (
-                      <TableRow key={update.id}>
+                      <TableRow 
+                        key={update.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleFinishingClick(update)}
+                      >
                         <TableCell className="font-mono text-sm">{formatTime(update.submitted_at)}</TableCell>
                         <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
                         <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
@@ -417,6 +574,13 @@ export default function TodayUpdates() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Submission Detail Modal */}
+      <SubmissionDetailModal
+        submission={selectedSubmission as any}
+        open={detailModalOpen}
+        onOpenChange={setDetailModalOpen}
+      />
     </div>
   );
 }
