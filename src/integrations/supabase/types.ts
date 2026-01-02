@@ -418,87 +418,150 @@ export type Database = {
       }
       production_updates_finishing: {
         Row: {
+          average_production: number | null
           blocker_description: string | null
           blocker_impact: Database["public"]["Enums"]["blocker_impact"] | null
           blocker_owner: string | null
           blocker_status: Database["public"]["Enums"]["blocker_status"] | null
           blocker_type_id: string | null
+          buyer_name: string | null
           created_at: string | null
+          day_carton: number | null
+          day_hour: number | null
+          day_over_time: number | null
+          day_poly: number | null
+          day_qc_pass: number | null
           factory_id: string
+          factory_name: string | null
+          floor_name: string | null
           has_blocker: boolean | null
           id: string
+          item_name: string | null
           line_id: string
+          m_power: number | null
           manpower: number | null
           notes: string | null
+          order_quantity: number | null
           ot_hours: number | null
           ot_manpower: number | null
           packed_qty: number | null
+          per_hour_target: number | null
           photo_urls: string[] | null
           production_date: string
           qc_fail_qty: number | null
           qc_pass_qty: number
+          remarks: string | null
           shift: string | null
           shipped_qty: number | null
           stage_id: string | null
           stage_progress: number | null
+          style_no: string | null
           submitted_at: string | null
           submitted_by: string | null
+          total_carton: number | null
+          total_hour: number | null
+          total_over_time: number | null
+          total_poly: number | null
+          total_qc_pass: number | null
+          unit_name: string | null
           work_order_id: string | null
         }
         Insert: {
+          average_production?: number | null
           blocker_description?: string | null
           blocker_impact?: Database["public"]["Enums"]["blocker_impact"] | null
           blocker_owner?: string | null
           blocker_status?: Database["public"]["Enums"]["blocker_status"] | null
           blocker_type_id?: string | null
+          buyer_name?: string | null
           created_at?: string | null
+          day_carton?: number | null
+          day_hour?: number | null
+          day_over_time?: number | null
+          day_poly?: number | null
+          day_qc_pass?: number | null
           factory_id: string
+          factory_name?: string | null
+          floor_name?: string | null
           has_blocker?: boolean | null
           id?: string
+          item_name?: string | null
           line_id: string
+          m_power?: number | null
           manpower?: number | null
           notes?: string | null
+          order_quantity?: number | null
           ot_hours?: number | null
           ot_manpower?: number | null
           packed_qty?: number | null
+          per_hour_target?: number | null
           photo_urls?: string[] | null
           production_date?: string
           qc_fail_qty?: number | null
           qc_pass_qty?: number
+          remarks?: string | null
           shift?: string | null
           shipped_qty?: number | null
           stage_id?: string | null
           stage_progress?: number | null
+          style_no?: string | null
           submitted_at?: string | null
           submitted_by?: string | null
+          total_carton?: number | null
+          total_hour?: number | null
+          total_over_time?: number | null
+          total_poly?: number | null
+          total_qc_pass?: number | null
+          unit_name?: string | null
           work_order_id?: string | null
         }
         Update: {
+          average_production?: number | null
           blocker_description?: string | null
           blocker_impact?: Database["public"]["Enums"]["blocker_impact"] | null
           blocker_owner?: string | null
           blocker_status?: Database["public"]["Enums"]["blocker_status"] | null
           blocker_type_id?: string | null
+          buyer_name?: string | null
           created_at?: string | null
+          day_carton?: number | null
+          day_hour?: number | null
+          day_over_time?: number | null
+          day_poly?: number | null
+          day_qc_pass?: number | null
           factory_id?: string
+          factory_name?: string | null
+          floor_name?: string | null
           has_blocker?: boolean | null
           id?: string
+          item_name?: string | null
           line_id?: string
+          m_power?: number | null
           manpower?: number | null
           notes?: string | null
+          order_quantity?: number | null
           ot_hours?: number | null
           ot_manpower?: number | null
           packed_qty?: number | null
+          per_hour_target?: number | null
           photo_urls?: string[] | null
           production_date?: string
           qc_fail_qty?: number | null
           qc_pass_qty?: number
+          remarks?: string | null
           shift?: string | null
           shipped_qty?: number | null
           stage_id?: string | null
           stage_progress?: number | null
+          style_no?: string | null
           submitted_at?: string | null
           submitted_by?: string | null
+          total_carton?: number | null
+          total_hour?: number | null
+          total_over_time?: number | null
+          total_poly?: number | null
+          total_qc_pass?: number | null
+          unit_name?: string | null
           work_order_id?: string | null
         }
         Relationships: [
