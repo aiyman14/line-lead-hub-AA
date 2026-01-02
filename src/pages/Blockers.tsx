@@ -1,14 +1,16 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertTriangle, Search, Filter, Clock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Loader2, AlertTriangle, Search, Filter, Clock, CheckCircle, Factory, Package } from "lucide-react";
 import { BLOCKER_IMPACT_LABELS } from "@/lib/constants";
+import { toast } from "sonner";
 
 interface Blocker {
   id: string;
@@ -21,15 +23,31 @@ interface Blocker {
   status: string;
   submitted_at: string;
   production_date: string;
+  // Additional fields for detail view
+  buyer?: string | null;
+  style?: string | null;
+  output_qty?: number;
+  target_qty?: number | null;
+  manpower?: number | null;
+  notes?: string | null;
+  // Finishing specific
+  buyer_name?: string | null;
+  style_no?: string | null;
+  item_name?: string | null;
+  day_qc_pass?: number | null;
+  total_qc_pass?: number | null;
 }
 
 export default function Blockers() {
-  const { profile } = useAuth();
+  const { profile, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterImpact, setFilterImpact] = useState("all");
   const [activeTab, setActiveTab] = useState("open");
+  const [selectedBlocker, setSelectedBlocker] = useState<Blocker | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -45,14 +63,14 @@ export default function Blockers() {
       const [sewingRes, finishingRes] = await Promise.all([
         supabase
           .from('production_updates_sewing')
-          .select('*, lines(line_id, name), work_orders(po_number)')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
           .eq('factory_id', profile.factory_id)
           .eq('has_blocker', true)
           .order('submitted_at', { ascending: false })
           .limit(100),
         supabase
           .from('production_updates_finishing')
-          .select('*, lines(line_id, name), work_orders(po_number)')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
           .eq('factory_id', profile.factory_id)
           .eq('has_blocker', true)
           .order('submitted_at', { ascending: false })
@@ -70,6 +88,12 @@ export default function Blockers() {
         status: b.blocker_status || 'open',
         submitted_at: b.submitted_at,
         production_date: b.production_date,
+        buyer: b.work_orders?.buyer,
+        style: b.work_orders?.style,
+        output_qty: b.output_qty,
+        target_qty: b.target_qty,
+        manpower: b.manpower,
+        notes: b.notes,
       }));
 
       const finishingBlockers: Blocker[] = (finishingRes.data || []).map(b => ({
@@ -83,6 +107,11 @@ export default function Blockers() {
         status: b.blocker_status || 'open',
         submitted_at: b.submitted_at,
         production_date: b.production_date,
+        buyer_name: b.buyer_name,
+        style_no: b.style_no,
+        item_name: b.item_name,
+        day_qc_pass: b.day_qc_pass,
+        total_qc_pass: b.total_qc_pass,
       }));
 
       setBlockers([...sewingBlockers, ...finishingBlockers].sort(
@@ -92,6 +121,34 @@ export default function Blockers() {
       console.error('Error fetching blockers:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResolve(blocker: Blocker) {
+    if (!isAdminOrHigher()) {
+      toast.error("Only admins can resolve blockers");
+      return;
+    }
+
+    setResolving(true);
+    try {
+      const table = blocker.type === 'sewing' ? 'production_updates_sewing' : 'production_updates_finishing';
+      const { error } = await supabase
+        .from(table)
+        .update({ blocker_status: 'resolved' })
+        .eq('id', blocker.id);
+
+      if (error) throw error;
+
+      toast.success("Blocker marked as resolved");
+      setDetailModalOpen(false);
+      setSelectedBlocker(null);
+      fetchBlockers();
+    } catch (error) {
+      console.error('Error resolving blocker:', error);
+      toast.error("Failed to resolve blocker");
+    } finally {
+      setResolving(false);
     }
   }
 
@@ -214,17 +271,36 @@ export default function Blockers() {
           {filteredBlockers.length > 0 ? (
             <div className="space-y-3">
               {filteredBlockers.map((blocker) => (
-                <Card key={blocker.id} className={`border ${getImpactColor(blocker.impact)}`}>
+                <Card 
+                  key={blocker.id} 
+                  className={`border ${getImpactColor(blocker.impact)} cursor-pointer hover:shadow-md transition-shadow`}
+                  onClick={() => {
+                    setSelectedBlocker(blocker);
+                    setDetailModalOpen(true);
+                  }}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
+                            blocker.type === 'sewing' ? 'bg-primary/10' : 'bg-info/10'
+                          }`}>
+                            {blocker.type === 'sewing' ? (
+                              <Factory className="h-4 w-4 text-primary" />
+                            ) : (
+                              <Package className="h-4 w-4 text-info" />
+                            )}
+                          </div>
                           <span className="font-semibold">{blocker.line_name}</span>
                           <StatusBadge variant={blocker.type} size="sm">{blocker.type}</StatusBadge>
                           {blocker.impact && (
                             <StatusBadge variant={blocker.impact as any} size="sm">
                               {BLOCKER_IMPACT_LABELS[blocker.impact as keyof typeof BLOCKER_IMPACT_LABELS] || blocker.impact}
                             </StatusBadge>
+                          )}
+                          {blocker.status === 'resolved' && (
+                            <StatusBadge variant="success" size="sm">Resolved</StatusBadge>
                           )}
                           {blocker.po_number && (
                             <span className="text-xs text-muted-foreground">{blocker.po_number}</span>
@@ -243,6 +319,20 @@ export default function Blockers() {
                           </span>
                         </div>
                       </div>
+                      {blocker.status !== 'resolved' && isAdminOrHigher() && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 text-success border-success/30 hover:bg-success/10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleResolve(blocker);
+                          }}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Resolve
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -259,6 +349,119 @@ export default function Blockers() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Blocker Detail Modal */}
+      <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              Blocker Details
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedBlocker && (
+            <div className="space-y-4">
+              {/* Header Info */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
+                  selectedBlocker.type === 'sewing' ? 'bg-primary/10' : 'bg-info/10'
+                }`}>
+                  {selectedBlocker.type === 'sewing' ? (
+                    <Factory className="h-4 w-4 text-primary" />
+                  ) : (
+                    <Package className="h-4 w-4 text-info" />
+                  )}
+                </div>
+                <span className="font-semibold text-lg">{selectedBlocker.line_name}</span>
+                <StatusBadge variant={selectedBlocker.type} size="sm">{selectedBlocker.type}</StatusBadge>
+                {selectedBlocker.impact && (
+                  <StatusBadge variant={selectedBlocker.impact as any} size="sm">
+                    {BLOCKER_IMPACT_LABELS[selectedBlocker.impact as keyof typeof BLOCKER_IMPACT_LABELS] || selectedBlocker.impact}
+                  </StatusBadge>
+                )}
+                <StatusBadge variant={selectedBlocker.status === 'resolved' ? 'success' : 'default'} size="sm">
+                  {selectedBlocker.status}
+                </StatusBadge>
+              </div>
+
+              {/* Description */}
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm font-medium mb-1">Description</p>
+                <p className="text-sm">{selectedBlocker.description || 'No description provided'}</p>
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {selectedBlocker.po_number && (
+                  <div>
+                    <span className="text-muted-foreground">PO Number: </span>
+                    <span className="font-mono">{selectedBlocker.po_number}</span>
+                  </div>
+                )}
+                {selectedBlocker.owner && (
+                  <div>
+                    <span className="text-muted-foreground">Owner: </span>
+                    <span className="font-medium">{selectedBlocker.owner}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-muted-foreground">Date: </span>
+                  <span>{new Date(selectedBlocker.production_date).toLocaleDateString()}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Submitted: </span>
+                  <span>{formatDate(selectedBlocker.submitted_at)}</span>
+                </div>
+                {selectedBlocker.type === 'sewing' && selectedBlocker.buyer && (
+                  <div>
+                    <span className="text-muted-foreground">Buyer: </span>
+                    <span>{selectedBlocker.buyer}</span>
+                  </div>
+                )}
+                {selectedBlocker.type === 'finishing' && selectedBlocker.buyer_name && (
+                  <div>
+                    <span className="text-muted-foreground">Buyer: </span>
+                    <span>{selectedBlocker.buyer_name}</span>
+                  </div>
+                )}
+                {selectedBlocker.type === 'sewing' && selectedBlocker.style && (
+                  <div>
+                    <span className="text-muted-foreground">Style: </span>
+                    <span>{selectedBlocker.style}</span>
+                  </div>
+                )}
+                {selectedBlocker.type === 'finishing' && selectedBlocker.style_no && (
+                  <div>
+                    <span className="text-muted-foreground">Style: </span>
+                    <span>{selectedBlocker.style_no}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailModalOpen(false)}>
+              Close
+            </Button>
+            {selectedBlocker && selectedBlocker.status !== 'resolved' && isAdminOrHigher() && (
+              <Button
+                onClick={() => selectedBlocker && handleResolve(selectedBlocker)}
+                disabled={resolving}
+                className="bg-success hover:bg-success/90"
+              >
+                {resolving ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                )}
+                Mark as Resolved
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

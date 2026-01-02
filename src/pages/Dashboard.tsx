@@ -6,6 +6,7 @@ import { KPICard } from "@/components/ui/kpi-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import {
   Factory,
   Package,
@@ -34,11 +35,50 @@ interface RecentUpdate {
   line_name: string;
   output: number;
   submitted_at: string;
+  production_date: string;
   has_blocker: boolean;
+  blocker_description: string | null;
+  blocker_impact: string | null;
+  blocker_owner: string | null;
+  blocker_status: string | null;
+  notes: string | null;
+  po_number: string | null;
+  buyer: string | null;
+  style: string | null;
+  // Sewing specific
+  target_qty?: number | null;
+  manpower?: number | null;
+  reject_qty?: number | null;
+  rework_qty?: number | null;
+  stage_progress?: number | null;
+  ot_hours?: number | null;
+  ot_manpower?: number | null;
+  // Finishing specific
+  buyer_name?: string | null;
+  style_no?: string | null;
+  item_name?: string | null;
+  order_quantity?: number | null;
+  unit_name?: string | null;
+  floor_name?: string | null;
+  m_power?: number | null;
+  per_hour_target?: number | null;
+  day_qc_pass?: number | null;
+  total_qc_pass?: number | null;
+  day_poly?: number | null;
+  total_poly?: number | null;
+  average_production?: number | null;
+  day_over_time?: number | null;
+  total_over_time?: number | null;
+  day_hour?: number | null;
+  total_hour?: number | null;
+  day_carton?: number | null;
+  total_carton?: number | null;
+  remarks?: string | null;
 }
 
 interface ActiveBlocker {
   id: string;
+  type: 'sewing' | 'finishing';
   description: string;
   impact: string;
   line_name: string;
@@ -58,6 +98,8 @@ export default function Dashboard() {
   const [recentUpdates, setRecentUpdates] = useState<RecentUpdate[]>([]);
   const [activeBlockers, setActiveBlockers] = useState<ActiveBlocker[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -72,23 +114,40 @@ export default function Dashboard() {
     const today = new Date().toISOString().split('T')[0];
 
     try {
-      // Fetch today's sewing updates
+      // Fetch today's sewing updates with work order info
       const { data: sewingUpdates, count: sewingCount } = await supabase
         .from('production_updates_sewing')
-        .select('*, lines(line_id, name)', { count: 'exact' })
+        .select('*, lines(line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('submitted_at', { ascending: false })
         .limit(5);
 
-      // Fetch today's finishing updates
+      // Fetch today's finishing updates with work order info
       const { data: finishingUpdates, count: finishingCount } = await supabase
         .from('production_updates_finishing')
-        .select('*, lines(line_id, name)', { count: 'exact' })
+        .select('*, lines(line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('submitted_at', { ascending: false })
         .limit(5);
+
+      // Separate count queries for blockers (today, not resolved)
+      const { count: sewingBlockersCount } = await supabase
+        .from('production_updates_sewing')
+        .select('*', { count: 'exact', head: true })
+        .eq('factory_id', profile.factory_id)
+        .eq('production_date', today)
+        .eq('has_blocker', true)
+        .neq('blocker_status', 'resolved');
+
+      const { count: finishingBlockersCount } = await supabase
+        .from('production_updates_finishing')
+        .select('*', { count: 'exact', head: true })
+        .eq('factory_id', profile.factory_id)
+        .eq('production_date', today)
+        .eq('has_blocker', true)
+        .neq('blocker_status', 'resolved');
 
       // Fetch active lines
       const { count: linesCount } = await supabase
@@ -104,11 +163,7 @@ export default function Dashboard() {
         .eq('factory_id', profile.factory_id)
         .eq('is_active', true);
 
-      // Count blockers today
-      const sewingBlockers = sewingUpdates?.filter(u => u.has_blocker).length || 0;
-      const finishingBlockers = finishingUpdates?.filter(u => u.has_blocker).length || 0;
-
-      // Format recent updates
+      // Format recent sewing updates with all details
       const formattedSewing: RecentUpdate[] = (sewingUpdates || []).map(u => ({
         id: u.id,
         type: 'sewing' as const,
@@ -116,17 +171,63 @@ export default function Dashboard() {
         line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
         output: u.output_qty,
         submitted_at: u.submitted_at,
-        has_blocker: u.has_blocker,
+        production_date: u.production_date,
+        has_blocker: u.has_blocker || false,
+        blocker_description: u.blocker_description,
+        blocker_impact: u.blocker_impact,
+        blocker_owner: u.blocker_owner,
+        blocker_status: u.blocker_status,
+        notes: u.notes,
+        po_number: u.work_orders?.po_number || null,
+        buyer: u.work_orders?.buyer || null,
+        style: u.work_orders?.style || null,
+        target_qty: u.target_qty,
+        manpower: u.manpower,
+        reject_qty: u.reject_qty,
+        rework_qty: u.rework_qty,
+        stage_progress: u.stage_progress,
+        ot_hours: u.ot_hours,
+        ot_manpower: u.ot_manpower,
       }));
 
+      // Format recent finishing updates with all details
       const formattedFinishing: RecentUpdate[] = (finishingUpdates || []).map(u => ({
         id: u.id,
         type: 'finishing' as const,
         line_id: u.lines?.line_id || 'Unknown',
         line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
-        output: u.qc_pass_qty,
+        output: u.day_qc_pass || 0,
         submitted_at: u.submitted_at,
-        has_blocker: u.has_blocker,
+        production_date: u.production_date,
+        has_blocker: u.has_blocker || false,
+        blocker_description: u.blocker_description,
+        blocker_impact: u.blocker_impact,
+        blocker_owner: u.blocker_owner,
+        blocker_status: u.blocker_status,
+        notes: null,
+        po_number: u.work_orders?.po_number || null,
+        buyer: u.work_orders?.buyer || null,
+        style: u.work_orders?.style || null,
+        buyer_name: u.buyer_name,
+        style_no: u.style_no,
+        item_name: u.item_name,
+        order_quantity: u.order_quantity,
+        unit_name: u.unit_name,
+        floor_name: u.floor_name,
+        m_power: u.m_power,
+        per_hour_target: u.per_hour_target,
+        day_qc_pass: u.day_qc_pass,
+        total_qc_pass: u.total_qc_pass,
+        day_poly: u.day_poly,
+        total_poly: u.total_poly,
+        average_production: u.average_production,
+        day_over_time: u.day_over_time,
+        total_over_time: u.total_over_time,
+        day_hour: u.day_hour,
+        total_hour: u.total_hour,
+        day_carton: u.day_carton,
+        total_carton: u.total_carton,
+        remarks: u.remarks,
       }));
 
       // Combine and sort by time
@@ -134,20 +235,22 @@ export default function Dashboard() {
         .sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())
         .slice(0, 5);
 
-      // Extract blockers
+      // Extract active blockers (not resolved)
       const blockers: ActiveBlocker[] = [];
-      sewingUpdates?.filter(u => u.has_blocker).forEach(u => {
+      sewingUpdates?.filter(u => u.has_blocker && u.blocker_status !== 'resolved').forEach(u => {
         blockers.push({
           id: u.id,
+          type: 'sewing',
           description: u.blocker_description || 'No description',
           impact: u.blocker_impact || 'medium',
           line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
           created_at: u.submitted_at,
         });
       });
-      finishingUpdates?.filter(u => u.has_blocker).forEach(u => {
+      finishingUpdates?.filter(u => u.has_blocker && u.blocker_status !== 'resolved').forEach(u => {
         blockers.push({
           id: u.id,
+          type: 'finishing',
           description: u.blocker_description || 'No description',
           impact: u.blocker_impact || 'medium',
           line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
@@ -164,11 +267,11 @@ export default function Dashboard() {
 
       setStats({
         updatesToday: (sewingCount || 0) + (finishingCount || 0),
-        blockersToday: sewingBlockers + finishingBlockers,
+        blockersToday: (sewingBlockersCount || 0) + (finishingBlockersCount || 0),
         missingToday: Math.max(0, missingCount),
         totalLines: linesCount || 0,
         activeWorkOrders: workOrdersCount || 0,
-        avgEfficiency: 0, // Would need calculation based on target vs actual
+        avgEfficiency: 0,
       });
 
       setRecentUpdates(allUpdates);
@@ -350,7 +453,67 @@ export default function Dashboard() {
                 {recentUpdates.map((update) => (
                   <div
                     key={update.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    onClick={() => {
+                      const submissionData = update.type === 'sewing' ? {
+                        id: update.id,
+                        type: 'sewing' as const,
+                        line_name: update.line_name,
+                        po_number: update.po_number,
+                        buyer: update.buyer,
+                        style: update.style,
+                        output_qty: update.output,
+                        target_qty: update.target_qty,
+                        manpower: update.manpower,
+                        reject_qty: update.reject_qty,
+                        rework_qty: update.rework_qty,
+                        stage_progress: update.stage_progress,
+                        ot_hours: update.ot_hours,
+                        ot_manpower: update.ot_manpower,
+                        has_blocker: update.has_blocker,
+                        blocker_description: update.blocker_description,
+                        blocker_impact: update.blocker_impact,
+                        blocker_owner: update.blocker_owner,
+                        blocker_status: update.blocker_status,
+                        notes: update.notes,
+                        submitted_at: update.submitted_at,
+                        production_date: update.production_date,
+                      } : {
+                        id: update.id,
+                        type: 'finishing' as const,
+                        line_name: update.line_name,
+                        po_number: update.po_number,
+                        buyer_name: update.buyer_name,
+                        style_no: update.style_no,
+                        item_name: update.item_name,
+                        order_quantity: update.order_quantity,
+                        unit_name: update.unit_name,
+                        floor_name: update.floor_name,
+                        m_power: update.m_power,
+                        per_hour_target: update.per_hour_target,
+                        day_qc_pass: update.day_qc_pass,
+                        total_qc_pass: update.total_qc_pass,
+                        day_poly: update.day_poly,
+                        total_poly: update.total_poly,
+                        average_production: update.average_production,
+                        day_over_time: update.day_over_time,
+                        total_over_time: update.total_over_time,
+                        day_hour: update.day_hour,
+                        total_hour: update.total_hour,
+                        day_carton: update.day_carton,
+                        total_carton: update.total_carton,
+                        remarks: update.remarks,
+                        has_blocker: update.has_blocker,
+                        blocker_description: update.blocker_description,
+                        blocker_impact: update.blocker_impact,
+                        blocker_owner: update.blocker_owner,
+                        blocker_status: update.blocker_status,
+                        submitted_at: update.submitted_at,
+                        production_date: update.production_date,
+                      };
+                      setSelectedSubmission(submissionData);
+                      setModalOpen(true);
+                    }}
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
@@ -457,6 +620,12 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <SubmissionDetailModal
+        submission={selectedSubmission}
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+      />
     </div>
   );
 }
