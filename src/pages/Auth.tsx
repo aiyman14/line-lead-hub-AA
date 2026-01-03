@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +8,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Factory, ArrowRight } from "lucide-react";
+import { Loader2, Factory, ArrowRight, KeyRound } from "lucide-react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+
+const passwordSchema = z.object({
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -32,14 +40,33 @@ export default function Auth() {
   const [activeTab, setActiveTab] = useState("login");
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
-  // Redirect if already logged in
+  // Password reset mode state
+  const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetPasswordErrors, setResetPasswordErrors] = useState<Record<string, string>>({});
+
+  // Check for password reset token in URL hash
   useEffect(() => {
-    if (user) {
+    const hashParams = new URLSearchParams(location.hash.substring(1));
+    const accessToken = hashParams.get('access_token');
+    const type = hashParams.get('type');
+    
+    if (accessToken && type === 'recovery') {
+      setIsPasswordResetMode(true);
+    }
+  }, [location]);
+
+  // Redirect if already logged in (but not if in password reset mode)
+  useEffect(() => {
+    if (user && !isPasswordResetMode) {
       navigate("/dashboard");
     }
-  }, [user, navigate]);
+  }, [user, navigate, isPasswordResetMode]);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -89,6 +116,46 @@ export default function Auth() {
       });
       setForgotPasswordOpen(false);
       setForgotPasswordEmail("");
+    }
+  };
+
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetPasswordErrors({});
+
+    try {
+      passwordSchema.parse({ password: newPassword, confirmPassword: confirmNewPassword });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        const errors: Record<string, string> = {};
+        err.errors.forEach((e) => {
+          if (e.path[0]) errors[e.path[0] as string] = e.message;
+        });
+        setResetPasswordErrors(errors);
+        return;
+      }
+    }
+
+    setResetPasswordLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setResetPasswordLoading(false);
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Error updating password",
+        description: error.message,
+      });
+    } else {
+      toast({
+        title: "Password updated!",
+        description: "Your password has been successfully updated.",
+      });
+      setIsPasswordResetMode(false);
+      setNewPassword("");
+      setConfirmNewPassword("");
+      window.history.replaceState(null, '', window.location.pathname);
+      navigate("/dashboard");
     }
   };
 
@@ -202,183 +269,253 @@ export default function Auth() {
       {/* Auth card */}
       <div className="flex-1 flex items-start justify-center -mt-6 px-4 pb-12">
         <Card className="w-full max-w-md shadow-xl animate-fade-in">
-          <CardHeader className="text-center pb-2">
-            <CardTitle className="text-2xl">Get Started</CardTitle>
-            <CardDescription>
-              Sign in to your account or create a new one
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="login">Login</TabsTrigger>
-                <TabsTrigger value="signup">Sign Up</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="login">
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      className="h-11"
-                      disabled={isLoading}
-                    />
-                    {loginErrors.email && (
-                      <p className="text-sm text-destructive">{loginErrors.email}</p>
-                    )}
+          {isPasswordResetMode ? (
+            <>
+              <CardHeader className="text-center pb-2">
+                <div className="flex justify-center mb-4">
+                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <KeyRound className="h-6 w-6 text-primary" />
                   </div>
+                </div>
+                <CardTitle className="text-2xl">Set New Password</CardTitle>
+                <CardDescription>
+                  Enter your new password below
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handlePasswordUpdate} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
+                    <Label htmlFor="new-password">New Password</Label>
                     <Input
-                      id="login-password"
+                      id="new-password"
                       type="password"
                       placeholder="••••••••"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
                       className="h-11"
-                      disabled={isLoading}
+                      disabled={resetPasswordLoading}
                     />
-                    {loginErrors.password && (
-                      <p className="text-sm text-destructive">{loginErrors.password}</p>
+                    {resetPasswordErrors.password && (
+                      <p className="text-sm text-destructive">{resetPasswordErrors.password}</p>
                     )}
                   </div>
-                  <Button type="submit" className="w-full h-11" disabled={isLoading}>
-                    {isLoading ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-new-password">Confirm New Password</Label>
+                    <Input
+                      id="confirm-new-password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      className="h-11"
+                      disabled={resetPasswordLoading}
+                    />
+                    {resetPasswordErrors.confirmPassword && (
+                      <p className="text-sm text-destructive">{resetPasswordErrors.confirmPassword}</p>
+                    )}
+                  </div>
+                  <Button type="submit" className="w-full h-11" disabled={resetPasswordLoading}>
+                    {resetPasswordLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <>
-                        Sign In
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
+                      "Update Password"
                     )}
                   </Button>
-                  
-                  <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="link" type="button" className="w-full text-sm text-muted-foreground hover:text-primary">
-                        Forgot your password?
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => {
+                      setIsPasswordResetMode(false);
+                      window.history.replaceState(null, '', window.location.pathname);
+                    }}
+                  >
+                    Back to Login
+                  </Button>
+                </form>
+              </CardContent>
+            </>
+          ) : (
+            <>
+              <CardHeader className="text-center pb-2">
+                <CardTitle className="text-2xl">Get Started</CardTitle>
+                <CardDescription>
+                  Sign in to your account or create a new one
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Tabs value={activeTab} onValueChange={setActiveTab}>
+                  <TabsList className="grid w-full grid-cols-2 mb-6">
+                    <TabsTrigger value="login">Login</TabsTrigger>
+                    <TabsTrigger value="signup">Sign Up</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="login">
+                    <form onSubmit={handleLogin} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="login-email">Email</Label>
+                        <Input
+                          id="login-email"
+                          type="email"
+                          placeholder="you@example.com"
+                          value={loginEmail}
+                          onChange={(e) => setLoginEmail(e.target.value)}
+                          className="h-11"
+                          disabled={isLoading}
+                        />
+                        {loginErrors.email && (
+                          <p className="text-sm text-destructive">{loginErrors.email}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="login-password">Password</Label>
+                        <Input
+                          id="login-password"
+                          type="password"
+                          placeholder="••••••••"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          className="h-11"
+                          disabled={isLoading}
+                        />
+                        {loginErrors.password && (
+                          <p className="text-sm text-destructive">{loginErrors.password}</p>
+                        )}
+                      </div>
+                      <Button type="submit" className="w-full h-11" disabled={isLoading}>
+                        {isLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            Sign In
+                            <ArrowRight className="ml-2 h-4 w-4" />
+                          </>
+                        )}
                       </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Reset Password</DialogTitle>
-                        <DialogDescription>
-                          Enter your email address and we'll send you a link to reset your password.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <form onSubmit={handleForgotPassword} className="space-y-4 mt-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="forgot-email">Email</Label>
-                          <Input
-                            id="forgot-email"
-                            type="email"
-                            placeholder="you@example.com"
-                            value={forgotPasswordEmail}
-                            onChange={(e) => setForgotPasswordEmail(e.target.value)}
-                            className="h-11"
-                            disabled={forgotPasswordLoading}
-                          />
-                        </div>
-                        <Button type="submit" className="w-full h-11" disabled={forgotPasswordLoading}>
-                          {forgotPasswordLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            "Send Reset Link"
-                          )}
-                        </Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </form>
-              </TabsContent>
+                      
+                      <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="link" type="button" className="w-full text-sm text-muted-foreground hover:text-primary">
+                            Forgot your password?
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Reset Password</DialogTitle>
+                            <DialogDescription>
+                              Enter your email address and we'll send you a link to reset your password.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <form onSubmit={handleForgotPassword} className="space-y-4 mt-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="forgot-email">Email</Label>
+                              <Input
+                                id="forgot-email"
+                                type="email"
+                                placeholder="you@example.com"
+                                value={forgotPasswordEmail}
+                                onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                                className="h-11"
+                                disabled={forgotPasswordLoading}
+                              />
+                            </div>
+                            <Button type="submit" className="w-full h-11" disabled={forgotPasswordLoading}>
+                              {forgotPasswordLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                "Send Reset Link"
+                              )}
+                            </Button>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </form>
+                  </TabsContent>
 
-              <TabsContent value="signup">
-                <form onSubmit={handleSignup} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-name">Full Name</Label>
-                    <Input
-                      id="signup-name"
-                      type="text"
-                      placeholder="John Doe"
-                      value={signupName}
-                      onChange={(e) => setSignupName(e.target.value)}
-                      className="h-11"
-                      disabled={isLoading}
-                    />
-                    {signupErrors.fullName && (
-                      <p className="text-sm text-destructive">{signupErrors.fullName}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={signupEmail}
-                      onChange={(e) => setSignupEmail(e.target.value)}
-                      className="h-11"
-                      disabled={isLoading}
-                    />
-                    {signupErrors.email && (
-                      <p className="text-sm text-destructive">{signupErrors.email}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={signupPassword}
-                      onChange={(e) => setSignupPassword(e.target.value)}
-                      className="h-11"
-                      disabled={isLoading}
-                    />
-                    {signupErrors.password && (
-                      <p className="text-sm text-destructive">{signupErrors.password}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-confirm">Confirm Password</Label>
-                    <Input
-                      id="signup-confirm"
-                      type="password"
-                      placeholder="••••••••"
-                      value={signupConfirmPassword}
-                      onChange={(e) => setSignupConfirmPassword(e.target.value)}
-                      className="h-11"
-                      disabled={isLoading}
-                    />
-                    {signupErrors.confirmPassword && (
-                      <p className="text-sm text-destructive">{signupErrors.confirmPassword}</p>
-                    )}
-                  </div>
-                  <Button type="submit" className="w-full h-11" disabled={isLoading}>
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        Create Account
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
+                  <TabsContent value="signup">
+                    <form onSubmit={handleSignup} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-name">Full Name</Label>
+                        <Input
+                          id="signup-name"
+                          type="text"
+                          placeholder="John Doe"
+                          value={signupName}
+                          onChange={(e) => setSignupName(e.target.value)}
+                          className="h-11"
+                          disabled={isLoading}
+                        />
+                        {signupErrors.fullName && (
+                          <p className="text-sm text-destructive">{signupErrors.fullName}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-email">Email</Label>
+                        <Input
+                          id="signup-email"
+                          type="email"
+                          placeholder="you@example.com"
+                          value={signupEmail}
+                          onChange={(e) => setSignupEmail(e.target.value)}
+                          className="h-11"
+                          disabled={isLoading}
+                        />
+                        {signupErrors.email && (
+                          <p className="text-sm text-destructive">{signupErrors.email}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-password">Password</Label>
+                        <Input
+                          id="signup-password"
+                          type="password"
+                          placeholder="••••••••"
+                          value={signupPassword}
+                          onChange={(e) => setSignupPassword(e.target.value)}
+                          className="h-11"
+                          disabled={isLoading}
+                        />
+                        {signupErrors.password && (
+                          <p className="text-sm text-destructive">{signupErrors.password}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-confirm">Confirm Password</Label>
+                        <Input
+                          id="signup-confirm"
+                          type="password"
+                          placeholder="••••••••"
+                          value={signupConfirmPassword}
+                          onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                          className="h-11"
+                          disabled={isLoading}
+                        />
+                        {signupErrors.confirmPassword && (
+                          <p className="text-sm text-destructive">{signupErrors.confirmPassword}</p>
+                        )}
+                      </div>
+                      <Button type="submit" className="w-full h-11" disabled={isLoading}>
+                        {isLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            Create Account
+                            <ArrowRight className="ml-2 h-4 w-4" />
+                          </>
+                        )}
+                      </Button>
+                    </form>
+                  </TabsContent>
+                </Tabs>
 
-            <div className="mt-6 pt-6 border-t">
-              <p className="text-center text-sm text-muted-foreground">
-                By continuing, you agree to our Terms of Service and Privacy Policy.
-              </p>
-            </div>
-          </CardContent>
+                <div className="mt-6 pt-6 border-t">
+                  <p className="text-center text-sm text-muted-foreground">
+                    By continuing, you agree to our Terms of Service and Privacy Policy.
+                  </p>
+                </div>
+              </CardContent>
+            </>
+          )}
         </Card>
       </div>
 
