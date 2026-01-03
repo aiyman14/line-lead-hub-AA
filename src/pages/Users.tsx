@@ -24,6 +24,7 @@ import { Loader2, Users as UsersIcon, Search, UserPlus, Shield, Mail, Phone, Mor
 import { ROLE_LABELS } from "@/lib/constants";
 import { InviteUserDialog } from "@/components/users/InviteUserDialog";
 import { EditUserDialog } from "@/components/users/EditUserDialog";
+import { CleanupGlobalRolesDialog } from "@/components/users/CleanupGlobalRolesDialog";
 import { Badge } from "@/components/ui/badge";
 
 interface User {
@@ -187,10 +188,13 @@ export default function UsersPage() {
           <p className="text-muted-foreground">Manage factory users and roles</p>
         </div>
         {isAdminOrHigher() && (
-          <Button onClick={() => setShowInviteDialog(true)}>
-            <UserPlus className="h-4 w-4 mr-2" />
-            Invite User
-          </Button>
+          <div className="flex items-center gap-2">
+            <CleanupGlobalRolesDialog onSuccess={fetchUsers} />
+            <Button onClick={() => setShowInviteDialog(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Invite User
+            </Button>
+          </div>
         )}
       </div>
 
