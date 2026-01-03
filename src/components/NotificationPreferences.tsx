@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,62 +15,97 @@ interface NotificationPreference {
   email_enabled: boolean;
 }
 
-const NOTIFICATION_TYPES = [
+type UserRole = "worker" | "supervisor" | "admin" | "owner" | "superadmin";
+
+interface NotificationType {
+  type: string;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: UserRole[]; // Which roles can see this notification type
+}
+
+// All notification types with role restrictions
+const ALL_NOTIFICATION_TYPES: NotificationType[] = [
   {
     type: "low_efficiency",
     label: "Low Efficiency Alerts",
     description: "Get notified when line efficiency drops below target",
     icon: TrendingDown,
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Not for workers
   },
   {
     type: "critical_blocker",
     label: "Critical Blockers",
     description: "Get notified when critical blockers are reported",
     icon: AlertTriangle,
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Not for workers
   },
   {
     type: "blocker_resolved",
     label: "Blocker Resolved",
     description: "Get notified when blockers are marked as resolved",
     icon: CheckCircle,
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Not for workers
   },
   {
     type: "work_order_updates",
     label: "Work Order Updates",
     description: "Get notified about work order status changes",
     icon: FileText,
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Not for workers
   },
   {
     type: "target_achieved",
     label: "Target Achieved",
     description: "Get notified when production targets are met",
     icon: Target,
+    roles: ["worker", "supervisor", "admin", "owner", "superadmin"], // Everyone
   },
   {
     type: "daily_summary",
     label: "Daily Summary",
     description: "Receive daily production summary reports",
     icon: Calendar,
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Not for workers
   },
   {
     type: "shift_reminder",
     label: "Shift Reminders",
     description: "Get reminders before shift starts",
     icon: Clock,
+    roles: ["worker", "supervisor", "admin", "owner", "superadmin"], // Everyone
   },
   {
     type: "general",
     label: "General Notifications",
     description: "System updates and general announcements",
     icon: Info,
+    roles: ["worker", "supervisor", "admin", "owner", "superadmin"], // Everyone
   },
 ];
 
 export function NotificationPreferences() {
-  const { user, profile } = useAuth();
+  const { user, profile, roles } = useAuth();
   const [preferences, setPreferences] = useState<NotificationPreference[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Get the user's primary role (highest role they have)
+  const userRole = useMemo((): UserRole => {
+    const roleHierarchy: UserRole[] = ["superadmin", "owner", "admin", "supervisor", "worker"];
+    for (const role of roleHierarchy) {
+      if (roles.some(r => r.role === role)) {
+        return role;
+      }
+    }
+    return "worker";
+  }, [roles]);
+
+  // Filter notification types based on user role
+  const availableNotificationTypes = useMemo(() => {
+    return ALL_NOTIFICATION_TYPES.filter(nt => nt.roles.includes(userRole));
+  }, [userRole]);
 
   useEffect(() => {
     if (user && profile?.factory_id) {
@@ -104,7 +139,7 @@ export function NotificationPreferences() {
   async function initializeDefaults() {
     if (!user || !profile?.factory_id) return;
 
-    const defaultPrefs = NOTIFICATION_TYPES.map((nt) => ({
+    const defaultPrefs = availableNotificationTypes.map((nt) => ({
       user_id: user.id,
       factory_id: profile.factory_id,
       notification_type: nt.type,
@@ -200,7 +235,7 @@ export function NotificationPreferences() {
           </div>
 
           {/* Preference rows */}
-          {NOTIFICATION_TYPES.map((nt) => {
+          {availableNotificationTypes.map((nt) => {
             const pref = getPreference(nt.type);
             const Icon = nt.icon;
 
