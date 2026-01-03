@@ -69,8 +69,7 @@ export default function UsersPage() {
           .order('full_name'),
         supabase
           .from('user_roles')
-          .select('user_id, role')
-          .eq('factory_id', profile.factory_id),
+          .select('user_id, role'),
         supabase
           .from('lines')
           .select('id, line_id, name')
