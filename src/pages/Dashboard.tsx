@@ -89,7 +89,7 @@ interface ActiveBlocker {
 export default function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { profile, factory, isAdminOrHigher, hasRole } = useAuth();
+  const { profile, factory, isAdminOrHigher, hasRole, loading: authLoading, roles } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     updatesToday: 0,
     blockersToday: 0,
@@ -108,16 +108,26 @@ export default function Dashboard() {
 
   // Redirect workers to my-submissions - they shouldn't see the control dashboard
   useEffect(() => {
-    if (isWorker) {
+    // Wait for auth to finish loading and roles to be populated
+    if (!authLoading && roles.length > 0 && isWorker) {
       navigate('/my-submissions', { replace: true });
     }
-  }, [isWorker, navigate]);
+  }, [authLoading, roles, isWorker, navigate]);
 
   useEffect(() => {
-    if (profile?.factory_id) {
+    if (profile?.factory_id && !isWorker) {
       fetchDashboardData();
     }
-  }, [profile?.factory_id]);
+  }, [profile?.factory_id, isWorker]);
+
+  // Show loading while auth is loading or while redirecting worker
+  if (authLoading || (roles.length > 0 && isWorker)) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   async function fetchDashboardData() {
     if (!profile?.factory_id) return;
