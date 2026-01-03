@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.send-billing-notification]
 verify_jwt = false
+
+[functions.remove-user-access]
+verify_jwt = false
