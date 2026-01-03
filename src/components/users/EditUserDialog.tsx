@@ -79,6 +79,7 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
 
   const isCurrentUser = currentUser?.id === user?.id;
   const isOwnerOrHigher = user?.role === 'owner' || user?.role === 'superadmin';
+  const isAdminOrHigher = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'superadmin';
 
   useEffect(() => {
     if (open && profile?.factory_id) {
@@ -324,43 +325,45 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
               )}
             </div>
 
-            {/* Line Assignment */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <GitBranch className="h-4 w-4 text-muted-foreground" />
-                Assigned Lines
-                {selectedLineIds.length > 0 && (
-                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                    {selectedLineIds.length} selected
-                  </span>
-                )}
-              </Label>
-              <ScrollArea className="h-32 border rounded-md p-2">
-                {lines.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No lines available
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {lines.map((line) => (
-                      <div key={line.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`edit-line-${line.id}`}
-                          checked={selectedLineIds.includes(line.id)}
-                          onCheckedChange={() => toggleLine(line.id)}
-                        />
-                        <label
-                          htmlFor={`edit-line-${line.id}`}
-                          className="text-sm cursor-pointer flex-1"
-                        >
-                          {line.name || line.line_id}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </div>
+            {/* Line Assignment - only for workers/supervisors */}
+            {!isAdminOrHigher && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-muted-foreground" />
+                  Assigned Lines
+                  {selectedLineIds.length > 0 && (
+                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                      {selectedLineIds.length} selected
+                    </span>
+                  )}
+                </Label>
+                <ScrollArea className="h-32 border rounded-md p-2">
+                  {lines.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No lines available
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {lines.map((line) => (
+                        <div key={line.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`edit-line-${line.id}`}
+                            checked={selectedLineIds.includes(line.id)}
+                            onCheckedChange={() => toggleLine(line.id)}
+                          />
+                          <label
+                            htmlFor={`edit-line-${line.id}`}
+                            className="text-sm cursor-pointer flex-1"
+                          >
+                            {line.name || line.line_id}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            )}
 
             {/* Active Status */}
             <div className="flex items-center justify-between p-3 border rounded-lg">
