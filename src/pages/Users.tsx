@@ -20,10 +20,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, Users as UsersIcon, Search, UserPlus, Shield, Mail, Phone, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Users as UsersIcon, Search, UserPlus, Shield, Mail, Phone, MoreHorizontal, Pencil, Trash2, Scissors, Package } from "lucide-react";
 import { ROLE_LABELS } from "@/lib/constants";
 import { InviteUserDialog } from "@/components/users/InviteUserDialog";
 import { EditUserDialog } from "@/components/users/EditUserDialog";
+import { Badge } from "@/components/ui/badge";
 
 interface User {
   id: string;
@@ -33,6 +34,7 @@ interface User {
   avatar_url: string | null;
   is_active: boolean;
   role: string | null;
+  department: string | null;
   assigned_line_ids: string[];
   assigned_line_names: string[];
   created_at: string;
@@ -114,6 +116,7 @@ export default function UsersPage() {
           avatar_url: p.avatar_url,
           is_active: p.is_active,
           role: roleMap.get(p.id) || 'worker',
+          department: p.department,
           assigned_line_ids: lineIds,
           assigned_line_names: lineNames,
           created_at: p.created_at,
@@ -252,12 +255,31 @@ export default function UsersPage() {
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-medium">
-                            {user.full_name}
-                            {user.id === currentUser?.id && (
-                              <span className="text-muted-foreground text-xs ml-2">(you)</span>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">
+                              {user.full_name}
+                              {user.id === currentUser?.id && (
+                                <span className="text-muted-foreground text-xs ml-2">(you)</span>
+                              )}
+                            </p>
+                            {user.role === 'worker' && user.department && (
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs ${
+                                  user.department === 'sewing' 
+                                    ? 'border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-950/30' 
+                                    : user.department === 'finishing'
+                                    ? 'border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-950/30'
+                                    : 'border-purple-500/50 text-purple-600 bg-purple-50 dark:bg-purple-950/30'
+                                }`}
+                              >
+                                {user.department === 'sewing' && <Scissors className="h-3 w-3 mr-1" />}
+                                {user.department === 'finishing' && <Package className="h-3 w-3 mr-1" />}
+                                {user.department === 'both' && '⚡'}
+                                {user.department === 'sewing' ? 'Sewing' : user.department === 'finishing' ? 'Finishing' : 'Both'}
+                              </Badge>
                             )}
-                          </p>
+                          </div>
                           <p className="text-xs text-muted-foreground">{user.email}</p>
                         </div>
                       </div>
