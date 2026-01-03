@@ -75,6 +75,7 @@ const navLabelKeys: Record<string, string> = {
   'Insights': 'nav.insights',
   'Factory Setup': 'nav.factorySetup',
   'Users': 'nav.users',
+  'Subscription': 'nav.subscription',
   'Tenants': 'nav.tenants',
   'Plans': 'nav.plans',
   'Support': 'nav.support',

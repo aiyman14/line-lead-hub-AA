@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { SubscriptionGate } from "@/components/SubscriptionGate";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -25,6 +26,7 @@ import UsersPage from "./pages/Users";
 import AllSubmissions from "./pages/AllSubmissions";
 import MySubmissions from "./pages/MySubmissions";
 import Preferences from "./pages/Preferences";
+import Subscription from "./pages/Subscription";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,26 +42,27 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/subscription" element={<Subscription />} />
               
-              {/* Protected routes */}
+              {/* Protected routes with subscription gate */}
               <Route element={<AppLayout />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/update/sewing" element={<SewingUpdate />} />
-                <Route path="/update/finishing" element={<FinishingUpdate />} />
-                <Route path="/today" element={<TodayUpdates />} />
-                <Route path="/blockers" element={<Blockers />} />
-                <Route path="/week" element={<ThisWeek />} />
-                <Route path="/lines" element={<Lines />} />
-                <Route path="/work-orders" element={<WorkOrdersView />} />
-                <Route path="/insights" element={<Insights />} />
-                <Route path="/setup" element={<SetupHome />} />
-                <Route path="/setup/factory" element={<FactorySetup />} />
-                <Route path="/setup/work-orders" element={<WorkOrders />} />
-                <Route path="/setup/dropdowns" element={<DropdownSettings />} />
-                <Route path="/users" element={<UsersPage />} />
-                <Route path="/submissions" element={<AllSubmissions />} />
-                <Route path="/my-submissions" element={<MySubmissions />} />
-                <Route path="/preferences" element={<Preferences />} />
+                <Route path="/dashboard" element={<SubscriptionGate><Dashboard /></SubscriptionGate>} />
+                <Route path="/update/sewing" element={<SubscriptionGate><SewingUpdate /></SubscriptionGate>} />
+                <Route path="/update/finishing" element={<SubscriptionGate><FinishingUpdate /></SubscriptionGate>} />
+                <Route path="/today" element={<SubscriptionGate><TodayUpdates /></SubscriptionGate>} />
+                <Route path="/blockers" element={<SubscriptionGate><Blockers /></SubscriptionGate>} />
+                <Route path="/week" element={<SubscriptionGate><ThisWeek /></SubscriptionGate>} />
+                <Route path="/lines" element={<SubscriptionGate><Lines /></SubscriptionGate>} />
+                <Route path="/work-orders" element={<SubscriptionGate><WorkOrdersView /></SubscriptionGate>} />
+                <Route path="/insights" element={<SubscriptionGate><Insights /></SubscriptionGate>} />
+                <Route path="/setup" element={<SubscriptionGate><SetupHome /></SubscriptionGate>} />
+                <Route path="/setup/factory" element={<SubscriptionGate><FactorySetup /></SubscriptionGate>} />
+                <Route path="/setup/work-orders" element={<SubscriptionGate><WorkOrders /></SubscriptionGate>} />
+                <Route path="/setup/dropdowns" element={<SubscriptionGate><DropdownSettings /></SubscriptionGate>} />
+                <Route path="/users" element={<SubscriptionGate><UsersPage /></SubscriptionGate>} />
+                <Route path="/submissions" element={<SubscriptionGate><AllSubmissions /></SubscriptionGate>} />
+                <Route path="/my-submissions" element={<SubscriptionGate><MySubmissions /></SubscriptionGate>} />
+                <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
               </Route>
               
               <Route path="*" element={<NotFound />} />

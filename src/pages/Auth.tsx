@@ -38,7 +38,7 @@ const signupSchema = z.object({
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, user, profile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -64,9 +64,14 @@ export default function Auth() {
   // Redirect if already logged in (but not if in password reset mode)
   useEffect(() => {
     if (user && !isPasswordResetMode) {
-      navigate("/dashboard");
+      // Check if user has a factory - if not, redirect to subscription
+      if (profile?.factory_id) {
+        navigate("/dashboard");
+      } else {
+        navigate("/subscription");
+      }
     }
-  }, [user, navigate, isPasswordResetMode]);
+  }, [user, profile, navigate, isPasswordResetMode]);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -242,9 +247,10 @@ export default function Auth() {
     } else {
       toast({
         title: "Account created!",
-        description: "Welcome to Production Portal. You are now logged in.",
+        description: "Welcome to Production Portal.",
       });
-      navigate("/dashboard");
+      // New users need to choose subscription/trial
+      navigate("/subscription");
     }
   };
 
