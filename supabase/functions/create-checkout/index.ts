@@ -32,17 +32,15 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get the user's factory_id from profile
+    // Get the user's factory_id from profile (optional for checkout)
     const { data: profile } = await supabaseClient
       .from('profiles')
       .select('factory_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile?.factory_id) {
-      throw new Error("User must have a factory to subscribe");
-    }
-    logStep("Factory found", { factoryId: profile.factory_id });
+    const factoryId = profile?.factory_id;
+    logStep("Profile checked", { factoryId: factoryId || 'none' });
 
     const { startTrial } = await req.json().catch(() => ({ startTrial: false }));
     logStep("Request body", { startTrial });
@@ -59,8 +57,12 @@ serve(async (req) => {
 
     const origin = req.headers.get("origin") || "https://production-portal.lovable.app";
     
-    // If starting trial, create a subscription directly with trial period
+    // If starting trial, require factory
     if (startTrial) {
+      if (!factoryId) {
+        throw new Error("Factory required to start trial");
+      }
+      
       logStep("Starting 2-week trial");
       
       // Create or get customer
@@ -68,7 +70,7 @@ serve(async (req) => {
         const customer = await stripe.customers.create({
           email: user.email,
           metadata: {
-            factory_id: profile.factory_id,
+            factory_id: factoryId,
             user_id: user.id,
           },
         });
@@ -88,7 +90,7 @@ serve(async (req) => {
         payment_settings: { save_default_payment_method: 'on_subscription' },
         expand: ['latest_invoice.payment_intent'],
         metadata: {
-          factory_id: profile.factory_id,
+          factory_id: factoryId,
         },
       });
       
@@ -110,7 +112,7 @@ serve(async (req) => {
           trial_start_date: new Date().toISOString(),
           trial_end_date: new Date(trialEnd * 1000).toISOString(),
         })
-        .eq('id', profile.factory_id);
+        .eq('id', factoryId);
 
       logStep("Factory updated with trial info");
 
@@ -125,7 +127,7 @@ serve(async (req) => {
       });
     }
 
-    // Create checkout session for payment
+    // Create checkout session for payment (works with or without factory)
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
@@ -136,15 +138,15 @@ serve(async (req) => {
         },
       ],
       mode: "subscription",
-      success_url: `${origin}/setup/factory?payment=success`,
+      success_url: `${origin}/subscription?payment=success`,
       cancel_url: `${origin}/subscription?payment=cancelled`,
       metadata: {
-        factory_id: profile.factory_id,
+        factory_id: factoryId || '',
         user_id: user.id,
       },
       subscription_data: {
         metadata: {
-          factory_id: profile.factory_id,
+          factory_id: factoryId || '',
         },
       },
     });

@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.customer-portal]
 verify_jwt = false
+
+[functions.get-billing-history]
+verify_jwt = false

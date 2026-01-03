@@ -162,6 +162,7 @@ export const NAV_ITEMS = {
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
     { path: '/subscription', label: 'Subscription', icon: 'CreditCard' },
+    { path: '/billing', label: 'Billing', icon: 'Receipt' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   owner: [
@@ -176,6 +177,7 @@ export const NAV_ITEMS = {
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
     { path: '/subscription', label: 'Subscription', icon: 'CreditCard' },
+    { path: '/billing', label: 'Billing', icon: 'Receipt' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   superadmin: [

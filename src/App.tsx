@@ -27,6 +27,7 @@ import AllSubmissions from "./pages/AllSubmissions";
 import MySubmissions from "./pages/MySubmissions";
 import Preferences from "./pages/Preferences";
 import Subscription from "./pages/Subscription";
+import Billing from "./pages/Billing";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,6 +64,7 @@ const App = () => (
                 <Route path="/submissions" element={<SubscriptionGate><AllSubmissions /></SubscriptionGate>} />
                 <Route path="/my-submissions" element={<SubscriptionGate><MySubmissions /></SubscriptionGate>} />
                 <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
+                <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />
               </Route>
               
               <Route path="*" element={<NotFound />} />

@@ -264,6 +264,15 @@ export default function Subscription() {
               </Button>
             )}
             
+            {(status?.subscribed || status?.isTrial) && (
+              <Button 
+                onClick={() => navigate('/billing')} 
+                variant="outline"
+              >
+                View Billing History
+              </Button>
+            )}
+            
             <Button onClick={checkSubscription} variant="ghost">
               Refresh Status
             </Button>

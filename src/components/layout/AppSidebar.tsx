@@ -15,6 +15,7 @@ import {
   Users,
   Building2,
   CreditCard,
+  Receipt,
   Headphones,
   LogOut,
   ChevronLeft,
@@ -55,11 +56,11 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Users,
   Building2,
   CreditCard,
+  Receipt,
   HeadphonesIcon: Headphones,
   UserCog,
 };
 
-// Map nav item labels to i18n keys
 const navLabelKeys: Record<string, string> = {
   'Dashboard': 'nav.dashboard',
   'Sewing Update': 'nav.sewingUpdate',
@@ -76,6 +77,7 @@ const navLabelKeys: Record<string, string> = {
   'Factory Setup': 'nav.factorySetup',
   'Users': 'nav.users',
   'Subscription': 'nav.subscription',
+  'Billing': 'nav.billing',
   'Tenants': 'nav.tenants',
   'Plans': 'nav.plans',
   'Support': 'nav.support',
