@@ -170,14 +170,19 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         }
       }
 
-      // Assign role to the new user - use upsert to handle existing roles
+      // Assign role to the new user - delete existing then insert
+      await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId);
+
       const { error: roleError } = await supabase
         .from('user_roles')
-        .upsert({
+        .insert({
           user_id: userId,
           role: formData.role,
           factory_id: profile.factory_id,
-        }, { onConflict: 'user_id,role' });
+        });
 
       if (roleError) {
         console.error("Role assignment error:", roleError);
