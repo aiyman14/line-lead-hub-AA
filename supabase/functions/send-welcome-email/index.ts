@@ -28,7 +28,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.log(`Sending welcome email to ${email}`);
 
     const emailResponse = await resendClient.emails.send({
-      from: "Factory Updates <onboarding@resend.dev>",
+      from: "Woventex <noreply@woventex.co>",
       to: [email],
       subject: `Welcome to ${factoryName || 'Factory Updates'}!`,
       html: `
