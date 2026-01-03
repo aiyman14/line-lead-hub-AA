@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { 
   Factory, 
@@ -9,8 +9,28 @@ import {
   ArrowRight,
   CheckCircle
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Loader2 } from "lucide-react";
 
 export default function Index() {
+  const { user, loading } = useAuth();
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Redirect authenticated users to dashboard
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Redirect unauthenticated users to auth page
+  return <Navigate to="/auth" replace />;
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
