@@ -1,14 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, FileText, TrendingUp, AlertCircle, Calendar, Clock, CheckCircle2, XCircle } from "lucide-react";
-import { format, subDays, startOfDay, differenceInDays } from "date-fns";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Loader2, FileText, TrendingUp, AlertCircle, Calendar, Clock, CheckCircle2, XCircle, Filter, CalendarIcon } from "lucide-react";
+import { format, subDays, startOfDay, isWithinInterval, parseISO } from "date-fns";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
+import { cn } from "@/lib/utils";
 
 interface SewingSubmission {
   id: string;
@@ -48,10 +51,22 @@ interface MissedDay {
   lineName: string;
 }
 
+interface DateRange {
+  from: Date | undefined;
+  to: Date | undefined;
+}
+
 export default function MySubmissions() {
   const { profile, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"sewing" | "finishing">("sewing");
+  
+  // Filter states
+  const [selectedLineId, setSelectedLineId] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: subDays(new Date(), 30),
+    to: new Date(),
+  });
   
   // Data states
   const [sewingSubmissions, setSewingSubmissions] = useState<SewingSubmission[]>([]);
@@ -173,18 +188,53 @@ export default function MySubmissions() {
     }
   }
 
+  // Filter submissions based on selected filters
+  const filteredSewingSubmissions = useMemo(() => {
+    return sewingSubmissions.filter(s => {
+      // Line filter
+      if (selectedLineId !== "all" && s.line_id !== selectedLineId) return false;
+      
+      // Date range filter
+      if (dateRange.from && dateRange.to) {
+        const date = parseISO(s.production_date);
+        if (!isWithinInterval(date, { start: startOfDay(dateRange.from), end: startOfDay(dateRange.to) })) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }, [sewingSubmissions, selectedLineId, dateRange]);
+
+  const filteredFinishingSubmissions = useMemo(() => {
+    return finishingSubmissions.filter(s => {
+      // Line filter
+      if (selectedLineId !== "all" && s.line_id !== selectedLineId) return false;
+      
+      // Date range filter
+      if (dateRange.from && dateRange.to) {
+        const date = parseISO(s.production_date);
+        if (!isWithinInterval(date, { start: startOfDay(dateRange.from), end: startOfDay(dateRange.to) })) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }, [finishingSubmissions, selectedLineId, dateRange]);
+
   const stats = {
     sewing: {
-      last30Days: sewingSubmissions.length,
+      last30Days: filteredSewingSubmissions.length,
       allTime: totalSewingAllTime,
-      totalOutput: sewingSubmissions.reduce((acc, s) => acc + (s.output_qty || 0), 0),
-      withBlockers: sewingSubmissions.filter(s => s.has_blocker).length,
+      totalOutput: filteredSewingSubmissions.reduce((acc, s) => acc + (s.output_qty || 0), 0),
+      withBlockers: filteredSewingSubmissions.filter(s => s.has_blocker).length,
     },
     finishing: {
-      last30Days: finishingSubmissions.length,
+      last30Days: filteredFinishingSubmissions.length,
       allTime: totalFinishingAllTime,
-      totalOutput: finishingSubmissions.reduce((acc, s) => acc + (s.qc_pass_qty || 0), 0),
-      withBlockers: finishingSubmissions.filter(s => s.has_blocker).length,
+      totalOutput: filteredFinishingSubmissions.reduce((acc, s) => acc + (s.qc_pass_qty || 0), 0),
+      withBlockers: filteredFinishingSubmissions.filter(s => s.has_blocker).length,
     }
   };
 
@@ -206,13 +256,88 @@ export default function MySubmissions() {
         </p>
       </div>
 
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Filters:</span>
+            </div>
+            
+            {/* Line Filter */}
+            <Select value={selectedLineId} onValueChange={setSelectedLineId}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Lines" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Lines</SelectItem>
+                {assignedLines.map((line) => (
+                  <SelectItem key={line.id} value={line.id}>
+                    {line.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Date Range Filter */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-[280px] justify-start text-left font-normal",
+                    !dateRange.from && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateRange.from ? (
+                    dateRange.to ? (
+                      <>
+                        {format(dateRange.from, "MMM d, yyyy")} - {format(dateRange.to, "MMM d, yyyy")}
+                      </>
+                    ) : (
+                      format(dateRange.from, "MMM d, yyyy")
+                    )
+                  ) : (
+                    <span>Pick a date range</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  initialFocus
+                  mode="range"
+                  defaultMonth={dateRange.from}
+                  selected={{ from: dateRange.from, to: dateRange.to }}
+                  onSelect={(range) => setDateRange({ from: range?.from, to: range?.to })}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Reset Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSelectedLineId("all");
+                setDateRange({ from: subDays(new Date(), 30), to: new Date() });
+              }}
+            >
+              Reset
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-primary">
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Last 30 Days</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Filtered</p>
                 <p className="text-2xl font-bold">{stats[activeTab].last30Days}</p>
                 <p className="text-xs text-muted-foreground">Submissions</p>
               </div>
@@ -253,7 +378,7 @@ export default function MySubmissions() {
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Output</p>
                 <p className="text-2xl font-bold">{stats[activeTab].totalOutput.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Last 30 days</p>
+                <p className="text-xs text-muted-foreground">In selected range</p>
               </div>
               <CheckCircle2 className="h-8 w-8 text-info/30" />
             </div>
@@ -264,21 +389,21 @@ export default function MySubmissions() {
       {/* Tabs for Sewing/Finishing */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sewing" | "finishing")}>
         <TabsList>
-          <TabsTrigger value="sewing">Sewing ({sewingSubmissions.length})</TabsTrigger>
-          <TabsTrigger value="finishing">Finishing ({finishingSubmissions.length})</TabsTrigger>
+          <TabsTrigger value="sewing">Sewing ({filteredSewingSubmissions.length})</TabsTrigger>
+          <TabsTrigger value="finishing">Finishing ({filteredFinishingSubmissions.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sewing" className="space-y-4">
-          {sewingSubmissions.length === 0 ? (
+          {filteredSewingSubmissions.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <FileText className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <p className="text-muted-foreground">No sewing submissions in the last 30 days</p>
+                <p className="text-muted-foreground">No sewing submissions found for the selected filters</p>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-3">
-              {sewingSubmissions.map((submission) => (
+              {filteredSewingSubmissions.map((submission) => (
                 <Card 
                   key={submission.id} 
                   className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -327,16 +452,16 @@ export default function MySubmissions() {
         </TabsContent>
 
         <TabsContent value="finishing" className="space-y-4">
-          {finishingSubmissions.length === 0 ? (
+          {filteredFinishingSubmissions.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <FileText className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <p className="text-muted-foreground">No finishing submissions in the last 30 days</p>
+                <p className="text-muted-foreground">No finishing submissions found for the selected filters</p>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-3">
-              {finishingSubmissions.map((submission) => (
+              {filteredFinishingSubmissions.map((submission) => (
                 <Card 
                   key={submission.id} 
                   className="cursor-pointer hover:bg-muted/50 transition-colors"
