@@ -260,7 +260,14 @@ export default function SewingUpdate() {
         ? allLines.filter(line => assignedLineIds.includes(line.id))
         : allLines;
 
-      setLines(filteredLines);
+      // Sort lines numerically by extracting number from line_id
+      const sortedLines = [...filteredLines].sort((a, b) => {
+        const numA = parseInt(a.line_id.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.line_id.replace(/\D/g, '')) || 0;
+        return numA - numB;
+      });
+
+      setLines(sortedLines);
       setWorkOrders(workOrdersRes.data || []);
       setUnits(unitsRes.data || []);
       setFloors(floorsRes.data || []);
