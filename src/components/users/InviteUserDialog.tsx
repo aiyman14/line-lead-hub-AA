@@ -165,6 +165,34 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         }
       }
 
+      // Send welcome email with credentials
+      try {
+        // Get factory name for the email
+        const { data: factoryData } = await supabase
+          .from('factory_accounts')
+          .select('name')
+          .eq('id', profile.factory_id)
+          .single();
+
+        const { error: emailError } = await supabase.functions.invoke('send-welcome-email', {
+          body: {
+            email: formData.email,
+            fullName: formData.fullName,
+            password: formData.password,
+            factoryName: factoryData?.name,
+            loginUrl: `${window.location.origin}/auth`,
+          },
+        });
+
+        if (emailError) {
+          console.error("Email sending error:", emailError);
+          toast.warning("User created but welcome email failed to send");
+        }
+      } catch (emailErr) {
+        console.error("Email sending error:", emailErr);
+        // Don't block the success flow if email fails
+      }
+
       toast.success(`User ${formData.fullName} invited successfully`);
       onSuccess();
       onOpenChange(false);
