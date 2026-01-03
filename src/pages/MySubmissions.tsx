@@ -548,6 +548,8 @@ export default function MySubmissions() {
           submission={selectedSubmission}
           open={isDetailOpen}
           onOpenChange={setIsDetailOpen}
+          onDeleted={fetchData}
+          onUpdated={fetchData}
         />
       )}
     </div>

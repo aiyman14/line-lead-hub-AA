@@ -751,6 +751,8 @@ export default function AllSubmissions() {
         submission={selectedSubmission as any}
         open={detailModalOpen}
         onOpenChange={setDetailModalOpen}
+        onDeleted={fetchSubmissions}
+        onUpdated={fetchSubmissions}
       />
     </div>
   );

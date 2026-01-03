@@ -580,6 +580,8 @@ export default function TodayUpdates() {
         submission={selectedSubmission as any}
         open={detailModalOpen}
         onOpenChange={setDetailModalOpen}
+        onDeleted={fetchTodayUpdates}
+        onUpdated={fetchTodayUpdates}
       />
     </div>
   );
