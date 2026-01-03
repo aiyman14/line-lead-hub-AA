@@ -75,7 +75,7 @@ interface Factory {
 }
 
 export default function SewingUpdate() {
-  const { profile, user, factory } = useAuth();
+  const { profile, user, factory, hasRole, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -402,8 +402,9 @@ export default function SewingUpdate() {
         description: "Your daily production update has been recorded.",
       });
 
-      // Clear form and navigate
-      navigate('/dashboard');
+      // Clear form and navigate - workers go to my-submissions, others to dashboard
+      const isWorker = hasRole('worker') && !isAdminOrHigher();
+      navigate(isWorker ? '/my-submissions' : '/dashboard');
     } catch (error: any) {
       console.error('Error submitting update:', error);
       toast({

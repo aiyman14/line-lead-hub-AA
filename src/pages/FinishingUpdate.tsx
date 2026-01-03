@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import type { AppRole } from "@/lib/constants";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +49,7 @@ interface Factory {
 }
 
 export default function FinishingUpdate() {
-  const { profile, user } = useAuth();
+  const { profile, user, hasRole, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -317,8 +318,13 @@ export default function FinishingUpdate() {
         description: "Your finishing daily update has been recorded.",
       });
 
-      // Reset form for next entry
-      resetForm();
+      // Navigate workers to my-submissions, others can stay and add more
+      const isWorker = hasRole('worker') && !isAdminOrHigher();
+      if (isWorker) {
+        navigate('/my-submissions');
+      } else {
+        resetForm();
+      }
     } catch (error: any) {
       console.error('Error submitting update:', error);
       toast({

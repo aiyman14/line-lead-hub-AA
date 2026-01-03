@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -88,6 +88,7 @@ interface ActiveBlocker {
 
 export default function Dashboard() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { profile, factory, isAdminOrHigher, hasRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     updatesToday: 0,
@@ -102,6 +103,15 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
   const [modalOpen, setModalOpen] = useState(false);
+
+  const isWorker = hasRole('worker') && !isAdminOrHigher();
+
+  // Redirect workers to my-submissions - they shouldn't see the control dashboard
+  useEffect(() => {
+    if (isWorker) {
+      navigate('/my-submissions', { replace: true });
+    }
+  }, [isWorker, navigate]);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -311,62 +321,9 @@ export default function Dashboard() {
     });
   };
 
-  const isWorker = hasRole('worker') && !isAdminOrHigher();
-
-  // Worker view - simplified
+  // Workers are redirected via useEffect, return null as fallback
   if (isWorker) {
-    return (
-      <div className="p-4 lg:p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">{t('dashboard.hello')}, {profile?.full_name.split(' ')[0]}!</h1>
-          <p className="text-muted-foreground">{t('dashboard.submitUpdates')}</p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Link to="/update/sewing">
-            <Card className="cursor-pointer hover:shadow-md transition-all hover:-translate-y-1 border-2 border-primary/20 hover:border-primary/40">
-              <CardContent className="p-6 flex items-center gap-4">
-                <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Factory className="h-7 w-7 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg">{t('nav.sewingUpdate')}</h3>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.submitLineData')}</p>
-                </div>
-                <ChevronRight className="ml-auto h-5 w-5 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link to="/update/finishing">
-            <Card className="cursor-pointer hover:shadow-md transition-all hover:-translate-y-1 border-2 border-info/20 hover:border-info/40">
-              <CardContent className="p-6 flex items-center gap-4">
-                <div className="h-14 w-14 rounded-xl bg-info/10 flex items-center justify-center">
-                  <Package className="h-7 w-7 text-info" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg">{t('nav.finishingUpdate')}</h3>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.qcPackingData')}</p>
-                </div>
-                <ChevronRight className="ml-auto h-5 w-5 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">{t('dashboard.todaysSummary')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>{t('dashboard.yourSubmissions')}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return null;
   }
 
   // Admin/Supervisor view - full dashboard
