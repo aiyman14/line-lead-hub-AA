@@ -223,11 +223,12 @@ export default function SewingUpdate() {
   }, [blockerType, blockerTypes, blockerOwnerOptions, blockerImpactOptions]);
 
   async function fetchFormData() {
-    if (!profile?.factory_id) return;
+    if (!profile?.factory_id || !user?.id) return;
 
     try {
       const [
         linesRes, 
+        lineAssignmentsRes,
         workOrdersRes, 
         unitsRes, 
         floorsRes, 
@@ -239,6 +240,7 @@ export default function SewingUpdate() {
         blockerImpactRes
       ] = await Promise.all([
         supabase.from('lines').select('id, line_id, name, unit_id, floor_id').eq('factory_id', profile.factory_id).eq('is_active', true).order('line_id'),
+        supabase.from('user_line_assignments').select('line_id').eq('user_id', user.id).eq('factory_id', profile.factory_id),
         supabase.from('work_orders').select('id, po_number, buyer, style, item, order_qty, color, smv, target_per_hour, target_per_day, line_id').eq('factory_id', profile.factory_id).eq('is_active', true).order('po_number'),
         supabase.from('units').select('id, name, code').eq('factory_id', profile.factory_id).eq('is_active', true),
         supabase.from('floors').select('id, name, code').eq('factory_id', profile.factory_id).eq('is_active', true),
@@ -250,7 +252,15 @@ export default function SewingUpdate() {
         supabase.from('blocker_impact_options').select('id, label, is_active').eq('factory_id', profile.factory_id).eq('is_active', true).order('sort_order'),
       ]);
 
-      setLines(linesRes.data || []);
+      const allLines = linesRes.data || [];
+      const assignedLineIds = (lineAssignmentsRes.data || []).map(a => a.line_id);
+      
+      // If user has line assignments, filter to only those lines. Otherwise show all (for admins).
+      const filteredLines = assignedLineIds.length > 0 
+        ? allLines.filter(line => assignedLineIds.includes(line.id))
+        : allLines;
+
+      setLines(filteredLines);
       setWorkOrders(workOrdersRes.data || []);
       setUnits(unitsRes.data || []);
       setFloors(floorsRes.data || []);

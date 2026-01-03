@@ -154,16 +154,21 @@ export default function FinishingUpdate() {
   }, [selectedLine, workOrders]);
 
   async function fetchFormData() {
-    if (!profile?.factory_id) return;
+    if (!profile?.factory_id || !user?.id) return;
 
     try {
-      const [linesRes, workOrdersRes, unitsRes, floorsRes, factoryRes] = await Promise.all([
+      const [linesRes, lineAssignmentsRes, workOrdersRes, unitsRes, floorsRes, factoryRes] = await Promise.all([
         supabase
           .from('lines')
           .select('id, line_id, name, unit_id, floor_id')
           .eq('factory_id', profile.factory_id)
           .eq('is_active', true)
           .order('line_id'),
+        supabase
+          .from('user_line_assignments')
+          .select('line_id')
+          .eq('user_id', user.id)
+          .eq('factory_id', profile.factory_id),
         supabase
           .from('work_orders')
           .select('id, po_number, buyer, style, item, order_qty, color, line_id')
@@ -187,7 +192,15 @@ export default function FinishingUpdate() {
           .maybeSingle(),
       ]);
 
-      setLines(linesRes.data || []);
+      const allLines = linesRes.data || [];
+      const assignedLineIds = (lineAssignmentsRes.data || []).map(a => a.line_id);
+      
+      // If user has line assignments, filter to only those lines. Otherwise show all (for admins).
+      const filteredLines = assignedLineIds.length > 0 
+        ? allLines.filter(line => assignedLineIds.includes(line.id))
+        : allLines;
+
+      setLines(filteredLines);
       setWorkOrders(workOrdersRes.data || []);
       setUnits(unitsRes.data || []);
       setFloors(floorsRes.data || []);
