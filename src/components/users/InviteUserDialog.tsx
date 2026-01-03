@@ -180,7 +180,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             fullName: formData.fullName,
             password: formData.password,
             factoryName: factoryData?.name,
-            loginUrl: `${window.location.origin}/auth`,
+            loginUrl: 'https://line-lead-hub.lovable.app/auth',
           },
         });
 
