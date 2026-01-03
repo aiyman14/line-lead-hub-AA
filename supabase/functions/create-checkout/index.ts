@@ -17,6 +17,14 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Use service role for database operations
+  const supabaseAdmin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    { auth: { persistSession: false } }
+  );
+
+  // Use anon client for auth verification
   const supabaseClient = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_ANON_KEY") ?? ""
@@ -32,12 +40,16 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get the user's factory_id from profile (optional for checkout)
-    const { data: profile } = await supabaseClient
+    // Get the user's factory_id from profile using service role (bypasses RLS)
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('factory_id')
       .eq('id', user.id)
       .single();
+
+    if (profileError) {
+      logStep("Profile query error", { error: profileError.message });
+    }
 
     const factoryId = profile?.factory_id;
     logStep("Profile checked", { factoryId: factoryId || 'none' });
@@ -95,13 +107,6 @@ serve(async (req) => {
       });
       
       logStep("Trial subscription created", { subscriptionId: subscription.id, trialEnd });
-
-      // Update factory with subscription info using service role
-      const supabaseAdmin = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-        { auth: { persistSession: false } }
-      );
 
       await supabaseAdmin
         .from('factory_accounts')
