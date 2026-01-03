@@ -107,26 +107,34 @@ serve(async (req) => {
       }
     }
 
-    // Remove access
-    const { error: updateProfileError } = await supabaseAdmin
-      .from("profiles")
-      .update({ factory_id: null, is_active: false })
-      .eq("id", targetUserId);
-
-    if (updateProfileError) throw updateProfileError;
-
-    // Best-effort cleanup for factory-scoped tables
+    // Delete user_roles for this user in the factory
     await supabaseAdmin
       .from("user_roles")
       .delete()
       .eq("user_id", targetUserId)
       .eq("factory_id", requesterFactoryId);
 
+    // Delete user_line_assignments for this user in the factory
     await supabaseAdmin
       .from("user_line_assignments")
       .delete()
       .eq("user_id", targetUserId)
       .eq("factory_id", requesterFactoryId);
+
+    // Delete profile (this will cascade or be cleaned up)
+    await supabaseAdmin
+      .from("profiles")
+      .delete()
+      .eq("id", targetUserId);
+
+    // Fully delete user from auth.users
+    const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
+    if (deleteAuthError) {
+      console.error("[remove-user-access] Failed to delete auth user:", deleteAuthError.message);
+      // Continue anyway - profile is already deleted
+    }
+
+    console.log("[remove-user-access] Fully deleted user:", targetUserId);
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
