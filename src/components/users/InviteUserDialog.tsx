@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, UserPlus, Mail, User, Shield, GitBranch } from "lucide-react";
+import { Loader2, UserPlus, Mail, User, Shield, GitBranch, Briefcase } from "lucide-react";
 import { toast } from "sonner";
 import { ROLE_LABELS, type AppRole } from "@/lib/constants";
 
@@ -38,6 +38,8 @@ interface Line {
 }
 
 const ASSIGNABLE_ROLES: AppRole[] = ['worker', 'supervisor', 'admin'];
+const DEPARTMENTS = ['sewing', 'finishing', 'both'] as const;
+type Department = typeof DEPARTMENTS[number];
 
 export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDialogProps) {
   const { profile, hasRole } = useAuth();
@@ -49,6 +51,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     fullName: "",
     role: "worker" as AppRole,
     password: "",
+    department: "both" as Department,
   });
 
   // Owners can assign admin roles, admins can only assign worker/supervisor
@@ -129,12 +132,13 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
           userId = resetData.userId;
           
-          // Update the profile with factory_id and name
+          // Update the profile with factory_id, name, and department
           const { error: profileError } = await supabase
             .from('profiles')
             .update({ 
               factory_id: profile.factory_id,
-              full_name: formData.fullName 
+              full_name: formData.fullName,
+              department: formData.role === 'worker' ? formData.department : null
             })
             .eq('id', userId);
 
@@ -152,10 +156,13 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         }
         userId = authData.user.id;
 
-        // Update the profile with factory_id
+        // Update the profile with factory_id and department
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ factory_id: profile.factory_id })
+          .update({ 
+            factory_id: profile.factory_id,
+            department: formData.role === 'worker' ? formData.department : null
+          })
           .eq('id', userId);
 
         if (profileError) {
@@ -234,7 +241,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       toast.success(`User ${formData.fullName} invited successfully`);
       onSuccess();
       onOpenChange(false);
-      setFormData({ email: "", fullName: "", role: "worker", password: "" });
+      setFormData({ email: "", fullName: "", role: "worker", password: "", department: "both" });
       setSelectedLineIds([]);
     } catch (error) {
       console.error("Error inviting user:", error);
@@ -324,6 +331,32 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               </SelectContent>
             </Select>
           </div>
+
+          {/* Department selector - only for workers */}
+          {formData.role === 'worker' && (
+            <div className="space-y-2">
+              <Label htmlFor="department" className="flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-muted-foreground" />
+                Department
+              </Label>
+              <Select
+                value={formData.department}
+                onValueChange={(value: Department) => setFormData({ ...formData, department: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sewing">Sewing Only</SelectItem>
+                  <SelectItem value="finishing">Finishing Only</SelectItem>
+                  <SelectItem value="both">Both Sewing & Finishing</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                This determines which update form the worker can access.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label className="flex items-center gap-2">

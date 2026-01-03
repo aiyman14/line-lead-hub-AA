@@ -873,6 +873,7 @@ export type Database = {
           assigned_unit_id: string | null
           avatar_url: string | null
           created_at: string | null
+          department: string | null
           email: string
           factory_id: string | null
           full_name: string
@@ -886,6 +887,7 @@ export type Database = {
           assigned_unit_id?: string | null
           avatar_url?: string | null
           created_at?: string | null
+          department?: string | null
           email: string
           factory_id?: string | null
           full_name: string
@@ -899,6 +901,7 @@ export type Database = {
           assigned_unit_id?: string | null
           avatar_url?: string | null
           created_at?: string | null
+          department?: string | null
           email?: string
           factory_id?: string | null
           full_name?: string

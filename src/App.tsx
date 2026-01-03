@@ -23,6 +23,7 @@ import WorkOrdersView from "./pages/WorkOrdersView";
 import Insights from "./pages/Insights";
 import UsersPage from "./pages/Users";
 import AllSubmissions from "./pages/AllSubmissions";
+import MySubmissions from "./pages/MySubmissions";
 import Preferences from "./pages/Preferences";
 import NotFound from "./pages/NotFound";
 
@@ -57,7 +58,7 @@ const App = () => (
                 <Route path="/setup/dropdowns" element={<DropdownSettings />} />
                 <Route path="/users" element={<UsersPage />} />
                 <Route path="/submissions" element={<AllSubmissions />} />
-                <Route path="/my-submissions" element={<Dashboard />} />
+                <Route path="/my-submissions" element={<MySubmissions />} />
                 <Route path="/preferences" element={<Preferences />} />
               </Route>
               

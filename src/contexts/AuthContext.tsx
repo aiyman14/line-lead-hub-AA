@@ -11,6 +11,7 @@ interface Profile {
   phone: string | null;
   avatar_url: string | null;
   is_active: boolean;
+  department: string | null;
 }
 
 interface UserRole {

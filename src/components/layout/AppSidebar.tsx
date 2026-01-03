@@ -93,7 +93,20 @@ export function AppSidebar() {
     roles.some(ur => ur.role === r)
   ) || 'worker';
 
-  const navItems = NAV_ITEMS[highestRole as keyof typeof NAV_ITEMS] || NAV_ITEMS.worker;
+  let navItems = NAV_ITEMS[highestRole as keyof typeof NAV_ITEMS] || NAV_ITEMS.worker;
+
+  // Filter nav items based on worker's department
+  if (highestRole === 'worker' && profile?.department) {
+    navItems = navItems.filter(item => {
+      if (item.path === '/update/sewing') {
+        return profile.department === 'sewing' || profile.department === 'both';
+      }
+      if (item.path === '/update/finishing') {
+        return profile.department === 'finishing' || profile.department === 'both';
+      }
+      return true;
+    });
+  }
 
   const isActive = (path: string) => location.pathname === path;
 
