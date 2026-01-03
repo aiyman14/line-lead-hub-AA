@@ -103,10 +103,17 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
       .from('lines')
       .select('id, line_id, name')
       .eq('factory_id', profile.factory_id)
-      .eq('is_active', true)
-      .order('line_id');
+      .eq('is_active', true);
 
-    if (data) setLines(data);
+    if (data) {
+      // Sort numerically by extracting number from line_id
+      const sorted = [...data].sort((a, b) => {
+        const numA = parseInt(a.line_id.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.line_id.replace(/\D/g, '')) || 0;
+        return numA - numB;
+      });
+      setLines(sorted);
+    }
   }
 
   function toggleLine(lineId: string) {
