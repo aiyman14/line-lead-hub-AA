@@ -40,6 +40,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { NAV_ITEMS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import logoSvg from "@/assets/logo.svg";
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Factory,
@@ -142,9 +143,11 @@ export function AppSidebar() {
     >
       <SidebarHeader className="border-b border-sidebar-border p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-            PP
-          </div>
+          <img 
+            src={logoSvg} 
+            alt="Production Portal" 
+            className="h-10 w-10 shrink-0 rounded-lg"
+          />
           {!collapsed && (
             <div className="flex flex-col">
               <span className="font-semibold text-sidebar-foreground">
