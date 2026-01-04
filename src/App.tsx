@@ -1,12 +1,14 @@
+import { useContext } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, AuthContext } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
+import { LoadingScreen } from "@/components/LoadingScreen";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -32,6 +34,46 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function AppRoutes() {
+  const { loading } = useContext(AuthContext)!;
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<Index />} />
+      <Route path="/auth" element={<Auth />} />
+      <Route path="/subscription" element={<Subscription />} />
+      
+      {/* Protected routes with subscription gate */}
+      <Route element={<AppLayout />}>
+        <Route path="/dashboard" element={<SubscriptionGate><Dashboard /></SubscriptionGate>} />
+        <Route path="/update/sewing" element={<SubscriptionGate><SewingUpdate /></SubscriptionGate>} />
+        <Route path="/update/finishing" element={<SubscriptionGate><FinishingUpdate /></SubscriptionGate>} />
+        <Route path="/today" element={<SubscriptionGate><TodayUpdates /></SubscriptionGate>} />
+        <Route path="/blockers" element={<SubscriptionGate><Blockers /></SubscriptionGate>} />
+        <Route path="/week" element={<SubscriptionGate><ThisWeek /></SubscriptionGate>} />
+        <Route path="/lines" element={<SubscriptionGate><Lines /></SubscriptionGate>} />
+        <Route path="/work-orders" element={<SubscriptionGate><WorkOrdersView /></SubscriptionGate>} />
+        <Route path="/insights" element={<SubscriptionGate><Insights /></SubscriptionGate>} />
+        <Route path="/setup" element={<SubscriptionGate><SetupHome /></SubscriptionGate>} />
+        <Route path="/setup/factory" element={<SubscriptionGate><FactorySetup /></SubscriptionGate>} />
+        <Route path="/setup/work-orders" element={<SubscriptionGate><WorkOrders /></SubscriptionGate>} />
+        <Route path="/setup/dropdowns" element={<SubscriptionGate><DropdownSettings /></SubscriptionGate>} />
+        <Route path="/users" element={<SubscriptionGate><UsersPage /></SubscriptionGate>} />
+        <Route path="/submissions" element={<SubscriptionGate><AllSubmissions /></SubscriptionGate>} />
+        <Route path="/my-submissions" element={<SubscriptionGate><MySubmissions /></SubscriptionGate>} />
+        <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
+        <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />
+      </Route>
+      
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
@@ -40,35 +82,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/subscription" element={<Subscription />} />
-              
-              {/* Protected routes with subscription gate */}
-              <Route element={<AppLayout />}>
-                <Route path="/dashboard" element={<SubscriptionGate><Dashboard /></SubscriptionGate>} />
-                <Route path="/update/sewing" element={<SubscriptionGate><SewingUpdate /></SubscriptionGate>} />
-                <Route path="/update/finishing" element={<SubscriptionGate><FinishingUpdate /></SubscriptionGate>} />
-                <Route path="/today" element={<SubscriptionGate><TodayUpdates /></SubscriptionGate>} />
-                <Route path="/blockers" element={<SubscriptionGate><Blockers /></SubscriptionGate>} />
-                <Route path="/week" element={<SubscriptionGate><ThisWeek /></SubscriptionGate>} />
-                <Route path="/lines" element={<SubscriptionGate><Lines /></SubscriptionGate>} />
-                <Route path="/work-orders" element={<SubscriptionGate><WorkOrdersView /></SubscriptionGate>} />
-                <Route path="/insights" element={<SubscriptionGate><Insights /></SubscriptionGate>} />
-                <Route path="/setup" element={<SubscriptionGate><SetupHome /></SubscriptionGate>} />
-                <Route path="/setup/factory" element={<SubscriptionGate><FactorySetup /></SubscriptionGate>} />
-                <Route path="/setup/work-orders" element={<SubscriptionGate><WorkOrders /></SubscriptionGate>} />
-                <Route path="/setup/dropdowns" element={<SubscriptionGate><DropdownSettings /></SubscriptionGate>} />
-                <Route path="/users" element={<SubscriptionGate><UsersPage /></SubscriptionGate>} />
-                <Route path="/submissions" element={<SubscriptionGate><AllSubmissions /></SubscriptionGate>} />
-                <Route path="/my-submissions" element={<SubscriptionGate><MySubmissions /></SubscriptionGate>} />
-                <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
-                <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />
-              </Route>
-              
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <AppRoutes />
           </BrowserRouter>
         </AuthProvider>
       </TooltipProvider>
