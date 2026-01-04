@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Factory, ArrowRight, KeyRound } from "lucide-react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import logoSvg from "@/assets/logo.svg";
 
 const passwordSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -260,9 +261,11 @@ export default function Auth() {
       <div className="gradient-industrial text-sidebar-foreground py-12 px-4">
         <div className="container mx-auto max-w-6xl">
           <div className="flex items-center gap-3 mb-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-lg">
-              PP
-            </div>
+            <img 
+              src={logoSvg} 
+              alt="Production Portal" 
+              className="h-12 w-12 rounded-xl"
+            />
             <h1 className="text-2xl font-bold">Production Portal</h1>
           </div>
           <p className="text-lg text-sidebar-foreground/80 max-w-xl">
