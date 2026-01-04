@@ -275,32 +275,72 @@ export default function AllSubmissions() {
     setExporting(true);
     try {
       const rows: string[][] = [];
+      const exportDate = new Date().toLocaleDateString('en-US', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+      });
+      
+      // Report header
+      rows.push(['Production Submissions Report']);
+      rows.push([`Generated: ${exportDate}`]);
+      rows.push([`Date Range: Last ${dateRange} days`]);
+      rows.push([`Report Type: ${type === 'all' ? 'All Departments' : type === 'sewing' ? 'Sewing Department' : 'Finishing Department'}`]);
+      rows.push(['']);
       
       if (type === 'sewing' || type === 'all') {
-        // Sewing header
-        if (type === 'all') rows.push(['--- SEWING SUBMISSIONS ---']);
-        rows.push(['ID', 'Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Output', 'Target', 'Efficiency %', 'Manpower', 'Reject', 'Rework', 'Progress %', 'OT Hours', 'Has Blocker', 'Notes']);
+        // Sewing summary
+        const totalSewingOutput = filteredSewing.reduce((sum, u) => sum + u.output_qty, 0);
+        const totalSewingTarget = filteredSewing.reduce((sum, u) => sum + (u.target_qty || 0), 0);
+        const avgSewingEfficiency = totalSewingTarget > 0 ? Math.round((totalSewingOutput / totalSewingTarget) * 100) : 0;
+        const sewingWithBlockers = filteredSewing.filter(u => u.has_blocker).length;
+        
+        rows.push(['=== SEWING DEPARTMENT ===']);
+        rows.push(['']);
+        rows.push(['Summary Statistics']);
+        rows.push(['Total Records', filteredSewing.length.toString()]);
+        rows.push(['Total Output', totalSewingOutput.toLocaleString()]);
+        rows.push(['Total Target', totalSewingTarget.toLocaleString()]);
+        rows.push(['Average Efficiency', `${avgSewingEfficiency}%`]);
+        rows.push(['Records with Blockers', sewingWithBlockers.toString()]);
+        rows.push(['']);
+        rows.push(['Detailed Records']);
+        rows.push([
+          'Production Date', 
+          'Submission Time', 
+          'Line', 
+          'PO Number', 
+          'Buyer', 
+          'Style', 
+          'Output Qty', 
+          'Target Qty', 
+          'Efficiency (%)', 
+          'Manpower', 
+          'Reject Qty', 
+          'Rework Qty', 
+          'Progress (%)', 
+          'OT Hours', 
+          'Blocker', 
+          'Notes'
+        ]);
         
         filteredSewing.forEach(u => {
           const efficiency = u.target_qty ? Math.round((u.output_qty / u.target_qty) * 100) : 0;
           rows.push([
-            u.id,
             formatDate(u.production_date),
             formatTime(u.submitted_at),
-            u.lines?.name || u.lines?.line_id || '',
-            u.work_orders?.po_number || '',
-            u.work_orders?.buyer || '',
-            u.work_orders?.style || '',
-            u.output_qty.toString(),
-            u.target_qty?.toString() || '',
-            efficiency.toString(),
-            u.manpower?.toString() || '',
-            u.reject_qty?.toString() || '',
-            u.rework_qty?.toString() || '',
-            u.stage_progress?.toString() || '',
-            u.ot_hours?.toString() || '',
+            u.lines?.name || u.lines?.line_id || '-',
+            u.work_orders?.po_number || '-',
+            u.work_orders?.buyer || '-',
+            u.work_orders?.style || '-',
+            u.output_qty.toLocaleString(),
+            u.target_qty?.toLocaleString() || '-',
+            `${efficiency}%`,
+            u.manpower?.toString() || '-',
+            u.reject_qty?.toLocaleString() || '0',
+            u.rework_qty?.toLocaleString() || '0',
+            u.stage_progress ? `${u.stage_progress}%` : '-',
+            u.ot_hours?.toString() || '0',
             u.has_blocker ? 'Yes' : 'No',
-            u.notes || '',
+            u.notes || '-',
           ]);
         });
       }
@@ -308,28 +348,60 @@ export default function AllSubmissions() {
       if (type === 'finishing' || type === 'all') {
         if (type === 'all') {
           rows.push(['']);
-          rows.push(['--- FINISHING SUBMISSIONS ---']);
+          rows.push(['']);
         }
-        rows.push(['ID', 'Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Day QC Pass', 'Total QC Pass', 'Day Poly', 'Total Poly', 'M Power', 'Day Carton', 'Total Carton', 'Has Blocker', 'Remarks']);
+        
+        // Finishing summary
+        const totalDayQC = filteredFinishing.reduce((sum, u) => sum + (u.day_qc_pass || 0), 0);
+        const totalDayPoly = filteredFinishing.reduce((sum, u) => sum + (u.day_poly || 0), 0);
+        const totalDayCarton = filteredFinishing.reduce((sum, u) => sum + (u.day_carton || 0), 0);
+        const finishingWithBlockers = filteredFinishing.filter(u => u.has_blocker).length;
+        
+        rows.push(['=== FINISHING DEPARTMENT ===']);
+        rows.push(['']);
+        rows.push(['Summary Statistics']);
+        rows.push(['Total Records', filteredFinishing.length.toString()]);
+        rows.push(['Total Day QC Pass', totalDayQC.toLocaleString()]);
+        rows.push(['Total Day Poly', totalDayPoly.toLocaleString()]);
+        rows.push(['Total Day Cartons', totalDayCarton.toLocaleString()]);
+        rows.push(['Records with Blockers', finishingWithBlockers.toString()]);
+        rows.push(['']);
+        rows.push(['Detailed Records']);
+        rows.push([
+          'Production Date', 
+          'Submission Time', 
+          'Line', 
+          'PO Number', 
+          'Buyer', 
+          'Style', 
+          'Day QC Pass', 
+          'Total QC Pass', 
+          'Day Poly', 
+          'Total Poly', 
+          'Manpower', 
+          'Day Carton', 
+          'Total Carton', 
+          'Blocker', 
+          'Remarks'
+        ]);
         
         filteredFinishing.forEach(u => {
           rows.push([
-            u.id,
             formatDate(u.production_date),
             formatTime(u.submitted_at),
-            u.lines?.name || u.lines?.line_id || '',
-            u.work_orders?.po_number || '',
-            u.buyer_name || u.work_orders?.buyer || '',
-            u.style_no || u.work_orders?.style || '',
-            u.day_qc_pass?.toString() || '0',
-            u.total_qc_pass?.toString() || '0',
-            u.day_poly?.toString() || '0',
-            u.total_poly?.toString() || '0',
-            u.m_power?.toString() || '',
-            u.day_carton?.toString() || '0',
-            u.total_carton?.toString() || '0',
+            u.lines?.name || u.lines?.line_id || '-',
+            u.work_orders?.po_number || '-',
+            u.buyer_name || u.work_orders?.buyer || '-',
+            u.style_no || u.work_orders?.style || '-',
+            (u.day_qc_pass || 0).toLocaleString(),
+            (u.total_qc_pass || 0).toLocaleString(),
+            (u.day_poly || 0).toLocaleString(),
+            (u.total_poly || 0).toLocaleString(),
+            u.m_power?.toString() || '-',
+            (u.day_carton || 0).toLocaleString(),
+            (u.total_carton || 0).toLocaleString(),
             u.has_blocker ? 'Yes' : 'No',
-            u.remarks || '',
+            u.remarks || '-',
           ]);
         });
       }
@@ -339,18 +411,25 @@ export default function AllSubmissions() {
         row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')
       ).join('\n');
 
+      // Create filename with readable format
+      const fileDate = new Date().toISOString().split('T')[0];
+      const typeName = type === 'all' ? 'all_departments' : type;
+      
       // Create and trigger download
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `submissions_${type}_${dateRange}days_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `production_report_${typeName}_${dateRange}days_${fileDate}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       
-      toast.success(`Exported ${type === 'all' ? filteredSewing.length + filteredFinishing.length : type === 'sewing' ? filteredSewing.length : filteredFinishing.length} records`);
+      const totalRecords = type === 'all' 
+        ? filteredSewing.length + filteredFinishing.length 
+        : type === 'sewing' ? filteredSewing.length : filteredFinishing.length;
+      toast.success(`Exported ${totalRecords} records`);
     } catch (error) {
       console.error('Export error:', error);
       toast.error("Failed to export data");
