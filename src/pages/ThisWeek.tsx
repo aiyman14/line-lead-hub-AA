@@ -175,7 +175,7 @@ export default function ThisWeek() {
             variant="outline"
             size="icon"
             onClick={() => setWeekOffset(prev => prev - 1)}
-            disabled={loading}
+            disabled={loading || weekOffset <= -4}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
