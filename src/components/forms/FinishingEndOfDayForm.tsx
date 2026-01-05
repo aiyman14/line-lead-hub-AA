@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ interface Floor {
 
 export default function FinishingEndOfDayForm() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { user, profile, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -140,7 +142,7 @@ export default function FinishingEndOfDayForm() {
       setFloors(floorsRes.data || []);
     } catch (error) {
       console.error("Error fetching form data:", error);
-      toast.error("Failed to load form data");
+      toast.error(t("common.submissionFailed"));
     } finally {
       setLoading(false);
     }
@@ -149,17 +151,17 @@ export default function FinishingEndOfDayForm() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedLineId) newErrors.line = "Line is required";
-    if (!selectedWorkOrderId) newErrors.workOrder = "PO is required";
-    if (!dayQcPass || parseInt(dayQcPass) < 0) newErrors.dayQcPass = "Day QC Pass is required";
-    if (!totalQcPass || parseInt(totalQcPass) < 0) newErrors.totalQcPass = "Total QC Pass is required";
-    if (!dayPoly || parseInt(dayPoly) < 0) newErrors.dayPoly = "Day Poly is required";
-    if (!totalPoly || parseInt(totalPoly) < 0) newErrors.totalPoly = "Total Poly is required";
-    if (!dayCarton || parseInt(dayCarton) < 0) newErrors.dayCarton = "Day Carton is required";
-    if (!totalCarton || parseInt(totalCarton) < 0) newErrors.totalCarton = "Total Carton is required";
-    if (!mPowerActual || parseInt(mPowerActual) <= 0) newErrors.mPowerActual = "M Power is required";
-    if (!dayHourActual || parseFloat(dayHourActual) < 0) newErrors.dayHourActual = "Day hours is required";
-    if (dayOverTimeActual === "" || parseFloat(dayOverTimeActual) < 0) newErrors.dayOverTimeActual = "OT hours must be 0 or more";
+    if (!selectedLineId) newErrors.line = t("forms.lineRequired");
+    if (!selectedWorkOrderId) newErrors.workOrder = t("forms.poRequired");
+    if (!dayQcPass || parseInt(dayQcPass) < 0) newErrors.dayQcPass = t("forms.dayQcPassRequired");
+    if (!totalQcPass || parseInt(totalQcPass) < 0) newErrors.totalQcPass = t("forms.totalQcPassRequired");
+    if (!dayPoly || parseInt(dayPoly) < 0) newErrors.dayPoly = t("forms.dayPolyRequired");
+    if (!totalPoly || parseInt(totalPoly) < 0) newErrors.totalPoly = t("forms.totalPolyRequired");
+    if (!dayCarton || parseInt(dayCarton) < 0) newErrors.dayCarton = t("forms.dayCartonRequired");
+    if (!totalCarton || parseInt(totalCarton) < 0) newErrors.totalCarton = t("forms.totalCartonRequired");
+    if (!mPowerActual || parseInt(mPowerActual) <= 0) newErrors.mPowerActual = t("forms.mPowerRequired");
+    if (!dayHourActual || parseFloat(dayHourActual) < 0) newErrors.dayHourActual = t("forms.dayHoursRequired");
+    if (dayOverTimeActual === "" || parseFloat(dayOverTimeActual) < 0) newErrors.dayOverTimeActual = t("forms.otHoursRequired");
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -169,12 +171,12 @@ export default function FinishingEndOfDayForm() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error("Please fill in all required fields");
+      toast.error(t("common.fillRequiredFields"));
       return;
     }
 
     if (!profile?.factory_id || !user?.id) {
-      toast.error("Missing user or factory information");
+      toast.error(t("common.submissionFailed"));
       return;
     }
 
@@ -212,14 +214,14 @@ export default function FinishingEndOfDayForm() {
 
       if (error) {
         if (error.code === "23505") {
-          toast.error("Actuals already submitted for this line and PO today");
+          toast.error(t("common.submissionFailed"));
         } else {
           throw error;
         }
         return;
       }
 
-      toast.success("Finishing actuals submitted successfully!");
+      toast.success(t("common.submissionSuccess"));
       
       if (isAdminOrHigher()) {
         navigate("/dashboard");
@@ -228,7 +230,7 @@ export default function FinishingEndOfDayForm() {
       }
     } catch (error: any) {
       console.error("Error submitting actuals:", error);
-      toast.error(error.message || "Failed to submit actuals");
+      toast.error(t("common.submissionFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -245,7 +247,7 @@ export default function FinishingEndOfDayForm() {
   if (!profile?.factory_id) {
     return (
       <div className="flex min-h-[30vh] items-center justify-center p-4">
-        <p className="text-muted-foreground">No factory assigned to your account.</p>
+        <p className="text-muted-foreground">{t("common.noFactoryAssigned")}</p>
       </div>
     );
   }
@@ -255,14 +257,14 @@ export default function FinishingEndOfDayForm() {
       {/* Line & PO Selection */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Select Line & PO</CardTitle>
+          <CardTitle className="text-base">{t("forms.selectLinePO")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Line No. *</Label>
+            <Label>{t("forms.lineNo")} *</Label>
             <Select value={selectedLineId} onValueChange={setSelectedLineId}>
               <SelectTrigger className={errors.line ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select line" />
+                <SelectValue placeholder={t("forms.selectLine")} />
               </SelectTrigger>
               <SelectContent>
                 {lines.map((line) => (
@@ -276,10 +278,10 @@ export default function FinishingEndOfDayForm() {
           </div>
 
           <div className="space-y-2">
-            <Label>PO Number *</Label>
+            <Label>{t("forms.poNumber")} *</Label>
             <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
               <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select PO" />
+                <SelectValue placeholder={t("forms.selectPO")} />
               </SelectTrigger>
               <SelectContent>
                 {filteredWorkOrders.map((wo) => (
@@ -298,32 +300,32 @@ export default function FinishingEndOfDayForm() {
       {selectedWorkOrder && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Order Details (Auto-filled)</CardTitle>
+            <CardTitle className="text-base">{t("forms.orderDetailsAuto")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-muted-foreground">Buyer:</span>
+                <span className="text-muted-foreground">{t("forms.buyer")}:</span>
                 <p className="font-medium">{selectedWorkOrder.buyer}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Style:</span>
+                <span className="text-muted-foreground">{t("forms.style")}:</span>
                 <p className="font-medium">{selectedWorkOrder.style}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Item:</span>
+                <span className="text-muted-foreground">{t("forms.item")}:</span>
                 <p className="font-medium">{selectedWorkOrder.item || "-"}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Order Qty:</span>
+                <span className="text-muted-foreground">{t("forms.orderQty")}:</span>
                 <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Unit:</span>
+                <span className="text-muted-foreground">{t("forms.unit")}:</span>
                 <p className="font-medium">{unitName || "-"}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Floor:</span>
+                <span className="text-muted-foreground">{t("forms.floor")}:</span>
                 <p className="font-medium">{floorName || "-"}</p>
               </div>
             </div>
@@ -334,12 +336,12 @@ export default function FinishingEndOfDayForm() {
       {/* QC & Production Output */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">QC & Production Output</CardTitle>
+          <CardTitle className="text-base">{t("forms.qcProductionOutput")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Day QC Pass *</Label>
+              <Label>{t("forms.dayQcPass")} *</Label>
               <Input
                 type="number"
                 value={dayQcPass}
@@ -351,7 +353,7 @@ export default function FinishingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Total QC Pass *</Label>
+              <Label>{t("forms.totalQcPass")} *</Label>
               <Input
                 type="number"
                 value={totalQcPass}
@@ -365,7 +367,7 @@ export default function FinishingEndOfDayForm() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Day Poly *</Label>
+              <Label>{t("forms.dayPoly")} *</Label>
               <Input
                 type="number"
                 value={dayPoly}
@@ -377,7 +379,7 @@ export default function FinishingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Total Poly *</Label>
+              <Label>{t("forms.totalPoly")} *</Label>
               <Input
                 type="number"
                 value={totalPoly}
@@ -391,7 +393,7 @@ export default function FinishingEndOfDayForm() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Day Carton *</Label>
+              <Label>{t("forms.dayCarton")} *</Label>
               <Input
                 type="number"
                 value={dayCarton}
@@ -403,7 +405,7 @@ export default function FinishingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Total Carton *</Label>
+              <Label>{t("forms.totalCarton")} *</Label>
               <Input
                 type="number"
                 value={totalCarton}
@@ -416,7 +418,7 @@ export default function FinishingEndOfDayForm() {
           </div>
 
           <div className="space-y-2">
-            <Label>Average Production</Label>
+            <Label>{t("forms.averageProduction")}</Label>
             <Input
               type="number"
               value={averageProduction}
@@ -430,12 +432,12 @@ export default function FinishingEndOfDayForm() {
       {/* Manpower & Hours */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Manpower & Hours</CardTitle>
+          <CardTitle className="text-base">{t("forms.manpowerHours")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>M Power Actual *</Label>
+              <Label>{t("forms.mPowerActual")} *</Label>
               <Input
                 type="number"
                 value={mPowerActual}
@@ -447,7 +449,7 @@ export default function FinishingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Day Hours Actual *</Label>
+              <Label>{t("forms.dayHoursActual")} *</Label>
               <Input
                 type="number"
                 step="0.5"
@@ -462,7 +464,7 @@ export default function FinishingEndOfDayForm() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>OT Hours Actual *</Label>
+              <Label>{t("forms.otHoursActual")} *</Label>
               <Input
                 type="number"
                 step="0.5"
@@ -475,7 +477,7 @@ export default function FinishingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Total Hours</Label>
+              <Label>{t("forms.totalHour")}</Label>
               <Input
                 type="number"
                 step="0.5"
@@ -487,7 +489,7 @@ export default function FinishingEndOfDayForm() {
           </div>
 
           <div className="space-y-2">
-            <Label>Total Overtime</Label>
+            <Label>{t("forms.totalOverTime")}</Label>
             <Input
               type="number"
               step="0.5"
@@ -502,34 +504,31 @@ export default function FinishingEndOfDayForm() {
       {/* Optional Fields */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Optional</CardTitle>
+          <CardTitle className="text-base">{t("forms.optional")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <Label>Remarks</Label>
+            <Label>{t("forms.remarks")}</Label>
             <Textarea
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Any additional notes..."
+              placeholder={t("forms.addAnyNotes")}
               rows={3}
             />
           </div>
         </CardContent>
       </Card>
 
-      {/* Submit Button */}
-      <div className="mt-6 pb-2">
-        <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
-          {submitting ? (
-            <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Submitting...
-            </>
-          ) : (
-            "Submit Finishing Actuals"
-          )}
-        </Button>
-      </div>
+      <Button type="submit" className="w-full" disabled={submitting}>
+        {submitting ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {t("forms.submitting")}
+          </>
+        ) : (
+          t("forms.submitActuals")
+        )}
+      </Button>
     </form>
   );
 }

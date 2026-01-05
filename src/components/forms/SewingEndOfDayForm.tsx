@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -60,6 +61,7 @@ interface DropdownOption {
 
 export default function SewingEndOfDayForm() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { user, profile, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -154,7 +156,7 @@ export default function SewingEndOfDayForm() {
       setProgressOptions(progressRes.data || []);
     } catch (error) {
       console.error("Error fetching form data:", error);
-      toast.error("Failed to load form data");
+      toast.error(t("common.submissionFailed"));
     } finally {
       setLoading(false);
     }
@@ -163,16 +165,16 @@ export default function SewingEndOfDayForm() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedLineId) newErrors.line = "Line is required";
-    if (!selectedWorkOrderId) newErrors.workOrder = "PO is required";
-    if (!goodToday || parseInt(goodToday) < 0) newErrors.goodToday = "Good output is required";
-    if (!rejectToday || parseInt(rejectToday) < 0) newErrors.rejectToday = "Reject count is required";
-    if (!reworkToday || parseInt(reworkToday) < 0) newErrors.reworkToday = "Rework count is required";
-    if (!cumulativeGoodTotal || parseInt(cumulativeGoodTotal) < 0) newErrors.cumulativeGoodTotal = "Cumulative total is required";
-    if (!manpowerActual || parseInt(manpowerActual) <= 0) newErrors.manpowerActual = "Manpower is required";
-    if (otHoursActual === "" || parseFloat(otHoursActual) < 0) newErrors.otHoursActual = "OT hours must be 0 or more";
-    if (!actualStageId) newErrors.actualStage = "Stage is required";
-    if (!actualStageProgress) newErrors.actualStageProgress = "Stage progress is required";
+    if (!selectedLineId) newErrors.line = t("forms.lineRequired");
+    if (!selectedWorkOrderId) newErrors.workOrder = t("forms.poRequired");
+    if (!goodToday || parseInt(goodToday) < 0) newErrors.goodToday = t("forms.goodOutputRequired");
+    if (!rejectToday || parseInt(rejectToday) < 0) newErrors.rejectToday = t("forms.rejectRequired");
+    if (!reworkToday || parseInt(reworkToday) < 0) newErrors.reworkToday = t("forms.reworkRequired");
+    if (!cumulativeGoodTotal || parseInt(cumulativeGoodTotal) < 0) newErrors.cumulativeGoodTotal = t("forms.cumulativeRequired");
+    if (!manpowerActual || parseInt(manpowerActual) <= 0) newErrors.manpowerActual = t("forms.manpowerRequired");
+    if (otHoursActual === "" || parseFloat(otHoursActual) < 0) newErrors.otHoursActual = t("forms.otHoursRequired");
+    if (!actualStageId) newErrors.actualStage = t("forms.stageRequired");
+    if (!actualStageProgress) newErrors.actualStageProgress = t("forms.progressRequired");
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -182,12 +184,12 @@ export default function SewingEndOfDayForm() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error("Please fill in all required fields");
+      toast.error(t("common.fillRequiredFields"));
       return;
     }
 
     if (!profile?.factory_id || !user?.id) {
-      toast.error("Missing user or factory information");
+      toast.error(t("common.submissionFailed"));
       return;
     }
 
@@ -221,14 +223,14 @@ export default function SewingEndOfDayForm() {
 
       if (error) {
         if (error.code === "23505") {
-          toast.error("Actuals already submitted for this line and PO today");
+          toast.error(t("common.submissionFailed"));
         } else {
           throw error;
         }
         return;
       }
 
-      toast.success("Sewing actuals submitted successfully!");
+      toast.success(t("common.submissionSuccess"));
       
       if (isAdminOrHigher()) {
         navigate("/dashboard");
@@ -237,7 +239,7 @@ export default function SewingEndOfDayForm() {
       }
     } catch (error: any) {
       console.error("Error submitting actuals:", error);
-      toast.error(error.message || "Failed to submit actuals");
+      toast.error(t("common.submissionFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -254,7 +256,7 @@ export default function SewingEndOfDayForm() {
   if (!profile?.factory_id) {
     return (
       <div className="flex min-h-[30vh] items-center justify-center p-4">
-        <p className="text-muted-foreground">No factory assigned to your account.</p>
+        <p className="text-muted-foreground">{t("common.noFactoryAssigned")}</p>
       </div>
     );
   }
@@ -264,14 +266,14 @@ export default function SewingEndOfDayForm() {
       {/* Line & PO Selection */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Select Line & PO</CardTitle>
+          <CardTitle className="text-base">{t("forms.selectLinePO")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Line No. *</Label>
+            <Label>{t("forms.lineNo")} *</Label>
             <Select value={selectedLineId} onValueChange={setSelectedLineId}>
               <SelectTrigger className={errors.line ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select line" />
+                <SelectValue placeholder={t("forms.selectLine")} />
               </SelectTrigger>
               <SelectContent>
                 {lines.map((line) => (
@@ -285,10 +287,10 @@ export default function SewingEndOfDayForm() {
           </div>
 
           <div className="space-y-2">
-            <Label>PO Number *</Label>
+            <Label>{t("forms.poNumber")} *</Label>
             <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
               <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select PO" />
+                <SelectValue placeholder={t("forms.selectPO")} />
               </SelectTrigger>
               <SelectContent>
                 {filteredWorkOrders.map((wo) => (
@@ -307,32 +309,32 @@ export default function SewingEndOfDayForm() {
       {selectedWorkOrder && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Order Details (Auto-filled)</CardTitle>
+            <CardTitle className="text-base">{t("forms.orderDetailsAuto")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-muted-foreground">Buyer:</span>
+                <span className="text-muted-foreground">{t("forms.buyer")}:</span>
                 <p className="font-medium">{selectedWorkOrder.buyer}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Style:</span>
+                <span className="text-muted-foreground">{t("forms.style")}:</span>
                 <p className="font-medium">{selectedWorkOrder.style}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Item:</span>
+                <span className="text-muted-foreground">{t("forms.item")}:</span>
                 <p className="font-medium">{selectedWorkOrder.item || "-"}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Order Qty:</span>
+                <span className="text-muted-foreground">{t("forms.orderQty")}:</span>
                 <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Unit:</span>
+                <span className="text-muted-foreground">{t("forms.unit")}:</span>
                 <p className="font-medium">{unitName || "-"}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Floor:</span>
+                <span className="text-muted-foreground">{t("forms.floor")}:</span>
                 <p className="font-medium">{floorName || "-"}</p>
               </div>
             </div>
@@ -343,12 +345,12 @@ export default function SewingEndOfDayForm() {
       {/* Actual Output */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Today's Output</CardTitle>
+          <CardTitle className="text-base">{t("forms.todaysOutput")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Good Output *</Label>
+              <Label>{t("forms.goodOutput")} *</Label>
               <Input
                 type="number"
                 value={goodToday}
@@ -360,7 +362,7 @@ export default function SewingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Reject *</Label>
+              <Label>{t("forms.reject")} *</Label>
               <Input
                 type="number"
                 value={rejectToday}
@@ -374,7 +376,7 @@ export default function SewingEndOfDayForm() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Rework *</Label>
+              <Label>{t("forms.rework")} *</Label>
               <Input
                 type="number"
                 value={reworkToday}
@@ -386,7 +388,7 @@ export default function SewingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Cumulative Good Total *</Label>
+              <Label>{t("forms.cumulativeGoodTotal")} *</Label>
               <Input
                 type="number"
                 value={cumulativeGoodTotal}
@@ -400,7 +402,7 @@ export default function SewingEndOfDayForm() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Manpower Actual *</Label>
+              <Label>{t("forms.manpowerActual")} *</Label>
               <Input
                 type="number"
                 value={manpowerActual}
@@ -412,7 +414,7 @@ export default function SewingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>OT Hours Actual *</Label>
+              <Label>{t("forms.otHoursActual")} *</Label>
               <Input
                 type="number"
                 step="0.5"
@@ -430,14 +432,14 @@ export default function SewingEndOfDayForm() {
       {/* Stage & Progress */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Stage & Progress</CardTitle>
+          <CardTitle className="text-base">{t("forms.stageProgress")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Actual Stage *</Label>
+            <Label>{t("forms.actualStage")} *</Label>
             <Select value={actualStageId} onValueChange={setActualStageId}>
               <SelectTrigger className={errors.actualStage ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select stage" />
+                <SelectValue placeholder={t("forms.selectStage")} />
               </SelectTrigger>
               <SelectContent>
                 {stages.map((stage) => (
@@ -451,10 +453,10 @@ export default function SewingEndOfDayForm() {
           </div>
 
           <div className="space-y-2">
-            <Label>Stage Progress *</Label>
+            <Label>{t("forms.stageProgressLabel")} *</Label>
             <Select value={actualStageProgress} onValueChange={setActualStageProgress}>
               <SelectTrigger className={errors.actualStageProgress ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select progress" />
+                <SelectValue placeholder={t("forms.selectProgress")} />
               </SelectTrigger>
               <SelectContent>
                 {progressOptions.map((opt) => (
@@ -472,34 +474,31 @@ export default function SewingEndOfDayForm() {
       {/* Optional Fields */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Optional</CardTitle>
+          <CardTitle className="text-base">{t("forms.optional")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <Label>Remarks</Label>
+            <Label>{t("forms.remarks")}</Label>
             <Textarea
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Any additional notes..."
+              placeholder={t("forms.addAnyNotes")}
               rows={3}
             />
           </div>
         </CardContent>
       </Card>
 
-      {/* Submit Button */}
-      <div className="mt-6 pb-2">
-        <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
-          {submitting ? (
-            <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Submitting...
-            </>
-          ) : (
-            "Submit Sewing Actuals"
-          )}
-        </Button>
-      </div>
+      <Button type="submit" className="w-full" disabled={submitting}>
+        {submitting ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {t("forms.submitting")}
+          </>
+        ) : (
+          t("forms.submitActuals")
+        )}
+      </Button>
     </form>
   );
 }
