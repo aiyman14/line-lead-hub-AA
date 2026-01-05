@@ -459,6 +459,7 @@ export type Database = {
           factory_id: string
           floor_name: string | null
           id: string
+          is_late: boolean | null
           item_name: string | null
           line_id: string
           m_power_planned: number
@@ -480,6 +481,7 @@ export type Database = {
           factory_id: string
           floor_name?: string | null
           id?: string
+          is_late?: boolean | null
           item_name?: string | null
           line_id: string
           m_power_planned: number
@@ -501,6 +503,7 @@ export type Database = {
           factory_id?: string
           floor_name?: string | null
           id?: string
+          is_late?: boolean | null
           item_name?: string | null
           line_id?: string
           m_power_planned?: number
@@ -1321,6 +1324,7 @@ export type Database = {
           factory_id: string
           floor_name: string | null
           id: string
+          is_late: boolean | null
           item_name: string | null
           line_id: string
           manpower_planned: number
@@ -1345,6 +1349,7 @@ export type Database = {
           factory_id: string
           floor_name?: string | null
           id?: string
+          is_late?: boolean | null
           item_name?: string | null
           line_id: string
           manpower_planned: number
@@ -1369,6 +1374,7 @@ export type Database = {
           factory_id?: string
           floor_name?: string | null
           id?: string
+          is_late?: boolean | null
           item_name?: string | null
           line_id?: string
           manpower_planned?: number

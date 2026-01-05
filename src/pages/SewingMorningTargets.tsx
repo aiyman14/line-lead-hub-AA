@@ -60,7 +60,7 @@ interface DropdownOption {
 
 export default function SewingMorningTargets() {
   const navigate = useNavigate();
-  const { user, profile, isAdminOrHigher } = useAuth();
+  const { user, profile, factory, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -192,6 +192,16 @@ export default function SewingMorningTargets() {
     setSubmitting(true);
 
     try {
+      // Check if submission is late based on morning_target_cutoff
+      let isLate = false;
+      if (factory?.morning_target_cutoff) {
+        const now = new Date();
+        const [cutoffHour, cutoffMinute] = factory.morning_target_cutoff.split(':').map(Number);
+        const cutoffTime = new Date();
+        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
+        isLate = now > cutoffTime;
+      }
+
       const insertData = {
         factory_id: profile.factory_id,
         production_date: format(new Date(), "yyyy-MM-dd"),
@@ -212,6 +222,7 @@ export default function SewingMorningTargets() {
         next_milestone: nextMilestone,
         estimated_ex_factory: estimatedExFactory || null,
         remarks: remarks || null,
+        is_late: isLate,
       };
 
       const { error } = await supabase.from("sewing_targets").insert(insertData as any);
