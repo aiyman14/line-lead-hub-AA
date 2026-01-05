@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,7 @@ interface DropdownOption {
 }
 
 export default function ReportBlocker() {
+  const { t, i18n } = useTranslation();
   const { profile, user, factory, hasRole, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -268,7 +270,7 @@ export default function ReportBlocker() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast({ variant: "destructive", title: "Please fill all required fields" });
+      toast({ variant: "destructive", title: t('common.fillRequiredFields') });
       return;
     }
 
@@ -334,8 +336,8 @@ export default function ReportBlocker() {
       if (error) throw error;
 
       toast({
-        title: "Blocker reported!",
-        description: "Your blocker has been submitted and will be reviewed.",
+        title: t('reportBlocker.blockerReported'),
+        description: t('reportBlocker.blockerReportedDesc'),
       });
 
       // Navigate workers to my-submissions, others to blockers view
@@ -345,8 +347,8 @@ export default function ReportBlocker() {
       console.error("Error submitting blocker:", error);
       toast({
         variant: "destructive",
-        title: "Submission failed",
-        description: error instanceof Error ? error.message : "Please try again.",
+        title: t('common.submissionFailed'),
+        description: error instanceof Error ? error.message : t('common.pleaseTryAgain'),
       });
     } finally {
       setIsSubmitting(false);
@@ -367,13 +369,12 @@ export default function ReportBlocker() {
         <Card className="max-w-md">
           <CardContent className="pt-6 text-center">
             <Factory className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">No Factory Assigned</h2>
+            <h2 className="text-lg font-semibold mb-2">{t('common.noFactoryAssigned')}</h2>
             <p className="text-muted-foreground text-sm">
-              You need to be assigned to a factory before you can report blockers. Please contact your
-              administrator.
+              {t('common.needFactoryAssigned')}
             </p>
             <Button variant="outline" className="mt-4" onClick={() => navigate(-1)}>
-              Go Back
+              {t('reportBlocker.goBack')}
             </Button>
           </CardContent>
         </Card>
@@ -393,9 +394,9 @@ export default function ReportBlocker() {
             <AlertTriangle className="h-5 w-5 text-warning" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Report a Blocker</h1>
+            <h1 className="text-xl font-bold">{t('reportBlocker.title')}</h1>
             <p className="text-sm text-muted-foreground">
-              {new Date().toLocaleDateString("en-US", { dateStyle: "full" })}
+              {new Date().toLocaleDateString(i18n.language === 'bn' ? 'bn-BD' : 'en-US', { dateStyle: "full" })}
             </p>
           </div>
         </div>
@@ -406,7 +407,7 @@ export default function ReportBlocker() {
         {canAccessBoth ? (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Update Type</CardTitle>
+              <CardTitle className="text-base">{t('reportBlocker.updateType')}</CardTitle>
             </CardHeader>
             <CardContent>
               <Select value={updateType} onValueChange={(v) => setUpdateType(v as "sewing" | "finishing")}>
@@ -414,8 +415,8 @@ export default function ReportBlocker() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sewing">Sewing</SelectItem>
-                  <SelectItem value="finishing">Finishing</SelectItem>
+                  <SelectItem value="sewing">{t('dashboard.sewing')}</SelectItem>
+                  <SelectItem value="finishing">{t('dashboard.finishing')}</SelectItem>
                 </SelectContent>
               </Select>
             </CardContent>
@@ -425,14 +426,14 @@ export default function ReportBlocker() {
         {/* Line & PO Selection */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Location</CardTitle>
+            <CardTitle className="text-base">{t('reportBlocker.location')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Line *</Label>
+              <Label>{t('blockers.line')} *</Label>
               <Select value={selectedLine} onValueChange={setSelectedLine}>
                 <SelectTrigger className={`h-12 ${errors.line ? "border-destructive" : ""}`}>
-                  <SelectValue placeholder="Select Line" />
+                  <SelectValue placeholder={t('common.selectLine')} />
                 </SelectTrigger>
                 <SelectContent>
                   {lines.map((line) => (
@@ -446,16 +447,16 @@ export default function ReportBlocker() {
             </div>
 
             <div className="space-y-2">
-              <Label>PO (Optional)</Label>
+              <Label>PO ({t('common.optional')})</Label>
               <Select value={selectedPO} onValueChange={setSelectedPO} disabled={!selectedLine}>
                 <SelectTrigger className="h-12">
                   <SelectValue
                     placeholder={
                       !selectedLine
-                        ? "Select a line first"
+                        ? t('common.selectLineFirst')
                         : filteredWorkOrders.length === 0
-                        ? "No POs for this line"
-                        : "Select PO (optional)"
+                        ? t('common.noPOsForLine')
+                        : t('common.selectPO')
                     }
                   />
                 </SelectTrigger>
@@ -474,13 +475,13 @@ export default function ReportBlocker() {
               <div className="grid grid-cols-2 gap-4 pt-2">
                 {unitName && (
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Unit</Label>
+                    <Label className="text-xs text-muted-foreground">{t('sewing.unit')}</Label>
                     <div className="p-2 bg-muted rounded border text-sm font-medium">{unitName}</div>
                   </div>
                 )}
                 {floorName && (
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Floor</Label>
+                    <Label className="text-xs text-muted-foreground">{t('sewing.floor')}</Label>
                     <div className="p-2 bg-muted rounded border text-sm font-medium">{floorName}</div>
                   </div>
                 )}
@@ -494,16 +495,16 @@ export default function ReportBlocker() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-warning" />
-              Blocker Details
+              {t('reportBlocker.blockerDetails')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Blocker Type */}
             <div className="space-y-2">
-              <Label>Blocker Type *</Label>
+              <Label>{t('sewing.blockerType')} *</Label>
               <Select value={blockerType} onValueChange={setBlockerType}>
                 <SelectTrigger className={`h-12 ${errors.blockerType ? "border-destructive" : ""}`}>
-                  <SelectValue placeholder="Select Blocker Type" />
+                  <SelectValue placeholder={t('reportBlocker.selectBlockerType')} />
                 </SelectTrigger>
                 <SelectContent>
                   {blockerTypes.map((bt) => (
@@ -518,10 +519,10 @@ export default function ReportBlocker() {
 
             {/* Blocker Owner */}
             <div className="space-y-2">
-              <Label>Blocker Owner *</Label>
+              <Label>{t('sewing.blockerOwner')} *</Label>
               <Select value={blockerOwner} onValueChange={setBlockerOwner}>
                 <SelectTrigger className={`h-12 ${errors.blockerOwner ? "border-destructive" : ""}`}>
-                  <SelectValue placeholder="Select Owner" />
+                  <SelectValue placeholder={t('reportBlocker.selectBlockerOwner')} />
                 </SelectTrigger>
                 <SelectContent>
                   {blockerOwnerOptions.map((option) => (
@@ -536,10 +537,10 @@ export default function ReportBlocker() {
 
             {/* Blocker Impact */}
             <div className="space-y-2">
-              <Label>Blocker Impact *</Label>
+              <Label>{t('sewing.blockerImpact')} *</Label>
               <Select value={blockerImpact} onValueChange={setBlockerImpact}>
                 <SelectTrigger className={`h-12 ${errors.blockerImpact ? "border-destructive" : ""}`}>
-                  <SelectValue placeholder="Select Impact" />
+                  <SelectValue placeholder={t('reportBlocker.selectBlockerImpact')} />
                 </SelectTrigger>
                 <SelectContent>
                   {blockerImpactOptions.map((option) => (
@@ -554,7 +555,7 @@ export default function ReportBlocker() {
 
             {/* Expected Resolution Date */}
             <div className="space-y-2">
-              <Label>Expected Resolution *</Label>
+              <Label>{t('reportBlocker.expectedResolution')} *</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -566,7 +567,7 @@ export default function ReportBlocker() {
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {blockerResolution ? format(blockerResolution, "PPP") : "Select date"}
+                    {blockerResolution ? format(blockerResolution, "PPP") : t('common.selectDate')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -578,9 +579,9 @@ export default function ReportBlocker() {
 
             {/* Description */}
             <div className="space-y-2">
-              <Label>Description *</Label>
+              <Label>{t('blockers.description_label')} *</Label>
               <Textarea
-                placeholder="Describe the blocker and any actions taken..."
+                placeholder={t('sewing.actionTakenToday')}
                 value={blockerDescription}
                 onChange={(e) => setBlockerDescription(e.target.value)}
                 className={`min-h-[100px] ${errors.blockerDescription ? "border-destructive" : ""}`}
@@ -597,12 +598,12 @@ export default function ReportBlocker() {
           {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Submitting...
+              {t('common.loading')}
             </>
           ) : (
             <>
               <AlertTriangle className="mr-2 h-4 w-4" />
-              Report Blocker
+              {t('reportBlocker.title')}
             </>
           )}
         </Button>
