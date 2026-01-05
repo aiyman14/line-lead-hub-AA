@@ -493,12 +493,12 @@ export default function SewingMorningTargets() {
         </Card>
 
         {/* Submit Button */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t">
-          <div className="container max-w-2xl">
-            <Button type="submit" className="w-full h-12" disabled={submitting}>
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t z-50">
+          <div className="max-w-2xl mx-auto px-4">
+            <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
               {submitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   Submitting...
                 </>
               ) : (

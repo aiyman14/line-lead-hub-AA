@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -54,12 +53,6 @@ interface Stage {
   code: string;
 }
 
-interface BlockerType {
-  id: string;
-  name: string;
-  code: string;
-}
-
 interface DropdownOption {
   id: string;
   label: string;
@@ -77,9 +70,6 @@ export default function SewingEndOfDay() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
-  const [blockerTypes, setBlockerTypes] = useState<BlockerType[]>([]);
-  const [blockerOwnerOptions, setBlockerOwnerOptions] = useState<DropdownOption[]>([]);
-  const [blockerImpactOptions, setBlockerImpactOptions] = useState<DropdownOption[]>([]);
   const [progressOptions, setProgressOptions] = useState<DropdownOption[]>([]);
 
   // Form state
@@ -94,15 +84,6 @@ export default function SewingEndOfDay() {
   const [actualStageId, setActualStageId] = useState("");
   const [actualStageProgress, setActualStageProgress] = useState("");
   const [remarks, setRemarks] = useState("");
-
-  // Blocker state
-  const [hasBlocker, setHasBlocker] = useState(false);
-  const [blockerTypeId, setBlockerTypeId] = useState("");
-  const [blockerOwner, setBlockerOwner] = useState("");
-  const [blockerImpact, setBlockerImpact] = useState("");
-  const [blockerResolutionDate, setBlockerResolutionDate] = useState("");
-  const [actionTakenToday, setActionTakenToday] = useState("");
-  const [blockerDescription, setBlockerDescription] = useState("");
 
   // Auto-filled
   const [unitName, setUnitName] = useState("");
@@ -147,16 +128,13 @@ export default function SewingEndOfDay() {
     try {
       const [
         linesRes, workOrdersRes, unitsRes, floorsRes, stagesRes,
-        blockerTypesRes, blockerOwnerRes, blockerImpactRes, progressRes, assignmentsRes
+        progressRes, assignmentsRes
       ] = await Promise.all([
         supabase.from("lines").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("work_orders").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("units").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("floors").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("stages").select("*").eq("factory_id", profile.factory_id).eq("is_active", true).order("sequence"),
-        supabase.from("blocker_types").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
-        supabase.from("blocker_owner_options").select("*").eq("factory_id", profile.factory_id).eq("is_active", true).order("sort_order"),
-        supabase.from("blocker_impact_options").select("*").eq("factory_id", profile.factory_id).eq("is_active", true).order("sort_order"),
         supabase.from("stage_progress_options").select("*").eq("factory_id", profile.factory_id).eq("is_active", true).order("sort_order"),
         supabase.from("user_line_assignments").select("line_id").eq("user_id", user?.id || ""),
       ]);
@@ -173,9 +151,6 @@ export default function SewingEndOfDay() {
       setUnits(unitsRes.data || []);
       setFloors(floorsRes.data || []);
       setStages(stagesRes.data || []);
-      setBlockerTypes(blockerTypesRes.data || []);
-      setBlockerOwnerOptions(blockerOwnerRes.data || []);
-      setBlockerImpactOptions(blockerImpactRes.data || []);
       setProgressOptions(progressRes.data || []);
     } catch (error) {
       console.error("Error fetching form data:", error);
@@ -198,15 +173,6 @@ export default function SewingEndOfDay() {
     if (otHoursActual === "" || parseFloat(otHoursActual) < 0) newErrors.otHoursActual = "OT hours must be 0 or more";
     if (!actualStageId) newErrors.actualStage = "Stage is required";
     if (!actualStageProgress) newErrors.actualStageProgress = "Stage progress is required";
-
-    // Blocker validation
-    if (hasBlocker) {
-      if (!blockerTypeId) newErrors.blockerType = "Blocker type is required";
-      if (!blockerOwner) newErrors.blockerOwner = "Owner is required";
-      if (!blockerImpact) newErrors.blockerImpact = "Impact is required";
-      if (!blockerResolutionDate) newErrors.blockerResolutionDate = "Resolution date is required";
-      if (!actionTakenToday) newErrors.actionTakenToday = "Action taken is required";
-    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -248,13 +214,6 @@ export default function SewingEndOfDay() {
         ot_hours_actual: parseFloat(otHoursActual),
         actual_stage_id: actualStageId,
         actual_stage_progress: parseInt(actualStageProgress),
-        has_blocker: hasBlocker,
-        blocker_type_id: hasBlocker ? blockerTypeId : null,
-        blocker_owner: hasBlocker ? blockerOwner : null,
-        blocker_impact: hasBlocker ? blockerImpact : null,
-        blocker_resolution_date: hasBlocker && blockerResolutionDate ? blockerResolutionDate : null,
-        action_taken_today: hasBlocker ? actionTakenToday : null,
-        blocker_description: hasBlocker ? blockerDescription : null,
         remarks: remarks || null,
       };
 
@@ -521,109 +480,6 @@ export default function SewingEndOfDay() {
           </CardContent>
         </Card>
 
-        {/* Blocker Section */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Blocker</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label>Had a blocker today?</Label>
-              <Switch checked={hasBlocker} onCheckedChange={setHasBlocker} />
-            </div>
-
-            {hasBlocker && (
-              <div className="space-y-4 pt-4 border-t">
-                <div className="space-y-2">
-                  <Label>Blocker Type *</Label>
-                  <Select value={blockerTypeId} onValueChange={setBlockerTypeId}>
-                    <SelectTrigger className={errors.blockerType ? "border-destructive" : ""}>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {blockerTypes.map((bt) => (
-                        <SelectItem key={bt.id} value={bt.id}>
-                          {bt.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.blockerType && <p className="text-sm text-destructive">{errors.blockerType}</p>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Owner *</Label>
-                    <Select value={blockerOwner} onValueChange={setBlockerOwner}>
-                      <SelectTrigger className={errors.blockerOwner ? "border-destructive" : ""}>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {blockerOwnerOptions.map((opt) => (
-                          <SelectItem key={opt.id} value={opt.label}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.blockerOwner && <p className="text-sm text-destructive">{errors.blockerOwner}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Impact *</Label>
-                    <Select value={blockerImpact} onValueChange={setBlockerImpact}>
-                      <SelectTrigger className={errors.blockerImpact ? "border-destructive" : ""}>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {blockerImpactOptions.map((opt) => (
-                          <SelectItem key={opt.id} value={opt.label}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.blockerImpact && <p className="text-sm text-destructive">{errors.blockerImpact}</p>}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Expected Resolution Date *</Label>
-                  <Input
-                    type="date"
-                    value={blockerResolutionDate}
-                    onChange={(e) => setBlockerResolutionDate(e.target.value)}
-                    className={errors.blockerResolutionDate ? "border-destructive" : ""}
-                  />
-                  {errors.blockerResolutionDate && <p className="text-sm text-destructive">{errors.blockerResolutionDate}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Action Taken Today *</Label>
-                  <Textarea
-                    value={actionTakenToday}
-                    onChange={(e) => setActionTakenToday(e.target.value)}
-                    placeholder="What action was taken to resolve this blocker?"
-                    rows={2}
-                    className={errors.actionTakenToday ? "border-destructive" : ""}
-                  />
-                  {errors.actionTakenToday && <p className="text-sm text-destructive">{errors.actionTakenToday}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea
-                    value={blockerDescription}
-                    onChange={(e) => setBlockerDescription(e.target.value)}
-                    placeholder="Additional details about the blocker..."
-                    rows={2}
-                  />
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Remarks */}
         <Card>
           <CardHeader className="pb-3">
@@ -643,12 +499,12 @@ export default function SewingEndOfDay() {
         </Card>
 
         {/* Submit Button */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t">
-          <div className="container max-w-2xl">
-            <Button type="submit" className="w-full h-12" disabled={submitting}>
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t z-50">
+          <div className="max-w-2xl mx-auto px-4">
+            <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
               {submitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   Submitting...
                 </>
               ) : (

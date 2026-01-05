@@ -111,19 +111,17 @@ export function AppSidebar() {
     roles.some(ur => ur.role === r)
   ) || 'worker';
 
+  // Get nav items based on role and department
   let navItems = NAV_ITEMS[highestRole as keyof typeof NAV_ITEMS] || NAV_ITEMS.worker;
 
-  // Filter nav items based on worker's department
+  // For workers, filter navigation based on department
   if (highestRole === 'worker' && profile?.department) {
-    navItems = navItems.filter(item => {
-      if (item.path === '/update/sewing') {
-        return profile.department === 'sewing' || profile.department === 'both';
-      }
-      if (item.path === '/update/finishing') {
-        return profile.department === 'finishing' || profile.department === 'both';
-      }
-      return true;
-    });
+    if (profile.department === 'sewing') {
+      navItems = NAV_ITEMS.worker_sewing;
+    } else if (profile.department === 'finishing') {
+      navItems = NAV_ITEMS.worker_finishing;
+    }
+    // If department is 'both' or undefined, show all worker items
   }
 
   const isActive = (path: string) => location.pathname === path;
