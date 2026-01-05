@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { TargetDetailModal } from "@/components/TargetDetailModal";
+import { TargetVsActualComparison } from "@/components/insights/TargetVsActualComparison";
 import {
   Factory,
   Package,
@@ -696,6 +697,29 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Target vs Actual Comparison */}
+          <TargetVsActualComparison
+            targets={currentTargets.map(t => ({
+              line_id: t.line_id,
+              line_name: t.line_name,
+              po_number: t.po_number,
+              per_hour_target: t.per_hour_target,
+              manpower_planned: t.manpower_planned,
+              m_power_planned: t.m_power_planned,
+            }))}
+            actuals={currentEndOfDay.map(a => ({
+              line_id: a.line_id,
+              line_name: a.line_name,
+              po_number: a.po_number,
+              output: a.output,
+              manpower: a.manpower,
+              m_power: a.m_power,
+              has_blocker: a.has_blocker,
+            }))}
+            type={departmentTab}
+            loading={loading}
+          />
         </TabsContent>
       </Tabs>
 
