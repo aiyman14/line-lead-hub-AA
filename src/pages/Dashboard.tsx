@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
+import { TargetDetailModal } from "@/components/TargetDetailModal";
 import {
   Factory,
   Package,
@@ -16,7 +17,6 @@ import {
   TrendingUp,
   Rows3,
   ClipboardList,
-  Clock,
   ChevronRight,
   Plus,
   Crosshair,
@@ -34,6 +34,7 @@ interface DashboardStats {
 
 interface TargetSubmission {
   id: string;
+  type: 'sewing' | 'finishing';
   line_id: string;
   line_name: string;
   work_order_id: string;
@@ -41,8 +42,16 @@ interface TargetSubmission {
   buyer: string | null;
   style: string | null;
   per_hour_target: number;
-  manpower_planned?: number;
-  m_power_planned?: number;
+  manpower_planned?: number | null;
+  m_power_planned?: number | null;
+  ot_hours_planned?: number | null;
+  day_hour_planned?: number | null;
+  day_over_time_planned?: number | null;
+  planned_stage_progress?: number | null;
+  next_milestone?: string | null;
+  estimated_ex_factory?: string | null;
+  order_qty?: number | null;
+  remarks?: string | null;
   submitted_at: string;
   production_date: string;
 }
@@ -58,9 +67,41 @@ interface EndOfDaySubmission {
   has_blocker: boolean;
   blocker_description: string | null;
   blocker_impact: string | null;
+  blocker_owner: string | null;
+  blocker_status: string | null;
   po_number: string | null;
   buyer: string | null;
   style: string | null;
+  // Sewing specific
+  target_qty?: number | null;
+  manpower?: number | null;
+  reject_qty?: number | null;
+  rework_qty?: number | null;
+  stage_progress?: number | null;
+  ot_hours?: number | null;
+  ot_manpower?: number | null;
+  notes?: string | null;
+  // Finishing specific
+  buyer_name?: string | null;
+  style_no?: string | null;
+  item_name?: string | null;
+  order_quantity?: number | null;
+  unit_name?: string | null;
+  floor_name?: string | null;
+  m_power?: number | null;
+  per_hour_target?: number | null;
+  day_qc_pass?: number | null;
+  total_qc_pass?: number | null;
+  day_poly?: number | null;
+  total_poly?: number | null;
+  average_production?: number | null;
+  day_over_time?: number | null;
+  total_over_time?: number | null;
+  day_hour?: number | null;
+  total_hour?: number | null;
+  day_carton?: number | null;
+  total_carton?: number | null;
+  remarks?: string | null;
 }
 
 interface ActiveBlocker {
@@ -92,7 +133,9 @@ export default function Dashboard() {
   const [activeBlockers, setActiveBlockers] = useState<ActiveBlocker[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<TargetSubmission | null>(null);
+  const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
+  const [targetModalOpen, setTargetModalOpen] = useState(false);
 
   const canViewDashboard = hasRole('supervisor') || isAdminOrHigher();
 
@@ -188,6 +231,7 @@ export default function Dashboard() {
       // Format sewing targets
       const formattedSewingTargets: TargetSubmission[] = (sewingTargetsData || []).map(t => ({
         id: t.id,
+        type: 'sewing' as const,
         line_id: t.lines?.line_id || 'Unknown',
         line_name: t.lines?.name || t.lines?.line_id || 'Unknown',
         work_order_id: t.work_order_id,
@@ -196,6 +240,12 @@ export default function Dashboard() {
         style: t.work_orders?.style || null,
         per_hour_target: t.per_hour_target,
         manpower_planned: t.manpower_planned,
+        ot_hours_planned: t.ot_hours_planned,
+        planned_stage_progress: t.planned_stage_progress,
+        next_milestone: t.next_milestone,
+        estimated_ex_factory: t.estimated_ex_factory,
+        order_qty: t.order_qty,
+        remarks: t.remarks,
         submitted_at: t.submitted_at,
         production_date: t.production_date,
       }));
@@ -203,6 +253,7 @@ export default function Dashboard() {
       // Format finishing targets
       const formattedFinishingTargets: TargetSubmission[] = (finishingTargetsData || []).map(t => ({
         id: t.id,
+        type: 'finishing' as const,
         line_id: t.lines?.line_id || 'Unknown',
         line_name: t.lines?.name || t.lines?.line_id || 'Unknown',
         work_order_id: t.work_order_id,
@@ -211,6 +262,10 @@ export default function Dashboard() {
         style: t.work_orders?.style || null,
         per_hour_target: t.per_hour_target,
         m_power_planned: t.m_power_planned,
+        day_hour_planned: t.day_hour_planned,
+        day_over_time_planned: t.day_over_time_planned,
+        order_qty: t.order_qty,
+        remarks: t.remarks,
         submitted_at: t.submitted_at,
         production_date: t.production_date,
       }));
@@ -227,9 +282,19 @@ export default function Dashboard() {
         has_blocker: u.has_blocker || false,
         blocker_description: u.blocker_description,
         blocker_impact: u.blocker_impact,
+        blocker_owner: u.blocker_owner,
+        blocker_status: u.blocker_status,
         po_number: u.work_orders?.po_number || null,
         buyer: u.work_orders?.buyer || null,
         style: u.work_orders?.style || null,
+        target_qty: u.target_qty,
+        manpower: u.manpower,
+        reject_qty: u.reject_qty,
+        rework_qty: u.rework_qty,
+        stage_progress: u.stage_progress,
+        ot_hours: u.ot_hours,
+        ot_manpower: u.ot_manpower,
+        notes: u.notes,
       }));
 
       // Format finishing end of day
@@ -244,9 +309,31 @@ export default function Dashboard() {
         has_blocker: u.has_blocker || false,
         blocker_description: u.blocker_description,
         blocker_impact: u.blocker_impact,
+        blocker_owner: u.blocker_owner,
+        blocker_status: u.blocker_status,
         po_number: u.work_orders?.po_number || null,
         buyer: u.work_orders?.buyer || null,
         style: u.work_orders?.style || null,
+        buyer_name: u.buyer_name,
+        style_no: u.style_no,
+        item_name: u.item_name,
+        order_quantity: u.order_quantity,
+        unit_name: u.unit_name,
+        floor_name: u.floor_name,
+        m_power: u.m_power,
+        per_hour_target: u.per_hour_target,
+        day_qc_pass: u.day_qc_pass,
+        total_qc_pass: u.total_qc_pass,
+        day_poly: u.day_poly,
+        total_poly: u.total_poly,
+        average_production: u.average_production,
+        day_over_time: u.day_over_time,
+        total_over_time: u.total_over_time,
+        day_hour: u.day_hour,
+        total_hour: u.total_hour,
+        day_carton: u.day_carton,
+        total_carton: u.total_carton,
+        remarks: u.remarks,
       }));
 
       // Fetch active blockers
@@ -440,7 +527,11 @@ export default function Dashboard() {
                     {currentTargets.map((target) => (
                       <div
                         key={target.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                        onClick={() => {
+                          setSelectedTarget(target);
+                          setTargetModalOpen(true);
+                        }}
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
                       >
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-primary/10">
@@ -502,6 +593,66 @@ export default function Dashboard() {
                     {currentEndOfDay.map((update) => (
                       <div
                         key={update.id}
+                        onClick={() => {
+                          const submissionData = update.type === 'sewing' ? {
+                            id: update.id,
+                            type: 'sewing' as const,
+                            line_name: update.line_name,
+                            po_number: update.po_number,
+                            buyer: update.buyer,
+                            style: update.style,
+                            output_qty: update.output,
+                            target_qty: update.target_qty,
+                            manpower: update.manpower,
+                            reject_qty: update.reject_qty,
+                            rework_qty: update.rework_qty,
+                            stage_progress: update.stage_progress,
+                            ot_hours: update.ot_hours,
+                            ot_manpower: update.ot_manpower,
+                            has_blocker: update.has_blocker,
+                            blocker_description: update.blocker_description,
+                            blocker_impact: update.blocker_impact,
+                            blocker_owner: update.blocker_owner,
+                            blocker_status: update.blocker_status,
+                            notes: update.notes,
+                            submitted_at: update.submitted_at,
+                            production_date: update.production_date,
+                          } : {
+                            id: update.id,
+                            type: 'finishing' as const,
+                            line_name: update.line_name,
+                            po_number: update.po_number,
+                            buyer_name: update.buyer_name,
+                            style_no: update.style_no,
+                            item_name: update.item_name,
+                            order_quantity: update.order_quantity,
+                            unit_name: update.unit_name,
+                            floor_name: update.floor_name,
+                            m_power: update.m_power,
+                            per_hour_target: update.per_hour_target,
+                            day_qc_pass: update.day_qc_pass,
+                            total_qc_pass: update.total_qc_pass,
+                            day_poly: update.day_poly,
+                            total_poly: update.total_poly,
+                            average_production: update.average_production,
+                            day_over_time: update.day_over_time,
+                            total_over_time: update.total_over_time,
+                            day_hour: update.day_hour,
+                            total_hour: update.total_hour,
+                            day_carton: update.day_carton,
+                            total_carton: update.total_carton,
+                            remarks: update.remarks,
+                            has_blocker: update.has_blocker,
+                            blocker_description: update.blocker_description,
+                            blocker_impact: update.blocker_impact,
+                            blocker_owner: update.blocker_owner,
+                            blocker_status: update.blocker_status,
+                            submitted_at: update.submitted_at,
+                            production_date: update.production_date,
+                          };
+                          setSelectedSubmission(submissionData);
+                          setSubmissionModalOpen(true);
+                        }}
                         className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
                       >
                         <div className="flex items-center gap-3">
@@ -614,8 +765,14 @@ export default function Dashboard() {
 
       <SubmissionDetailModal
         submission={selectedSubmission}
-        open={modalOpen}
-        onOpenChange={setModalOpen}
+        open={submissionModalOpen}
+        onOpenChange={setSubmissionModalOpen}
+      />
+
+      <TargetDetailModal
+        target={selectedTarget}
+        open={targetModalOpen}
+        onOpenChange={setTargetModalOpen}
       />
     </div>
   );
