@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Loader2, 
@@ -15,6 +16,7 @@ import {
   ListOrdered,
   Building2,
   Clock,
+  Globe,
   ChevronRight,
   AlertTriangle,
   Factory,
@@ -48,7 +50,25 @@ export default function SetupHome() {
   const [cutoffTime, setCutoffTime] = useState("16:00");
   const [morningTargetCutoff, setMorningTargetCutoff] = useState("10:00");
   const [eveningActualCutoff, setEveningActualCutoff] = useState("18:00");
+  const [timezone, setTimezone] = useState("Asia/Dhaka");
   const [isSavingCutoff, setIsSavingCutoff] = useState(false);
+
+  // Common manufacturing region timezones
+  const timezones = [
+    { value: "Asia/Dhaka", label: "Bangladesh (GMT+6)" },
+    { value: "Asia/Kolkata", label: "India (GMT+5:30)" },
+    { value: "Asia/Ho_Chi_Minh", label: "Vietnam (GMT+7)" },
+    { value: "Asia/Shanghai", label: "China (GMT+8)" },
+    { value: "Asia/Jakarta", label: "Indonesia (GMT+7)" },
+    { value: "Asia/Karachi", label: "Pakistan (GMT+5)" },
+    { value: "Asia/Manila", label: "Philippines (GMT+8)" },
+    { value: "Asia/Bangkok", label: "Thailand (GMT+7)" },
+    { value: "Asia/Colombo", label: "Sri Lanka (GMT+5:30)" },
+    { value: "Europe/London", label: "UK (GMT+0)" },
+    { value: "Europe/Paris", label: "Central Europe (GMT+1)" },
+    { value: "America/New_York", label: "US Eastern (GMT-5)" },
+    { value: "America/Los_Angeles", label: "US Pacific (GMT-8)" },
+  ];
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -67,6 +87,9 @@ export default function SetupHome() {
     }
     if (factory?.evening_actual_cutoff) {
       setEveningActualCutoff(factory.evening_actual_cutoff.slice(0, 5));
+    }
+    if (factory?.timezone) {
+      setTimezone(factory.timezone);
     }
   }, [factory]);
 
@@ -99,7 +122,7 @@ export default function SetupHome() {
     }
   }
 
-  async function handleSaveCutoff() {
+  async function handleSaveSettings() {
     if (!profile?.factory_id) return;
     
     setIsSavingCutoff(true);
@@ -109,12 +132,13 @@ export default function SetupHome() {
         .update({ 
           cutoff_time: cutoffTime + ':00',
           morning_target_cutoff: morningTargetCutoff + ':00',
-          evening_actual_cutoff: eveningActualCutoff + ':00'
+          evening_actual_cutoff: eveningActualCutoff + ':00',
+          timezone: timezone
         })
         .eq('id', profile.factory_id);
       
       if (error) throw error;
-      toast({ title: "Cutoff times updated" });
+      toast({ title: "Settings updated" });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
@@ -271,13 +295,37 @@ export default function SetupHome() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Clock className="h-4 w-4" />
-            Cutoff Time Settings
+            Time & Timezone Settings
           </CardTitle>
           <CardDescription>
-            Configure when target and actual submissions are due
+            Configure timezone and cutoff times for submissions
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Timezone */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Globe className="h-4 w-4 text-muted-foreground" />
+              <Label className="text-sm font-medium">Factory Timezone</Label>
+            </div>
+            <Select value={timezone} onValueChange={setTimezone}>
+              <SelectTrigger className="w-full sm:w-80">
+                <SelectValue placeholder="Select timezone" />
+              </SelectTrigger>
+              <SelectContent>
+                {timezones.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              All cutoff times will be based on this timezone
+            </p>
+          </div>
+
+          {/* Cutoff Times */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <div className="space-y-2">
               <Label className="text-sm font-medium">Morning Target Cutoff</Label>
@@ -316,9 +364,9 @@ export default function SetupHome() {
               </p>
             </div>
           </div>
-          <Button onClick={handleSaveCutoff} disabled={isSavingCutoff}>
+          <Button onClick={handleSaveSettings} disabled={isSavingCutoff}>
             {isSavingCutoff && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save Cutoff Times
+            Save Settings
           </Button>
         </CardContent>
       </Card>
