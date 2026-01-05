@@ -138,6 +138,7 @@ export const NAV_ITEMS = {
   worker: [
     { path: '/update/sewing', label: 'Sewing Update', icon: 'Factory' },
     { path: '/update/finishing', label: 'Finishing Update', icon: 'Package' },
+    { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/my-submissions', label: 'My Submissions', icon: 'FileText' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],

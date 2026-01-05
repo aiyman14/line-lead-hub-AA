@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Factory, ArrowLeft, AlertTriangle, CheckCircle, Upload, X, Image as ImageIcon, Calendar as CalendarIcon } from "lucide-react";
+import { Loader2, Factory, ArrowLeft, CheckCircle, Upload, X, Image as ImageIcon, Calendar as CalendarIcon } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -61,15 +61,7 @@ interface DropdownOption {
   is_active: boolean;
 }
 
-interface BlockerType {
-  id: string;
-  name: string;
-  code: string;
-  default_owner: string | null;
-  default_impact: string | null;
-}
-
-interface Factory {
+interface FactoryType {
   id: string;
   name: string;
 }
@@ -89,9 +81,7 @@ export default function SewingUpdate() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [stageProgressOptions, setStageProgressOptions] = useState<DropdownOption[]>([]);
   const [nextMilestoneOptions, setNextMilestoneOptions] = useState<DropdownOption[]>([]);
-  const [blockerTypes, setBlockerTypes] = useState<BlockerType[]>([]);
-  const [blockerOwnerOptions, setBlockerOwnerOptions] = useState<DropdownOption[]>([]);
-  const [blockerImpactOptions, setBlockerImpactOptions] = useState<DropdownOption[]>([]);
+  
 
   // SECTION A - Selection fields
   const [selectedLine, setSelectedLine] = useState("");
@@ -122,15 +112,7 @@ export default function SewingUpdate() {
   const [estimatedExFactory, setEstimatedExFactory] = useState<Date | undefined>();
   const [nextMilestone, setNextMilestone] = useState("");
 
-  // SECTION E - Blockers (conditional)
-  const [blockerToday, setBlockerToday] = useState("No");
-  const [blockerType, setBlockerType] = useState("");
-  const [blockerOwner, setBlockerOwner] = useState("");
-  const [blockerImpact, setBlockerImpact] = useState("");
-  const [blockerResolution, setBlockerResolution] = useState<Date | undefined>(new Date());
-  const [actionTakenToday, setActionTakenToday] = useState("");
-
-  // SECTION F - Photos and Notes
+  // SECTION E - Photos and Notes
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
   const [remarks, setRemarks] = useState("");
@@ -199,29 +181,6 @@ export default function SewingUpdate() {
     }
   }, [selectedLine, lines, units, floors]);
 
-  // Auto-fill blocker owner/impact when blocker type is selected
-  useEffect(() => {
-    if (blockerType) {
-      const bt = blockerTypes.find(b => b.id === blockerType);
-      if (bt) {
-        if (bt.default_owner) {
-          // Find matching owner option
-          const ownerOption = blockerOwnerOptions.find(o => 
-            o.label.toLowerCase() === bt.default_owner?.toLowerCase()
-          );
-          if (ownerOption) setBlockerOwner(ownerOption.id);
-        }
-        if (bt.default_impact) {
-          // Find matching impact option
-          const impactOption = blockerImpactOptions.find(o => 
-            o.label.toLowerCase().includes(bt.default_impact?.toLowerCase() || "")
-          );
-          if (impactOption) setBlockerImpact(impactOption.id);
-        }
-      }
-    }
-  }, [blockerType, blockerTypes, blockerOwnerOptions, blockerImpactOptions]);
-
   async function fetchFormData() {
     if (!profile?.factory_id || !user?.id) return;
 
@@ -235,9 +194,6 @@ export default function SewingUpdate() {
         stagesRes, 
         stageProgressRes,
         nextMilestoneRes,
-        blockerTypesRes,
-        blockerOwnerRes,
-        blockerImpactRes
       ] = await Promise.all([
         supabase.from('lines').select('id, line_id, name, unit_id, floor_id').eq('factory_id', profile.factory_id).eq('is_active', true).order('line_id'),
         supabase.from('user_line_assignments').select('line_id').eq('user_id', user.id).eq('factory_id', profile.factory_id),
@@ -247,9 +203,6 @@ export default function SewingUpdate() {
         supabase.from('stages').select('id, name, code').eq('factory_id', profile.factory_id).eq('is_active', true).order('sequence'),
         supabase.from('stage_progress_options').select('id, label, is_active').eq('factory_id', profile.factory_id).eq('is_active', true).order('sort_order'),
         supabase.from('next_milestone_options').select('id, label, is_active').eq('factory_id', profile.factory_id).eq('is_active', true).order('sort_order'),
-        supabase.from('blocker_types').select('id, name, code, default_owner, default_impact').eq('factory_id', profile.factory_id).eq('is_active', true).order('name'),
-        supabase.from('blocker_owner_options').select('id, label, is_active').eq('factory_id', profile.factory_id).eq('is_active', true).order('sort_order'),
-        supabase.from('blocker_impact_options').select('id, label, is_active').eq('factory_id', profile.factory_id).eq('is_active', true).order('sort_order'),
       ]);
 
       const allLines = linesRes.data || [];
@@ -274,9 +227,6 @@ export default function SewingUpdate() {
       setStages(stagesRes.data || []);
       setStageProgressOptions(stageProgressRes.data || []);
       setNextMilestoneOptions(nextMilestoneRes.data || []);
-      setBlockerTypes(blockerTypesRes.data || []);
-      setBlockerOwnerOptions(blockerOwnerRes.data || []);
-      setBlockerImpactOptions(blockerImpactRes.data || []);
     } catch (error) {
       console.error('Error fetching form data:', error);
     } finally {
@@ -305,15 +255,6 @@ export default function SewingUpdate() {
     if (!stageProgress) newErrors.stageProgress = "Stage Progress is required";
     if (!nextMilestone) newErrors.nextMilestone = "Next Milestone is required";
 
-    // Section E validations (conditional)
-    if (blockerToday === "Yes") {
-      if (!blockerType) newErrors.blockerType = "Blocker Type is required";
-      if (!blockerOwner) newErrors.blockerOwner = "Blocker Owner is required";
-      if (!blockerImpact) newErrors.blockerImpact = "Blocker Impact is required";
-      if (!blockerResolution) newErrors.blockerResolution = "Blocker Resolution date is required";
-      if (!actionTakenToday) newErrors.actionTakenToday = "Action Taken Today is required";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }
@@ -335,11 +276,6 @@ export default function SewingUpdate() {
 
       // Get next milestone label
       const nextMilestoneLabel = nextMilestoneOptions.find(n => n.id === nextMilestone)?.label || "";
-
-      // Get blocker details if applicable
-      const blockerTypeData = blockerTypes.find(b => b.id === blockerType);
-      const blockerOwnerLabel = blockerOwnerOptions.find(o => o.id === blockerOwner)?.label || "";
-      const blockerImpactLabel = blockerImpactOptions.find(i => i.id === blockerImpact)?.label || "";
 
       const insertData: any = {
         factory_id: profile?.factory_id,
@@ -363,7 +299,7 @@ export default function SewingUpdate() {
         
         // Worker-entered production numbers
         per_hour_target: parseInt(perHourTarget) || 0,
-        output_qty: parseInt(dayProduction) || 0, // Day Production maps to output_qty
+        output_qty: parseInt(dayProduction) || 0,
         reject_qty: parseInt(rejectToday) || 0,
         rework_qty: parseInt(reworkToday) || 0,
         cumulative_good_total: parseInt(totalProduction) || 0,
@@ -376,17 +312,8 @@ export default function SewingUpdate() {
         estimated_ex_factory: estimatedExFactory ? format(estimatedExFactory, 'yyyy-MM-dd') : null,
         next_milestone: nextMilestoneLabel,
         
-        // Blocker fields
-        has_blocker: blockerToday === "Yes",
-        blocker_type_id: blockerToday === "Yes" && blockerType ? blockerType : null,
-        blocker_owner: blockerToday === "Yes" ? blockerOwnerLabel : null,
-        blocker_impact: blockerToday === "Yes" && blockerImpactLabel ? 
-          (blockerImpactLabel.toLowerCase().includes('critical') ? 'critical' :
-           blockerImpactLabel.toLowerCase().includes('high') ? 'high' :
-           blockerImpactLabel.toLowerCase().includes('medium') ? 'medium' : 'low') as any : null,
-        blocker_resolution_date: blockerToday === "Yes" && blockerResolution ? format(blockerResolution, 'yyyy-MM-dd') : null,
-        action_taken_today: blockerToday === "Yes" ? actionTakenToday : null,
-        blocker_description: blockerToday === "Yes" ? actionTakenToday : null, // Use action taken as description
+        // No blocker from production form - use separate blocker form
+        has_blocker: false,
         
         // Notes
         notes: remarks || null,
@@ -758,132 +685,7 @@ export default function SewingUpdate() {
           </CardContent>
         </Card>
 
-        {/* SECTION E - Blockers (Conditional) */}
-        <Card className={blockerToday === "Yes" ? 'border-warning' : ''}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className={`h-4 w-4 ${blockerToday === "Yes" ? 'text-warning' : 'text-muted-foreground'}`} />
-              Blocker Today
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Blocker Today Yes/No */}
-            <div className="space-y-2">
-              <Label>Blocker Today *</Label>
-              <Select value={blockerToday} onValueChange={setBlockerToday}>
-                <SelectTrigger className="h-12">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="No">No</SelectItem>
-                  <SelectItem value="Yes">Yes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Conditional blocker fields */}
-            {blockerToday === "Yes" && (
-              <>
-                {/* Blocker Type */}
-                <div className="space-y-2">
-                  <Label>Blocker Type *</Label>
-                  <Select value={blockerType} onValueChange={setBlockerType}>
-                    <SelectTrigger className={`h-12 ${errors.blockerType ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select Blocker Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {blockerTypes.map((bt) => (
-                        <SelectItem key={bt.id} value={bt.id}>
-                          {bt.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.blockerType && <p className="text-xs text-destructive">{errors.blockerType}</p>}
-                </div>
-
-                {/* Blocker Owner */}
-                <div className="space-y-2">
-                  <Label>Blocker Owner *</Label>
-                  <Select value={blockerOwner} onValueChange={setBlockerOwner}>
-                    <SelectTrigger className={`h-12 ${errors.blockerOwner ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select Owner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {blockerOwnerOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.blockerOwner && <p className="text-xs text-destructive">{errors.blockerOwner}</p>}
-                </div>
-
-                {/* Blocker Impact */}
-                <div className="space-y-2">
-                  <Label>Blocker Impact *</Label>
-                  <Select value={blockerImpact} onValueChange={setBlockerImpact}>
-                    <SelectTrigger className={`h-12 ${errors.blockerImpact ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select Impact" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {blockerImpactOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.blockerImpact && <p className="text-xs text-destructive">{errors.blockerImpact}</p>}
-                </div>
-
-                {/* Blocker Resolution Date */}
-                <div className="space-y-2">
-                  <Label>Blocker Resolution *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full h-12 justify-start text-left font-normal",
-                          !blockerResolution && "text-muted-foreground",
-                          errors.blockerResolution && "border-destructive"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {blockerResolution ? format(blockerResolution, "PPP") : "Select date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={blockerResolution}
-                        onSelect={setBlockerResolution}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {errors.blockerResolution && <p className="text-xs text-destructive">{errors.blockerResolution}</p>}
-                </div>
-
-                {/* Action Taken Today */}
-                <div className="space-y-2">
-                  <Label>Action Taken Today *</Label>
-                  <Textarea
-                    placeholder="Describe action taken..."
-                    value={actionTakenToday}
-                    onChange={(e) => setActionTakenToday(e.target.value)}
-                    className={`min-h-[80px] ${errors.actionTakenToday ? 'border-destructive' : ''}`}
-                  />
-                  {errors.actionTakenToday && <p className="text-xs text-destructive">{errors.actionTakenToday}</p>}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* SECTION F - Photos & Remarks */}
+        {/* SECTION E - Photos & Remarks */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Attachments & Notes</CardTitle>
