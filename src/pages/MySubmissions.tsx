@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Loader2, FileText, AlertCircle, Calendar, CheckCircle2, XCircle, Filter, CalendarIcon, Target, Package } from "lucide-react";
+import { Loader2, FileText, AlertCircle, Calendar, CheckCircle2, XCircle, Filter, CalendarIcon, Target, Package, TrendingUp, TrendingDown } from "lucide-react";
 import { format, subDays, startOfDay, isWithinInterval, parseISO } from "date-fns";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { cn } from "@/lib/utils";
@@ -381,6 +381,7 @@ export default function MySubmissions() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {isWorker ? (
           <>
+            {/* Today's Target Card */}
             <Card className="border-l-4 border-l-primary">
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between">
@@ -394,16 +395,72 @@ export default function MySubmissions() {
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-l-success">
+            {/* Today's Output Card with Progress */}
+            <Card className={cn(
+              "border-l-4",
+              todaysTargetHourly > 0 && todaysOutput >= todaysTargetHourly 
+                ? "border-l-success" 
+                : todaysOutput > 0 
+                  ? "border-l-warning" 
+                  : "border-l-muted"
+            )}>
               <CardContent className="pt-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Today's Output</p>
-                    <p className="text-2xl font-bold">{todaysOutput.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Pieces produced</p>
+                    <p className={cn(
+                      "text-2xl font-bold",
+                      todaysTargetHourly > 0 && todaysOutput >= todaysTargetHourly 
+                        ? "text-success" 
+                        : todaysOutput > 0 && todaysOutput < todaysTargetHourly 
+                          ? "text-warning" 
+                          : ""
+                    )}>
+                      {todaysOutput.toLocaleString()}
+                    </p>
+                    <div className="flex items-center gap-1 mt-1">
+                      {todaysTargetHourly > 0 ? (
+                        todaysOutput >= todaysTargetHourly ? (
+                          <>
+                            <TrendingUp className="h-3 w-3 text-success" />
+                            <span className="text-xs text-success font-medium">On target</span>
+                          </>
+                        ) : (
+                          <>
+                            <TrendingDown className="h-3 w-3 text-warning" />
+                            <span className="text-xs text-warning font-medium">
+                              {Math.round((todaysOutput / todaysTargetHourly) * 100)}% of target
+                            </span>
+                          </>
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No target set</span>
+                      )}
+                    </div>
                   </div>
-                  <Package className="h-8 w-8 text-success/30" />
+                  <Package className={cn(
+                    "h-8 w-8",
+                    todaysTargetHourly > 0 && todaysOutput >= todaysTargetHourly 
+                      ? "text-success/30" 
+                      : todaysOutput > 0 
+                        ? "text-warning/30" 
+                        : "text-muted-foreground/30"
+                  )} />
                 </div>
+                {/* Progress Bar */}
+                {todaysTargetHourly > 0 && (
+                  <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                    <div 
+                      className={cn(
+                        "h-full rounded-full transition-all duration-500",
+                        todaysOutput >= todaysTargetHourly ? "bg-success" : "bg-warning"
+                      )}
+                      style={{ 
+                        width: `${Math.min((todaysOutput / todaysTargetHourly) * 100, 100)}%` 
+                      }}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </>
