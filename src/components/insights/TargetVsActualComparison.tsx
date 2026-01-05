@@ -209,7 +209,7 @@ export function TargetVsActualComparison({ allLines, targets, actuals, type, loa
       <CardContent>
         <div className="space-y-2 max-h-[400px] overflow-y-auto">
           {/* Header Row */}
-          <div className="grid grid-cols-12 gap-2 text-xs text-muted-foreground font-medium px-3 py-2 bg-muted/30 rounded-lg sticky top-0">
+          <div className="grid grid-cols-12 gap-2 text-xs text-muted-foreground font-medium px-3 py-2 bg-card border-b rounded-lg sticky top-0 z-10">
             <div className="col-span-3">Line</div>
             <div className="col-span-2 text-right">Target/hr</div>
             <div className="col-span-2 text-right">Actual</div>
