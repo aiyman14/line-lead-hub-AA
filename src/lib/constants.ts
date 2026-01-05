@@ -143,11 +143,15 @@ export const NAV_ITEMS = {
   ],
   supervisor: [
     { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-    { path: '/update/sewing', label: 'Sewing Update', icon: 'Factory' },
-    { path: '/update/finishing', label: 'Finishing Update', icon: 'Package' },
     { path: '/today', label: 'Today Updates', icon: 'CalendarDays' },
     { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
+    { path: '/week', label: 'This Week', icon: 'Calendar' },
+    { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
     { path: '/lines', label: 'Lines', icon: 'Rows3' },
+    { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
+    { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
+    { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
+    { path: '/users', label: 'Users', icon: 'Users' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   admin: [
