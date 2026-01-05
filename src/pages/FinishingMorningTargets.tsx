@@ -239,7 +239,7 @@ export default function FinishingMorningTargets() {
   }
 
   return (
-    <div className="container max-w-2xl py-4 px-4 pb-24">
+    <div className="container max-w-2xl py-4 px-4 pb-8">
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
@@ -411,19 +411,17 @@ export default function FinishingMorningTargets() {
         </Card>
 
         {/* Submit Button */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t z-50">
-          <div className="max-w-2xl mx-auto px-4">
-            <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
-              {submitting ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                "Submit Morning Targets"
-              )}
-            </Button>
-          </div>
+        <div className="mt-6 pb-2">
+          <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
+            {submitting ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit Morning Targets"
+            )}
+          </Button>
         </div>
       </form>
     </div>
