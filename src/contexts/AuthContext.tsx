@@ -27,6 +27,8 @@ interface Factory {
   subscription_status: string | null;
   trial_end_date: string | null;
   cutoff_time: string;
+  morning_target_cutoff: string | null;
+  evening_actual_cutoff: string | null;
   timezone: string;
   logo_url: string | null;
 }
