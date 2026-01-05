@@ -70,6 +70,7 @@ const navLabelKeys: Record<string, string> = {
   'My Preferences': 'nav.myPreferences',
   'Today Updates': 'nav.todayUpdates',
   'Blockers': 'nav.blockers',
+  'Report Blocker': 'nav.reportBlocker',
   'This Week': 'nav.thisWeek',
   'All Submissions': 'nav.allSubmissions',
   'Lines': 'nav.lines',

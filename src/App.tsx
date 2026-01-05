@@ -31,6 +31,7 @@ import Preferences from "./pages/Preferences";
 import Subscription from "./pages/Subscription";
 import Billing from "./pages/Billing";
 import NotFound from "./pages/NotFound";
+import ReportBlocker from "./pages/ReportBlocker";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<SubscriptionGate><Dashboard /></SubscriptionGate>} />
         <Route path="/update/sewing" element={<SubscriptionGate><SewingUpdate /></SubscriptionGate>} />
         <Route path="/update/finishing" element={<SubscriptionGate><FinishingUpdate /></SubscriptionGate>} />
+        <Route path="/report-blocker" element={<SubscriptionGate><ReportBlocker /></SubscriptionGate>} />
         <Route path="/today" element={<SubscriptionGate><TodayUpdates /></SubscriptionGate>} />
         <Route path="/blockers" element={<SubscriptionGate><Blockers /></SubscriptionGate>} />
         <Route path="/week" element={<SubscriptionGate><ThisWeek /></SubscriptionGate>} />
