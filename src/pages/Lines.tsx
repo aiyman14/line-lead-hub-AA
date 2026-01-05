@@ -22,9 +22,16 @@ interface Line {
   unit_name: string | null;
   floor_name: string | null;
   is_active: boolean;
-  todaySubmitted: boolean;
+  targetSubmitted: boolean;
+  eodSubmitted: boolean;
   todayOutput: number;
   currentPO: string | null;
+}
+
+// Extract number from line_id for proper numerical sorting
+function extractLineNumber(lineId: string): number {
+  const match = lineId.match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : 0;
 }
 
 export default function Lines() {
@@ -52,15 +59,28 @@ export default function Lines() {
         .eq('factory_id', profile.factory_id)
         .order('line_id');
 
-      // Fetch today's updates
-      const { data: sewingUpdates } = await supabase
-        .from('production_updates_sewing')
-        .select('line_id, output_qty, work_orders(po_number)')
+      // Fetch today's targets (sewing + finishing)
+      const { data: sewingTargets } = await supabase
+        .from('sewing_targets')
+        .select('line_id')
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today);
 
-      const { data: finishingUpdates } = await supabase
-        .from('production_updates_finishing')
+      const { data: finishingTargets } = await supabase
+        .from('finishing_targets')
+        .select('line_id')
+        .eq('factory_id', profile.factory_id)
+        .eq('production_date', today);
+
+      // Fetch today's EOD actuals (sewing + finishing)
+      const { data: sewingActuals } = await supabase
+        .from('sewing_actuals')
+        .select('line_id, good_today, work_orders(po_number)')
+        .eq('factory_id', profile.factory_id)
+        .eq('production_date', today);
+
+      const { data: finishingActuals } = await supabase
+        .from('finishing_actuals')
         .select('line_id, day_qc_pass, work_orders(po_number)')
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today);
@@ -72,20 +92,26 @@ export default function Lines() {
         .eq('factory_id', profile.factory_id)
         .eq('is_active', true);
 
-      const lineMap = new Map<string, { submitted: boolean; output: number; po: string | null }>();
+      // Build sets for target submissions
+      const targetSubmittedSet = new Set<string>();
+      sewingTargets?.forEach(t => targetSubmittedSet.add(t.line_id));
+      finishingTargets?.forEach(t => targetSubmittedSet.add(t.line_id));
+
+      // Build map for EOD submissions with output
+      const eodMap = new Map<string, { submitted: boolean; output: number; po: string | null }>();
       
-      sewingUpdates?.forEach(u => {
-        const existing = lineMap.get(u.line_id) || { submitted: false, output: 0, po: null };
-        lineMap.set(u.line_id, {
+      sewingActuals?.forEach(u => {
+        const existing = eodMap.get(u.line_id) || { submitted: false, output: 0, po: null };
+        eodMap.set(u.line_id, {
           submitted: true,
-          output: existing.output + (u.output_qty || 0),
+          output: existing.output + (u.good_today || 0),
           po: u.work_orders?.po_number || existing.po,
         });
       });
 
-      finishingUpdates?.forEach(u => {
-        const existing = lineMap.get(u.line_id) || { submitted: false, output: 0, po: null };
-        lineMap.set(u.line_id, {
+      finishingActuals?.forEach(u => {
+        const existing = eodMap.get(u.line_id) || { submitted: false, output: 0, po: null };
+        eodMap.set(u.line_id, {
           submitted: true,
           output: existing.output + (u.day_qc_pass || 0),
           po: u.work_orders?.po_number || existing.po,
@@ -101,7 +127,7 @@ export default function Lines() {
       });
 
       const formattedLines: Line[] = (linesData || []).map(line => {
-        const todayData = lineMap.get(line.id);
+        const eodData = eodMap.get(line.id);
         return {
           id: line.id,
           line_id: line.line_id,
@@ -109,11 +135,15 @@ export default function Lines() {
           unit_name: line.units?.name || null,
           floor_name: line.floors?.name || null,
           is_active: line.is_active,
-          todaySubmitted: todayData?.submitted || false,
-          todayOutput: todayData?.output || 0,
-          currentPO: workOrderMap.get(line.id) || todayData?.po || null,
+          targetSubmitted: targetSubmittedSet.has(line.id),
+          eodSubmitted: eodData?.submitted || false,
+          todayOutput: eodData?.output || 0,
+          currentPO: workOrderMap.get(line.id) || eodData?.po || null,
         };
       });
+
+      // Sort lines numerically by line number
+      formattedLines.sort((a, b) => extractLineNumber(a.line_id) - extractLineNumber(b.line_id));
 
       setLines(formattedLines);
     } catch (error) {
@@ -130,8 +160,8 @@ export default function Lines() {
   );
 
   const activeLines = lines.filter(l => l.is_active);
-  const submittedToday = activeLines.filter(l => l.todaySubmitted).length;
-  const pendingToday = activeLines.length - submittedToday;
+  const targetsSubmitted = activeLines.filter(l => l.targetSubmitted).length;
+  const eodSubmitted = activeLines.filter(l => l.eodSubmitted).length;
 
   if (loading) {
     return (
@@ -160,16 +190,16 @@ export default function Lines() {
             <p className="text-sm text-muted-foreground">Active Lines</p>
           </CardContent>
         </Card>
-        <Card className="border-success/30 bg-success/5">
+        <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-success">{submittedToday}</p>
-            <p className="text-sm text-muted-foreground">Submitted Today</p>
+            <p className="text-3xl font-bold text-primary">{targetsSubmitted}</p>
+            <p className="text-sm text-muted-foreground">Targets Submitted</p>
           </CardContent>
         </Card>
-        <Card className={pendingToday > 0 ? "border-warning/30 bg-warning/5" : ""}>
+        <Card className="border-success/30 bg-success/5">
           <CardContent className="p-4 text-center">
-            <p className={`text-3xl font-bold ${pendingToday > 0 ? 'text-warning' : ''}`}>{pendingToday}</p>
-            <p className="text-sm text-muted-foreground">Pending Today</p>
+            <p className="text-3xl font-bold text-success">{eodSubmitted}</p>
+            <p className="text-sm text-muted-foreground">EOD Submitted</p>
           </CardContent>
         </Card>
       </div>
@@ -196,7 +226,8 @@ export default function Lines() {
                   <TableHead>Unit</TableHead>
                   <TableHead>Floor</TableHead>
                   <TableHead>Current PO</TableHead>
-                  <TableHead className="text-center">Today's Status</TableHead>
+                  <TableHead className="text-center">Target Status</TableHead>
+                  <TableHead className="text-center">EOD Status</TableHead>
                   <TableHead className="text-right">Today's Output</TableHead>
                   <TableHead className="text-center">Active</TableHead>
                 </TableRow>
@@ -221,7 +252,7 @@ export default function Lines() {
                     </TableCell>
                     <TableCell className="text-center">
                       {line.is_active ? (
-                        line.todaySubmitted ? (
+                        line.targetSubmitted ? (
                           <StatusBadge variant="success" size="sm">
                             <CheckCircle2 className="h-3 w-3 mr-1" />
                             Submitted
@@ -233,7 +264,24 @@ export default function Lines() {
                           </StatusBadge>
                         )
                       ) : (
-                        <StatusBadge variant="default" size="sm">Inactive</StatusBadge>
+                        <StatusBadge variant="default" size="sm">-</StatusBadge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {line.is_active ? (
+                        line.eodSubmitted ? (
+                          <StatusBadge variant="success" size="sm">
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Submitted
+                          </StatusBadge>
+                        ) : (
+                          <StatusBadge variant="warning" size="sm">
+                            <Clock className="h-3 w-3 mr-1" />
+                            Pending
+                          </StatusBadge>
+                        )
+                      ) : (
+                        <StatusBadge variant="default" size="sm">-</StatusBadge>
                       )}
                     </TableCell>
                     <TableCell className="text-right font-mono font-bold">
@@ -250,7 +298,7 @@ export default function Lines() {
                 ))}
                 {filteredLines.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No lines found
                     </TableCell>
                   </TableRow>
