@@ -77,7 +77,7 @@ export default function MySubmissions() {
   const [assignedLines, setAssignedLines] = useState<{id: string; name: string}[]>([]);
   
   // Today's data for workers
-  const [todaysTargetHourly, setTodaysTargetHourly] = useState(0);
+  const [todaysDailyTarget, setTodaysDailyTarget] = useState(0);
   const [todaysOutput, setTodaysOutput] = useState(0);
   
   // Modal state
@@ -150,16 +150,16 @@ export default function MySubmissions() {
           .select('id, line_id, name')
           .eq('factory_id', profile.factory_id)
           .eq('is_active', true),
-        // Today's sewing targets
+        // Today's sewing targets (include hours to calculate daily target)
         supabase
           .from('sewing_targets')
-          .select('per_hour_target')
+          .select('per_hour_target, manpower_planned, ot_hours_planned')
           .eq('submitted_by', user.id)
           .eq('production_date', today),
-        // Today's finishing targets
+        // Today's finishing targets (include hours to calculate daily target)
         supabase
           .from('finishing_targets')
-          .select('per_hour_target')
+          .select('per_hour_target, day_hour_planned, day_over_time_planned')
           .eq('submitted_by', user.id)
           .eq('production_date', today),
         // Today's sewing actuals (output)
@@ -181,10 +181,24 @@ export default function MySubmissions() {
       setTotalSewingAllTime(sewingCountRes.count || 0);
       setTotalFinishingAllTime(finishingCountRes.count || 0);
       
-      // Calculate today's target hourly (sum of all per_hour_target)
-      const sewingTargetSum = (todaySewingTargetsRes.data || []).reduce((acc, t) => acc + (t.per_hour_target || 0), 0);
-      const finishingTargetSum = (todayFinishingTargetsRes.data || []).reduce((acc, t) => acc + (t.per_hour_target || 0), 0);
-      setTodaysTargetHourly(profile.department === 'finishing' ? finishingTargetSum : sewingTargetSum);
+      // Calculate today's daily target (hourly target × total hours for the day)
+      // Sewing: use 8 standard hours + OT hours
+      const sewingDailyTarget = (todaySewingTargetsRes.data || []).reduce((acc, t) => {
+        const standardHours = 8; // Standard work hours
+        const otHours = t.ot_hours_planned || 0;
+        const totalHours = standardHours + otHours;
+        return acc + ((t.per_hour_target || 0) * totalHours);
+      }, 0);
+      
+      // Finishing: use day_hour_planned + OT hours
+      const finishingDailyTarget = (todayFinishingTargetsRes.data || []).reduce((acc, t) => {
+        const dayHours = t.day_hour_planned || 8;
+        const otHours = t.day_over_time_planned || 0;
+        const totalHours = dayHours + otHours;
+        return acc + ((t.per_hour_target || 0) * totalHours);
+      }, 0);
+      
+      setTodaysDailyTarget(profile.department === 'finishing' ? finishingDailyTarget : sewingDailyTarget);
       
       // Calculate today's output
       const sewingOutputSum = (todaySewingActualsRes.data || []).reduce((acc, s) => acc + (s.output_qty || 0), 0);
@@ -387,8 +401,8 @@ export default function MySubmissions() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Today's Target</p>
-                    <p className="text-2xl font-bold">{todaysTargetHourly.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Hourly output</p>
+                    <p className="text-2xl font-bold">{todaysDailyTarget.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Daily output</p>
                   </div>
                   <Target className="h-8 w-8 text-primary/30" />
                 </div>
@@ -398,7 +412,7 @@ export default function MySubmissions() {
             {/* Today's Output Card with Progress */}
             <Card className={cn(
               "border-l-4",
-              todaysTargetHourly > 0 && todaysOutput >= todaysTargetHourly 
+              todaysDailyTarget > 0 && todaysOutput >= todaysDailyTarget 
                 ? "border-l-success" 
                 : todaysOutput > 0 
                   ? "border-l-warning" 
@@ -410,17 +424,17 @@ export default function MySubmissions() {
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Today's Output</p>
                     <p className={cn(
                       "text-2xl font-bold",
-                      todaysTargetHourly > 0 && todaysOutput >= todaysTargetHourly 
+                      todaysDailyTarget > 0 && todaysOutput >= todaysDailyTarget 
                         ? "text-success" 
-                        : todaysOutput > 0 && todaysOutput < todaysTargetHourly 
+                        : todaysOutput > 0 && todaysOutput < todaysDailyTarget 
                           ? "text-warning" 
                           : ""
                     )}>
                       {todaysOutput.toLocaleString()}
                     </p>
                     <div className="flex items-center gap-1 mt-1">
-                      {todaysTargetHourly > 0 ? (
-                        todaysOutput >= todaysTargetHourly ? (
+                      {todaysDailyTarget > 0 ? (
+                        todaysOutput >= todaysDailyTarget ? (
                           <>
                             <TrendingUp className="h-3 w-3 text-success" />
                             <span className="text-xs text-success font-medium">On target</span>
@@ -429,7 +443,7 @@ export default function MySubmissions() {
                           <>
                             <TrendingDown className="h-3 w-3 text-warning" />
                             <span className="text-xs text-warning font-medium">
-                              {Math.round((todaysOutput / todaysTargetHourly) * 100)}% of target
+                              {Math.round((todaysOutput / todaysDailyTarget) * 100)}% of target
                             </span>
                           </>
                         )
@@ -440,7 +454,7 @@ export default function MySubmissions() {
                   </div>
                   <Package className={cn(
                     "h-8 w-8",
-                    todaysTargetHourly > 0 && todaysOutput >= todaysTargetHourly 
+                    todaysDailyTarget > 0 && todaysOutput >= todaysDailyTarget 
                       ? "text-success/30" 
                       : todaysOutput > 0 
                         ? "text-warning/30" 
@@ -448,15 +462,15 @@ export default function MySubmissions() {
                   )} />
                 </div>
                 {/* Progress Bar */}
-                {todaysTargetHourly > 0 && (
+                {todaysDailyTarget > 0 && (
                   <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                     <div 
                       className={cn(
                         "h-full rounded-full transition-all duration-500",
-                        todaysOutput >= todaysTargetHourly ? "bg-success" : "bg-warning"
+                        todaysOutput >= todaysDailyTarget ? "bg-success" : "bg-warning"
                       )}
                       style={{ 
-                        width: `${Math.min((todaysOutput / todaysTargetHourly) * 100, 100)}%` 
+                        width: `${Math.min((todaysOutput / todaysDailyTarget) * 100, 100)}%` 
                       }}
                     />
                   </div>
