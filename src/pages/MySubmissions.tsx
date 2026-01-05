@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +60,7 @@ interface DateRange {
 }
 
 export default function MySubmissions() {
+  const { t, i18n } = useTranslation();
   const { profile, user, hasRole, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"sewing" | "finishing">("sewing");
@@ -411,9 +413,9 @@ export default function MySubmissions() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-bold">My Submissions</h1>
+          <h1 className="text-2xl font-bold">{t('submissions.myTitle')}</h1>
           <p className="text-muted-foreground">
-            Track your production updates and submissions history
+            {t('submissions.myDescription')}
           </p>
         </div>
         
@@ -423,14 +425,14 @@ export default function MySubmissions() {
             {morningTargetCutoff && (
               <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full">
                 <Clock className="h-4 w-4" />
-                <span className="font-medium">Morning Target:</span>
+                <span className="font-medium">{t('submissions.morningTarget')}:</span>
                 <span>{formatTime(morningTargetCutoff)}</span>
               </div>
             )}
             {eveningActualCutoff && (
               <div className="flex items-center gap-2 bg-warning/10 text-warning px-3 py-1.5 rounded-full">
                 <Clock className="h-4 w-4" />
-                <span className="font-medium">End of Day:</span>
+                <span className="font-medium">{t('submissions.endOfDay')}:</span>
                 <span>{formatTime(eveningActualCutoff)}</span>
               </div>
             )}
@@ -444,16 +446,16 @@ export default function MySubmissions() {
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Filters:</span>
+              <span className="text-sm font-medium">{t('common.filter')}:</span>
             </div>
             
             {/* Line Filter */}
             <Select value={selectedLineId} onValueChange={setSelectedLineId}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All Lines" />
+                <SelectValue placeholder={t('submissions.allLines')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Lines</SelectItem>
+                <SelectItem value="all">{t('submissions.allLines')}</SelectItem>
                 {assignedLines.map((line) => (
                   <SelectItem key={line.id} value={line.id}>
                     {line.name}
@@ -482,7 +484,7 @@ export default function MySubmissions() {
                       format(dateRange.from, "MMM d, yyyy")
                     )
                   ) : (
-                    <span>Pick a date range</span>
+                    <span>{t('submissions.pickDateRange')}</span>
                   )}
                 </Button>
               </PopoverTrigger>
@@ -507,7 +509,7 @@ export default function MySubmissions() {
                 setDateRange({ from: subDays(new Date(), 30), to: new Date() });
               }}
             >
-              Reset
+              {t('submissions.reset')}
             </Button>
           </div>
         </CardContent>
@@ -522,9 +524,9 @@ export default function MySubmissions() {
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Today's Target</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">{t('submissions.todaysTarget')}</p>
                     <p className="text-2xl font-bold">{todaysDailyTarget.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Daily output</p>
+                    <p className="text-xs text-muted-foreground">{t('submissions.dailyOutput')}</p>
                   </div>
                   <Target className="h-8 w-8 text-primary/30" />
                 </div>
@@ -543,7 +545,7 @@ export default function MySubmissions() {
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Today's Output</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">{t('submissions.todaysOutput')}</p>
                     <p className={cn(
                       "text-2xl font-bold",
                       todaysDailyTarget > 0 && todaysOutput >= todaysDailyTarget 
@@ -559,18 +561,18 @@ export default function MySubmissions() {
                         todaysOutput >= todaysDailyTarget ? (
                           <>
                             <TrendingUp className="h-3 w-3 text-success" />
-                            <span className="text-xs text-success font-medium">On target</span>
+                            <span className="text-xs text-success font-medium">{t('submissions.onTarget')}</span>
                           </>
                         ) : (
                           <>
                             <TrendingDown className="h-3 w-3 text-warning" />
                             <span className="text-xs text-warning font-medium">
-                              {Math.round((todaysOutput / todaysDailyTarget) * 100)}% of target
+                              {Math.round((todaysOutput / todaysDailyTarget) * 100)}% {t('submissions.ofTarget')}
                             </span>
                           </>
                         )
                       ) : (
-                        <span className="text-xs text-muted-foreground">No target set</span>
+                        <span className="text-xs text-muted-foreground">{t('submissions.noTargetSet')}</span>
                       )}
                     </div>
                   </div>

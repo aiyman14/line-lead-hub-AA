@@ -123,7 +123,7 @@ interface ActiveBlocker {
 }
 
 export default function Dashboard() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { profile, factory, isAdminOrHigher, hasRole, loading: authLoading } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
@@ -429,7 +429,7 @@ export default function Dashboard() {
   }
 
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
+    return new Date(dateString).toLocaleTimeString(i18n.language === 'bn' ? 'bn-BD' : 'en-US', {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -449,7 +449,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
           <p className="text-muted-foreground">
-            {new Date().toLocaleDateString('en-US', {
+            {new Date().toLocaleDateString(i18n.language === 'bn' ? 'bn-BD' : 'en-US', {
               weekday: 'long',
               year: 'numeric',
               month: 'long',
