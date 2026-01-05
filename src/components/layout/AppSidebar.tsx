@@ -1,3 +1,4 @@
+import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -20,6 +21,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   UserCog,
   Crosshair,
   ClipboardCheck,
@@ -43,6 +45,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { NAV_ITEMS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import logoSvg from "@/assets/logo.svg";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Factory,
@@ -84,7 +91,7 @@ const navLabelKeys: Record<string, string> = {
   'Lines': 'nav.lines',
   'Work Orders': 'nav.workOrders',
   'Insights': 'nav.insights',
-  'Factory Setup': 'nav.factorySetup',
+  'Factory Profile': 'nav.factoryProfile',
   'Users': 'nav.users',
   'Subscription': 'nav.subscription',
   'Billing': 'nav.billing',
@@ -93,12 +100,20 @@ const navLabelKeys: Record<string, string> = {
   'Support': 'nav.support',
 };
 
+interface NavItem {
+  path: string;
+  label: string;
+  icon: string;
+  children?: NavItem[];
+}
+
 export function AppSidebar() {
   const { t } = useTranslation();
   const { profile, roles, factory, signOut } = useAuth();
   const location = useLocation();
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
+  const [expandedMenus, setExpandedMenus] = React.useState<string[]>(['/setup']);
 
   const handleSignOut = async () => {
     await signOut();
@@ -125,6 +140,18 @@ export function AppSidebar() {
   }
 
   const isActive = (path: string) => location.pathname === path;
+  const isParentActive = (item: NavItem) => {
+    if (item.children) {
+      return item.children.some(child => location.pathname === child.path);
+    }
+    return false;
+  };
+
+  const toggleMenu = (path: string) => {
+    setExpandedMenus(prev => 
+      prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
+    );
+  };
 
   const getInitials = (name: string) => {
     return name
@@ -179,8 +206,91 @@ export function AppSidebar() {
           )}
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {(navItems as NavItem[]).map((item) => {
                 const Icon = iconMap[item.icon];
+                const hasChildren = item.children && item.children.length > 0;
+                const isExpanded = expandedMenus.includes(item.path);
+                const isItemOrChildActive = isActive(item.path) || isParentActive(item);
+
+                if (hasChildren && !collapsed) {
+                  return (
+                    <Collapsible
+                      key={item.path}
+                      open={isExpanded}
+                      onOpenChange={() => toggleMenu(item.path)}
+                    >
+                      <SidebarMenuItem>
+                        <CollapsibleTrigger asChild>
+                          <SidebarMenuButton
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg px-3 py-2 transition-colors w-full justify-between",
+                              isItemOrChildActive
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                            )}
+                          >
+                            <div className="flex items-center gap-3">
+                              {Icon && <Icon className="h-5 w-5 shrink-0" />}
+                              <span>{getNavLabel(item.label)}</span>
+                            </div>
+                            <ChevronDown className={cn(
+                              "h-4 w-4 shrink-0 transition-transform",
+                              isExpanded && "rotate-180"
+                            )} />
+                          </SidebarMenuButton>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="pl-4">
+                          <SidebarMenu>
+                            <SidebarMenuItem>
+                              <SidebarMenuButton
+                                asChild
+                                isActive={isActive(item.path)}
+                              >
+                                <Link
+                                  to={item.path}
+                                  className={cn(
+                                    "flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
+                                    isActive(item.path)
+                                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                                  )}
+                                >
+                                  {Icon && <Icon className="h-4 w-4 shrink-0" />}
+                                  <span>{getNavLabel(item.label)}</span>
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            {item.children!.map((child) => {
+                              const ChildIcon = iconMap[child.icon];
+                              return (
+                                <SidebarMenuItem key={child.path}>
+                                  <SidebarMenuButton
+                                    asChild
+                                    isActive={isActive(child.path)}
+                                  >
+                                    <Link
+                                      to={child.path}
+                                      className={cn(
+                                        "flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
+                                        isActive(child.path)
+                                          ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                                      )}
+                                    >
+                                      {ChildIcon && <ChildIcon className="h-4 w-4 shrink-0" />}
+                                      <span>{getNavLabel(child.label)}</span>
+                                    </Link>
+                                  </SidebarMenuButton>
+                                </SidebarMenuItem>
+                              );
+                            })}
+                          </SidebarMenu>
+                        </CollapsibleContent>
+                      </SidebarMenuItem>
+                    </Collapsible>
+                  );
+                }
+
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
