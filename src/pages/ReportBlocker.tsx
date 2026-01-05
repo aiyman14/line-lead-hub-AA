@@ -78,7 +78,12 @@ export default function ReportBlocker() {
   const [blockerImpact, setBlockerImpact] = useState("");
   const [blockerResolution, setBlockerResolution] = useState<Date | undefined>(new Date());
   const [blockerDescription, setBlockerDescription] = useState("");
-  const [updateType, setUpdateType] = useState<"sewing" | "finishing">("sewing");
+  
+  // Determine update type based on user's department
+  const userDepartment = profile?.department || "sewing";
+  const canAccessBoth = userDepartment === "both" || isAdminOrHigher();
+  const defaultUpdateType = userDepartment === "finishing" ? "finishing" : "sewing";
+  const [updateType, setUpdateType] = useState<"sewing" | "finishing">(defaultUpdateType);
 
   // Auto-filled
   const [unitName, setUnitName] = useState("");
@@ -86,6 +91,18 @@ export default function ReportBlocker() {
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Set update type based on department when profile loads
+  useEffect(() => {
+    if (profile?.department) {
+      if (profile.department === "finishing") {
+        setUpdateType("finishing");
+      } else if (profile.department === "sewing") {
+        setUpdateType("sewing");
+      }
+      // If "both", keep whatever is currently selected (defaults to sewing)
+    }
+  }, [profile?.department]);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -385,23 +402,25 @@ export default function ReportBlocker() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Update Type */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Update Type</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Select value={updateType} onValueChange={(v) => setUpdateType(v as "sewing" | "finishing")}>
-              <SelectTrigger className="h-12">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sewing">Sewing</SelectItem>
-                <SelectItem value="finishing">Finishing</SelectItem>
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
+        {/* Update Type - Only show if user has access to both */}
+        {canAccessBoth ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Update Type</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Select value={updateType} onValueChange={(v) => setUpdateType(v as "sewing" | "finishing")}>
+                <SelectTrigger className="h-12">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sewing">Sewing</SelectItem>
+                  <SelectItem value="finishing">Finishing</SelectItem>
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Line & PO Selection */}
         <Card>
