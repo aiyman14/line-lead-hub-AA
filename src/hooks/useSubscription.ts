@@ -82,6 +82,17 @@ export function useSubscription() {
 
     try {
       setError(null);
+      
+      // Verify we have a valid session before calling the edge function
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        // No valid session yet, use fallback
+        const fallbackStatus = checkFromFactory();
+        setStatus(fallbackStatus);
+        setLoading(false);
+        return;
+      }
+      
       const { data, error: fnError } = await supabase.functions.invoke('check-subscription');
       
       if (fnError) {
