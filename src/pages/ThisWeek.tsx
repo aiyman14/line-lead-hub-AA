@@ -279,8 +279,8 @@ export default function ThisWeek() {
                 {weekStats.map((day) => {
                   const isToday = day.date === today;
                   const isFuture = new Date(day.date) > new Date();
-                  const outputBarHeight = isFuture ? 0 : (day.sewingOutput / maxSewing) * 100;
-                  const targetBarHeight = isFuture ? 0 : (day.sewingTarget / maxSewing) * 100;
+                  const outputBarHeight = isFuture ? 0 : Math.max((day.sewingOutput / maxSewing) * 100, day.sewingOutput > 0 ? 15 : 0);
+                  const targetBarHeight = isFuture ? 0 : Math.max((day.sewingTarget / maxSewing) * 100, day.sewingTarget > 0 ? 10 : 0);
                   const achievement = day.sewingTarget > 0 ? Math.round((day.sewingOutput / day.sewingTarget) * 100) : 0;
                   const achievementColor = achievement >= 100 ? 'text-success' : achievement >= 80 ? 'text-warning' : 'text-destructive';
                   
@@ -289,19 +289,17 @@ export default function ThisWeek() {
                       <p className={`text-sm font-semibold mb-3 ${isToday ? 'text-primary' : 'text-foreground'}`}>
                         {day.dayName}
                       </p>
-                      <div className="h-32 flex items-end justify-center gap-2 mb-3">
-                        <div className="flex flex-col items-center">
+                      <div className="h-28 flex items-end justify-center gap-1 mb-3">
+                        {!isFuture && day.sewingTarget > 0 && (
                           <div
-                            className={`w-6 rounded-t-lg transition-all shadow-sm ${isFuture ? 'bg-muted' : 'bg-muted-foreground/40'}`}
-                            style={{ height: `${Math.max(targetBarHeight, 8)}%` }}
+                            className="w-5 rounded-t transition-all bg-muted-foreground/30"
+                            style={{ height: `${targetBarHeight}%`, minHeight: '8px' }}
                           />
-                        </div>
-                        <div className="flex flex-col items-center">
-                          <div
-                            className={`w-8 rounded-t-lg transition-all shadow-md ${isFuture ? 'bg-muted' : isToday ? 'bg-primary' : 'bg-primary/70'}`}
-                            style={{ height: `${Math.max(outputBarHeight, 8)}%` }}
-                          />
-                        </div>
+                        )}
+                        <div
+                          className={`w-7 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : isToday ? 'bg-primary' : 'bg-primary/70'}`}
+                          style={{ height: isFuture ? '8px' : `${Math.max(outputBarHeight, 8)}%` }}
+                        />
                       </div>
                       <p className={`text-base font-mono font-bold ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
                         {isFuture ? '-' : day.sewingOutput.toLocaleString()}
@@ -342,8 +340,8 @@ export default function ThisWeek() {
                 {weekStats.map((day) => {
                   const isToday = day.date === today;
                   const isFuture = new Date(day.date) > new Date();
-                  const outputBarHeight = isFuture ? 0 : (day.finishingQcPass / maxFinishing) * 100;
-                  const targetBarHeight = isFuture ? 0 : (day.finishingTarget / maxFinishing) * 100;
+                  const outputBarHeight = isFuture ? 0 : Math.max((day.finishingQcPass / maxFinishing) * 100, day.finishingQcPass > 0 ? 15 : 0);
+                  const targetBarHeight = isFuture ? 0 : Math.max((day.finishingTarget / maxFinishing) * 100, day.finishingTarget > 0 ? 10 : 0);
                   const achievement = day.finishingTarget > 0 ? Math.round((day.finishingQcPass / day.finishingTarget) * 100) : 0;
                   const achievementColor = achievement >= 100 ? 'text-success' : achievement >= 80 ? 'text-warning' : 'text-destructive';
                   
@@ -352,19 +350,17 @@ export default function ThisWeek() {
                       <p className={`text-sm font-semibold mb-3 ${isToday ? 'text-info' : 'text-foreground'}`}>
                         {day.dayName}
                       </p>
-                      <div className="h-32 flex items-end justify-center gap-2 mb-3">
-                        <div className="flex flex-col items-center">
+                      <div className="h-28 flex items-end justify-center gap-1 mb-3">
+                        {!isFuture && day.finishingTarget > 0 && (
                           <div
-                            className={`w-6 rounded-t-lg transition-all shadow-sm ${isFuture ? 'bg-muted' : 'bg-muted-foreground/40'}`}
-                            style={{ height: `${Math.max(targetBarHeight, 8)}%` }}
+                            className="w-5 rounded-t transition-all bg-muted-foreground/30"
+                            style={{ height: `${targetBarHeight}%`, minHeight: '8px' }}
                           />
-                        </div>
-                        <div className="flex flex-col items-center">
-                          <div
-                            className={`w-8 rounded-t-lg transition-all shadow-md ${isFuture ? 'bg-muted' : isToday ? 'bg-info' : 'bg-info/70'}`}
-                            style={{ height: `${Math.max(outputBarHeight, 8)}%` }}
-                          />
-                        </div>
+                        )}
+                        <div
+                          className={`w-7 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : isToday ? 'bg-info' : 'bg-info/70'}`}
+                          style={{ height: isFuture ? '8px' : `${Math.max(outputBarHeight, 8)}%` }}
+                        />
                       </div>
                       <p className={`text-base font-mono font-bold ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
                         {isFuture ? '-' : day.finishingQcPass.toLocaleString()}
