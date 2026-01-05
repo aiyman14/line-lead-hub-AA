@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUp, ArrowDown, Minus, Target, TrendingUp } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, TrendingUp, Factory, Package } from "lucide-react";
 
 interface TargetData {
   line_id: string;
@@ -167,6 +167,10 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-primary" />
             Target vs Actual Comparison
+            <Badge variant="outline" className="ml-2 gap-1 capitalize">
+              {type === 'sewing' ? <Factory className="h-3 w-3" /> : <Package className="h-3 w-3" />}
+              {type}
+            </Badge>
           </CardTitle>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Overall:</span>
