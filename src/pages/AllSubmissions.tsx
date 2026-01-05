@@ -18,6 +18,7 @@ import {
 import { Loader2, Factory, Package, Search, Download, RefreshCw, History, Calendar, Target, ClipboardCheck } from "lucide-react";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { TargetDetailModal } from "@/components/TargetDetailModal";
+import { ExportSubmissionsDialog } from "@/components/ExportSubmissionsDialog";
 import { toast } from "sonner";
 
 // Types for targets
@@ -122,8 +123,7 @@ export default function AllSubmissions() {
   const [selectedActual, setSelectedActual] = useState<any>(null);
   const [targetModalOpen, setTargetModalOpen] = useState(false);
   const [actualModalOpen, setActualModalOpen] = useState(false);
-
-  const [exporting, setExporting] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -286,110 +286,12 @@ export default function AllSubmissions() {
     setActualModalOpen(true);
   };
 
-  const exportToCSV = () => {
-    setExporting(true);
-    try {
-      const rows: string[][] = [];
-      const exportDate = new Date().toLocaleDateString('en-US', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-      });
-
-      rows.push([`${category === 'targets' ? 'Targets' : 'End of Day'} Report - ${department.charAt(0).toUpperCase() + department.slice(1)}`]);
-      rows.push([`Generated: ${exportDate}`]);
-      rows.push([`Date Range: Last ${dateRange} days`]);
-      rows.push(['']);
-
-      if (category === 'targets') {
-        if (department === 'sewing') {
-          rows.push(['Date', 'Time', 'Line', 'PO', 'Target/hr', 'Manpower', 'OT Hours', 'Progress', 'Late']);
-          filterBySearch(sewingTargets).forEach(t => {
-            rows.push([
-              formatDate(t.production_date),
-              formatTime(t.submitted_at),
-              t.lines?.name || t.lines?.line_id || '-',
-              t.work_orders?.po_number || '-',
-              t.per_hour_target.toString(),
-              t.manpower_planned.toString(),
-              t.ot_hours_planned.toString(),
-              `${t.planned_stage_progress}%`,
-              t.is_late ? 'Yes' : 'No',
-            ]);
-          });
-        } else {
-          rows.push(['Date', 'Time', 'Line', 'PO', 'Target/hr', 'Manpower', 'Hours', 'OT Hours', 'Late']);
-          filterBySearch(finishingTargets).forEach(t => {
-            rows.push([
-              formatDate(t.production_date),
-              formatTime(t.submitted_at),
-              t.lines?.name || t.lines?.line_id || '-',
-              t.work_orders?.po_number || '-',
-              t.per_hour_target.toString(),
-              t.m_power_planned.toString(),
-              t.day_hour_planned.toString(),
-              t.day_over_time_planned.toString(),
-              t.is_late ? 'Yes' : 'No',
-            ]);
-          });
-        }
-      } else {
-        if (department === 'sewing') {
-          rows.push(['Date', 'Time', 'Line', 'PO', 'Good Today', 'Reject', 'Rework', 'Cumulative', 'Manpower', 'Blocker']);
-          filterBySearch(sewingActuals).forEach(a => {
-            rows.push([
-              formatDate(a.production_date),
-              formatTime(a.submitted_at),
-              a.lines?.name || a.lines?.line_id || '-',
-              a.work_orders?.po_number || '-',
-              a.good_today.toString(),
-              a.reject_today.toString(),
-              a.rework_today.toString(),
-              a.cumulative_good_total.toString(),
-              a.manpower_actual.toString(),
-              a.has_blocker ? 'Yes' : 'No',
-            ]);
-          });
-        } else {
-          rows.push(['Date', 'Time', 'Line', 'PO', 'Day QC', 'Total QC', 'Day Poly', 'Day Carton', 'Manpower', 'Blocker']);
-          filterBySearch(finishingActuals).forEach(a => {
-            rows.push([
-              formatDate(a.production_date),
-              formatTime(a.submitted_at),
-              a.lines?.name || a.lines?.line_id || '-',
-              a.work_orders?.po_number || '-',
-              a.day_qc_pass.toString(),
-              a.total_qc_pass.toString(),
-              a.day_poly.toString(),
-              a.day_carton.toString(),
-              a.m_power_actual.toString(),
-              a.has_blocker ? 'Yes' : 'No',
-            ]);
-          });
-        }
-      }
-
-      const csvContent = rows.map(row =>
-        row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')
-      ).join('\n');
-
-      const fileDate = new Date().toISOString().split('T')[0];
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `${category}_${department}_${dateRange}days_${fileDate}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      toast.success(`Exported ${currentData.length} records`);
-    } catch (error) {
-      console.error('Export error:', error);
-      toast.error("Failed to export data");
-    } finally {
-      setExporting(false);
-    }
-  };
+  const getExportData = () => ({
+    sewingTargets: filterBySearch(sewingTargets),
+    finishingTargets: filterBySearch(finishingTargets),
+    sewingActuals: filterBySearch(sewingActuals),
+    finishingActuals: filterBySearch(finishingActuals),
+  });
 
   if (loading) {
     return (
@@ -432,14 +334,9 @@ export default function AllSubmissions() {
           <Button
             variant="default"
             size="sm"
-            onClick={exportToCSV}
-            disabled={exporting || currentData.length === 0}
+            onClick={() => setExportDialogOpen(true)}
           >
-            {exporting ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-1" />
-            )}
+            <Download className="h-4 w-4 mr-1" />
             Export CSV
           </Button>
         </div>
@@ -739,6 +636,14 @@ export default function AllSubmissions() {
         onOpenChange={setActualModalOpen}
         onDeleted={fetchSubmissions}
         onUpdated={fetchSubmissions}
+      />
+
+      {/* Export Dialog */}
+      <ExportSubmissionsDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        data={getExportData()}
+        dateRange={dateRange}
       />
     </div>
   );
