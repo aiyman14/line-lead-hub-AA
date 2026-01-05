@@ -10,7 +10,7 @@ interface SubscriptionGateProps {
 }
 
 export function SubscriptionGate({ children }: SubscriptionGateProps) {
-  const { user, profile, loading: authLoading, isAdminOrHigher, signOut } = useAuth();
+  const { user, profile, loading: authLoading, roles, hasRole, signOut } = useAuth();
   const { hasAccess, needsFactory, needsPayment, loading: subLoading, isTrial, status } = useSubscription();
   const navigate = useNavigate();
 
@@ -19,9 +19,12 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
     navigate('/auth');
   };
 
-  // If user was invited to an existing factory (has factory_id but is not admin), 
+  // If user was invited to an existing factory (has factory_id but is not the owner), 
   // they don't need to pay - the factory owner pays
-  const isInvitedUser = profile?.factory_id && !isAdminOrHigher();
+  // Supervisors and admins who are invited should also have access
+  const isOwner = hasRole('owner');
+  const isSuperAdmin = hasRole('superadmin');
+  const isInvitedUser = profile?.factory_id && !isOwner && !isSuperAdmin;
 
   // Still loading
   if (authLoading || subLoading) {
