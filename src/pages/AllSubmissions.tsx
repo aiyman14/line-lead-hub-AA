@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
@@ -15,122 +15,114 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Factory, Package, Search, Download, RefreshCw, History, Calendar } from "lucide-react";
+import { Loader2, Factory, Package, Search, Download, RefreshCw, History, Calendar, Target, ClipboardCheck } from "lucide-react";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
+import { TargetDetailModal } from "@/components/TargetDetailModal";
 import { toast } from "sonner";
 
-interface SewingUpdate {
+// Types for targets
+interface SewingTarget {
   id: string;
   line_id: string;
-  output_qty: number;
-  target_qty: number | null;
-  manpower: number | null;
-  reject_qty: number | null;
-  rework_qty: number | null;
-  stage_progress: number | null;
-  ot_hours: number | null;
-  ot_manpower: number | null;
-  has_blocker: boolean;
-  blocker_description: string | null;
-  blocker_impact: string | null;
-  blocker_owner: string | null;
-  blocker_status: string | null;
-  notes: string | null;
-  submitted_at: string;
-  production_date: string;
-  lines: { line_id: string; name: string | null } | null;
-  work_orders: { po_number: string; buyer: string; style: string } | null;
-}
-
-interface FinishingUpdate {
-  id: string;
-  line_id: string;
-  day_qc_pass: number | null;
-  total_qc_pass: number | null;
-  m_power: number | null;
-  day_poly: number | null;
-  total_poly: number | null;
-  per_hour_target: number | null;
-  average_production: number | null;
-  day_over_time: number | null;
-  total_over_time: number | null;
-  day_hour: number | null;
-  total_hour: number | null;
-  day_carton: number | null;
-  total_carton: number | null;
-  order_quantity: number | null;
-  has_blocker: boolean;
-  blocker_description: string | null;
-  blocker_impact: string | null;
-  blocker_owner: string | null;
-  blocker_status: string | null;
+  per_hour_target: number;
+  manpower_planned: number;
+  ot_hours_planned: number;
+  planned_stage_progress: number;
+  next_milestone: string | null;
   remarks: string | null;
   submitted_at: string;
   production_date: string;
-  buyer_name: string | null;
-  style_no: string | null;
-  item_name: string | null;
-  unit_name: string | null;
-  floor_name: string | null;
+  is_late: boolean | null;
   lines: { line_id: string; name: string | null } | null;
-  work_orders: { po_number: string; buyer: string; style: string } | null;
+  work_orders: { po_number: string; buyer: string; style: string; order_qty: number } | null;
 }
 
-type ModalSubmission = {
+interface FinishingTarget {
   id: string;
-  type: 'sewing' | 'finishing';
-  line_name: string;
-  po_number: string | null;
-  buyer?: string | null;
-  style?: string | null;
-  output_qty?: number;
-  target_qty?: number | null;
-  manpower?: number | null;
-  reject_qty?: number | null;
-  rework_qty?: number | null;
-  stage_progress?: number | null;
-  ot_hours?: number | null;
-  ot_manpower?: number | null;
+  line_id: string;
+  per_hour_target: number;
+  m_power_planned: number;
+  day_hour_planned: number;
+  day_over_time_planned: number;
+  remarks: string | null;
+  submitted_at: string;
+  production_date: string;
+  is_late: boolean | null;
+  lines: { line_id: string; name: string | null } | null;
+  work_orders: { po_number: string; buyer: string; style: string; order_qty: number } | null;
+}
+
+// Types for actuals/end of day
+interface SewingActual {
+  id: string;
+  line_id: string;
+  good_today: number;
+  reject_today: number;
+  rework_today: number;
+  cumulative_good_total: number;
+  manpower_actual: number;
+  ot_hours_actual: number;
+  actual_stage_progress: number;
   has_blocker: boolean;
   blocker_description: string | null;
   blocker_impact: string | null;
   blocker_owner: string | null;
-  blocker_status: string | null;
-  notes?: string | null;
+  remarks: string | null;
   submitted_at: string;
   production_date: string;
-  buyer_name?: string | null;
-  style_no?: string | null;
-  item_name?: string | null;
-  order_quantity?: number | null;
-  unit_name?: string | null;
-  floor_name?: string | null;
-  m_power?: number | null;
-  per_hour_target?: number | null;
-  day_qc_pass?: number | null;
-  total_qc_pass?: number | null;
-  day_poly?: number | null;
-  total_poly?: number | null;
-  average_production?: number | null;
-  day_over_time?: number | null;
-  total_over_time?: number | null;
-  day_hour?: number | null;
-  total_hour?: number | null;
-  day_carton?: number | null;
-  total_carton?: number | null;
-  remarks?: string | null;
-};
+  lines: { line_id: string; name: string | null } | null;
+  work_orders: { po_number: string; buyer: string; style: string; order_qty: number } | null;
+}
+
+interface FinishingActual {
+  id: string;
+  line_id: string;
+  day_qc_pass: number;
+  total_qc_pass: number;
+  day_poly: number;
+  total_poly: number;
+  day_carton: number;
+  total_carton: number;
+  m_power_actual: number;
+  day_hour_actual: number;
+  day_over_time_actual: number;
+  average_production: number | null;
+  has_blocker: boolean;
+  blocker_description: string | null;
+  blocker_impact: string | null;
+  blocker_owner: string | null;
+  remarks: string | null;
+  submitted_at: string;
+  production_date: string;
+  lines: { line_id: string; name: string | null } | null;
+  work_orders: { po_number: string; buyer: string; style: string; order_qty: number } | null;
+}
+
+type CategoryType = 'targets' | 'actuals';
+type DepartmentType = 'sewing' | 'finishing';
 
 export default function AllSubmissions() {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [sewingUpdates, setSewingUpdates] = useState<SewingUpdate[]>([]);
-  const [finishingUpdates, setFinishingUpdates] = useState<FinishingUpdate[]>([]);
+  const [category, setCategory] = useState<CategoryType>('targets');
+  const [department, setDepartment] = useState<DepartmentType>('sewing');
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
   const [dateRange, setDateRange] = useState("7");
-  const [selectedSubmission, setSelectedSubmission] = useState<ModalSubmission | null>(null);
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
+
+  // Target data
+  const [sewingTargets, setSewingTargets] = useState<SewingTarget[]>([]);
+  const [finishingTargets, setFinishingTargets] = useState<FinishingTarget[]>([]);
+
+  // Actual data
+  const [sewingActuals, setSewingActuals] = useState<SewingActual[]>([]);
+  const [finishingActuals, setFinishingActuals] = useState<FinishingActual[]>([]);
+
+  // Modal state
+  const [selectedTarget, setSelectedTarget] = useState<any>(null);
+  const [selectedActual, setSelectedActual] = useState<any>(null);
+  const [targetModalOpen, setTargetModalOpen] = useState(false);
+  const [actualModalOpen, setActualModalOpen] = useState(false);
+
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -142,24 +134,45 @@ export default function AllSubmissions() {
   async function fetchSubmissions() {
     if (!profile?.factory_id) return;
     setLoading(true);
-    
+
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - parseInt(dateRange));
 
     try {
-      const [sewingRes, finishingRes] = await Promise.all([
+      const [
+        sewingTargetsRes,
+        finishingTargetsRes,
+        sewingActualsRes,
+        finishingActualsRes,
+      ] = await Promise.all([
         supabase
-          .from('production_updates_sewing')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+          .from('sewing_targets')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style, order_qty)')
           .eq('factory_id', profile.factory_id)
           .gte('production_date', startDate.toISOString().split('T')[0])
           .lte('production_date', endDate.toISOString().split('T')[0])
           .order('production_date', { ascending: false })
           .order('submitted_at', { ascending: false }),
         supabase
-          .from('production_updates_finishing')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+          .from('finishing_targets')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style, order_qty)')
+          .eq('factory_id', profile.factory_id)
+          .gte('production_date', startDate.toISOString().split('T')[0])
+          .lte('production_date', endDate.toISOString().split('T')[0])
+          .order('production_date', { ascending: false })
+          .order('submitted_at', { ascending: false }),
+        supabase
+          .from('sewing_actuals')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style, order_qty)')
+          .eq('factory_id', profile.factory_id)
+          .gte('production_date', startDate.toISOString().split('T')[0])
+          .lte('production_date', endDate.toISOString().split('T')[0])
+          .order('production_date', { ascending: false })
+          .order('submitted_at', { ascending: false }),
+        supabase
+          .from('finishing_actuals')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style, order_qty)')
           .eq('factory_id', profile.factory_id)
           .gte('production_date', startDate.toISOString().split('T')[0])
           .lte('production_date', endDate.toISOString().split('T')[0])
@@ -167,8 +180,10 @@ export default function AllSubmissions() {
           .order('submitted_at', { ascending: false }),
       ]);
 
-      setSewingUpdates(sewingRes.data || []);
-      setFinishingUpdates(finishingRes.data || []);
+      setSewingTargets(sewingTargetsRes.data || []);
+      setFinishingTargets(finishingTargetsRes.data || []);
+      setSewingActuals(sewingActualsRes.data || []);
+      setFinishingActuals(finishingActualsRes.data || []);
     } catch (error) {
       console.error('Error fetching submissions:', error);
       toast.error("Failed to load submissions");
@@ -191,245 +206,183 @@ export default function AllSubmissions() {
     });
   };
 
-  const filteredSewing = sewingUpdates.filter(u => 
-    (u.lines?.name || u.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (u.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredFinishing = finishingUpdates.filter(u =>
-    (u.lines?.name || u.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (u.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const totalOutput = sewingUpdates.reduce((sum, u) => sum + (u.output_qty || 0), 0);
-  const totalQcPass = finishingUpdates.reduce((sum, u) => sum + (u.day_qc_pass || 0), 0);
-
-  const handleSewingClick = (update: SewingUpdate) => {
-    setSelectedSubmission({
-      id: update.id,
-      type: 'sewing',
-      line_name: update.lines?.name || update.lines?.line_id || 'Unknown',
-      po_number: update.work_orders?.po_number || null,
-      buyer: update.work_orders?.buyer,
-      style: update.work_orders?.style,
-      output_qty: update.output_qty,
-      target_qty: update.target_qty,
-      manpower: update.manpower,
-      reject_qty: update.reject_qty,
-      rework_qty: update.rework_qty,
-      stage_progress: update.stage_progress,
-      ot_hours: update.ot_hours,
-      ot_manpower: update.ot_manpower,
-      has_blocker: update.has_blocker,
-      blocker_description: update.blocker_description,
-      blocker_impact: update.blocker_impact,
-      blocker_owner: update.blocker_owner,
-      blocker_status: update.blocker_status,
-      notes: update.notes,
-      submitted_at: update.submitted_at,
-      production_date: update.production_date,
-    });
-    setDetailModalOpen(true);
+  // Filter functions
+  const filterBySearch = <T extends { lines?: { line_id: string; name: string | null } | null; work_orders?: { po_number: string } | null }>(items: T[]) => {
+    if (!searchTerm) return items;
+    return items.filter(item =>
+      (item.lines?.name || item.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
   };
 
-  const handleFinishingClick = (update: FinishingUpdate) => {
-    setSelectedSubmission({
-      id: update.id,
-      type: 'finishing',
-      line_name: update.lines?.name || update.lines?.line_id || 'Unknown',
-      po_number: update.work_orders?.po_number || null,
-      buyer_name: update.buyer_name,
-      style_no: update.style_no,
-      item_name: update.item_name,
-      order_quantity: update.order_quantity,
-      unit_name: update.unit_name,
-      floor_name: update.floor_name,
-      m_power: update.m_power,
-      per_hour_target: update.per_hour_target,
-      day_qc_pass: update.day_qc_pass,
-      total_qc_pass: update.total_qc_pass,
-      day_poly: update.day_poly,
-      total_poly: update.total_poly,
-      average_production: update.average_production,
-      day_over_time: update.day_over_time,
-      total_over_time: update.total_over_time,
-      day_hour: update.day_hour,
-      total_hour: update.total_hour,
-      day_carton: update.day_carton,
-      total_carton: update.total_carton,
-      remarks: update.remarks,
-      has_blocker: update.has_blocker,
-      blocker_description: update.blocker_description,
-      blocker_impact: update.blocker_impact,
-      blocker_owner: update.blocker_owner,
-      blocker_status: update.blocker_status,
-      submitted_at: update.submitted_at,
-      production_date: update.production_date,
-    });
-    setDetailModalOpen(true);
+  // Get current data based on category and department
+  const getCurrentData = () => {
+    if (category === 'targets') {
+      return department === 'sewing'
+        ? filterBySearch(sewingTargets)
+        : filterBySearch(finishingTargets);
+    } else {
+      return department === 'sewing'
+        ? filterBySearch(sewingActuals)
+        : filterBySearch(finishingActuals);
+    }
   };
 
-  const exportToCSV = (type: 'sewing' | 'finishing' | 'all') => {
+  const currentData = getCurrentData();
+
+  // Summary stats
+  const getCounts = () => ({
+    sewingTargets: sewingTargets.length,
+    finishingTargets: finishingTargets.length,
+    sewingActuals: sewingActuals.length,
+    finishingActuals: finishingActuals.length,
+  });
+
+  const counts = getCounts();
+
+  const handleTargetClick = (target: SewingTarget | FinishingTarget) => {
+    setSelectedTarget({
+      ...target,
+      type: department,
+    });
+    setTargetModalOpen(true);
+  };
+
+  const handleActualClick = (actual: SewingActual | FinishingActual) => {
+    setSelectedActual({
+      id: actual.id,
+      type: department,
+      line_name: actual.lines?.name || actual.lines?.line_id || 'Unknown',
+      po_number: actual.work_orders?.po_number || null,
+      buyer: actual.work_orders?.buyer,
+      style: actual.work_orders?.style,
+      has_blocker: actual.has_blocker,
+      blocker_description: actual.blocker_description,
+      blocker_impact: actual.blocker_impact,
+      blocker_owner: actual.blocker_owner,
+      blocker_status: null,
+      submitted_at: actual.submitted_at,
+      production_date: actual.production_date,
+      remarks: actual.remarks,
+      ...(department === 'sewing' && {
+        output_qty: (actual as SewingActual).good_today,
+        reject_qty: (actual as SewingActual).reject_today,
+        rework_qty: (actual as SewingActual).rework_today,
+        manpower: (actual as SewingActual).manpower_actual,
+        stage_progress: (actual as SewingActual).actual_stage_progress,
+        ot_hours: (actual as SewingActual).ot_hours_actual,
+      }),
+      ...(department === 'finishing' && {
+        day_qc_pass: (actual as FinishingActual).day_qc_pass,
+        total_qc_pass: (actual as FinishingActual).total_qc_pass,
+        day_poly: (actual as FinishingActual).day_poly,
+        total_poly: (actual as FinishingActual).total_poly,
+        day_carton: (actual as FinishingActual).day_carton,
+        total_carton: (actual as FinishingActual).total_carton,
+        m_power: (actual as FinishingActual).m_power_actual,
+        average_production: (actual as FinishingActual).average_production,
+      }),
+    });
+    setActualModalOpen(true);
+  };
+
+  const exportToCSV = () => {
     setExporting(true);
     try {
       const rows: string[][] = [];
-      const exportDate = new Date().toLocaleDateString('en-US', { 
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+      const exportDate = new Date().toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
       });
-      
-      // Report header
-      rows.push(['Production Submissions Report']);
+
+      rows.push([`${category === 'targets' ? 'Targets' : 'End of Day'} Report - ${department.charAt(0).toUpperCase() + department.slice(1)}`]);
       rows.push([`Generated: ${exportDate}`]);
       rows.push([`Date Range: Last ${dateRange} days`]);
-      rows.push([`Report Type: ${type === 'all' ? 'All Departments' : type === 'sewing' ? 'Sewing Department' : 'Finishing Department'}`]);
       rows.push(['']);
-      
-      if (type === 'sewing' || type === 'all') {
-        // Sewing summary
-        const totalSewingOutput = filteredSewing.reduce((sum, u) => sum + u.output_qty, 0);
-        const totalSewingTarget = filteredSewing.reduce((sum, u) => sum + (u.target_qty || 0), 0);
-        const avgSewingEfficiency = totalSewingTarget > 0 ? Math.round((totalSewingOutput / totalSewingTarget) * 100) : 0;
-        const sewingWithBlockers = filteredSewing.filter(u => u.has_blocker).length;
-        
-        rows.push(['=== SEWING DEPARTMENT ===']);
-        rows.push(['']);
-        rows.push(['Summary Statistics']);
-        rows.push(['Total Records', filteredSewing.length.toString()]);
-        rows.push(['Total Output', totalSewingOutput.toLocaleString()]);
-        rows.push(['Total Target', totalSewingTarget.toLocaleString()]);
-        rows.push(['Average Efficiency', `${avgSewingEfficiency}%`]);
-        rows.push(['Records with Blockers', sewingWithBlockers.toString()]);
-        rows.push(['']);
-        rows.push(['Detailed Records']);
-        rows.push([
-          'Production Date', 
-          'Submission Time', 
-          'Line', 
-          'PO Number', 
-          'Buyer', 
-          'Style', 
-          'Output Qty', 
-          'Target Qty', 
-          'Efficiency (%)', 
-          'Manpower', 
-          'Reject Qty', 
-          'Rework Qty', 
-          'Progress (%)', 
-          'OT Hours', 
-          'Blocker', 
-          'Notes'
-        ]);
-        
-        filteredSewing.forEach(u => {
-          const efficiency = u.target_qty ? Math.round((u.output_qty / u.target_qty) * 100) : 0;
-          rows.push([
-            formatDate(u.production_date),
-            formatTime(u.submitted_at),
-            u.lines?.name || u.lines?.line_id || '-',
-            u.work_orders?.po_number || '-',
-            u.work_orders?.buyer || '-',
-            u.work_orders?.style || '-',
-            u.output_qty.toLocaleString(),
-            u.target_qty?.toLocaleString() || '-',
-            `${efficiency}%`,
-            u.manpower?.toString() || '-',
-            u.reject_qty?.toLocaleString() || '0',
-            u.rework_qty?.toLocaleString() || '0',
-            u.stage_progress ? `${u.stage_progress}%` : '-',
-            u.ot_hours?.toString() || '0',
-            u.has_blocker ? 'Yes' : 'No',
-            u.notes || '-',
-          ]);
-        });
-      }
 
-      if (type === 'finishing' || type === 'all') {
-        if (type === 'all') {
-          rows.push(['']);
-          rows.push(['']);
+      if (category === 'targets') {
+        if (department === 'sewing') {
+          rows.push(['Date', 'Time', 'Line', 'PO', 'Target/hr', 'Manpower', 'OT Hours', 'Progress', 'Late']);
+          filterBySearch(sewingTargets).forEach(t => {
+            rows.push([
+              formatDate(t.production_date),
+              formatTime(t.submitted_at),
+              t.lines?.name || t.lines?.line_id || '-',
+              t.work_orders?.po_number || '-',
+              t.per_hour_target.toString(),
+              t.manpower_planned.toString(),
+              t.ot_hours_planned.toString(),
+              `${t.planned_stage_progress}%`,
+              t.is_late ? 'Yes' : 'No',
+            ]);
+          });
+        } else {
+          rows.push(['Date', 'Time', 'Line', 'PO', 'Target/hr', 'Manpower', 'Hours', 'OT Hours', 'Late']);
+          filterBySearch(finishingTargets).forEach(t => {
+            rows.push([
+              formatDate(t.production_date),
+              formatTime(t.submitted_at),
+              t.lines?.name || t.lines?.line_id || '-',
+              t.work_orders?.po_number || '-',
+              t.per_hour_target.toString(),
+              t.m_power_planned.toString(),
+              t.day_hour_planned.toString(),
+              t.day_over_time_planned.toString(),
+              t.is_late ? 'Yes' : 'No',
+            ]);
+          });
         }
-        
-        // Finishing summary
-        const totalDayQC = filteredFinishing.reduce((sum, u) => sum + (u.day_qc_pass || 0), 0);
-        const totalDayPoly = filteredFinishing.reduce((sum, u) => sum + (u.day_poly || 0), 0);
-        const totalDayCarton = filteredFinishing.reduce((sum, u) => sum + (u.day_carton || 0), 0);
-        const finishingWithBlockers = filteredFinishing.filter(u => u.has_blocker).length;
-        
-        rows.push(['=== FINISHING DEPARTMENT ===']);
-        rows.push(['']);
-        rows.push(['Summary Statistics']);
-        rows.push(['Total Records', filteredFinishing.length.toString()]);
-        rows.push(['Total Day QC Pass', totalDayQC.toLocaleString()]);
-        rows.push(['Total Day Poly', totalDayPoly.toLocaleString()]);
-        rows.push(['Total Day Cartons', totalDayCarton.toLocaleString()]);
-        rows.push(['Records with Blockers', finishingWithBlockers.toString()]);
-        rows.push(['']);
-        rows.push(['Detailed Records']);
-        rows.push([
-          'Production Date', 
-          'Submission Time', 
-          'Line', 
-          'PO Number', 
-          'Buyer', 
-          'Style', 
-          'Day QC Pass', 
-          'Total QC Pass', 
-          'Day Poly', 
-          'Total Poly', 
-          'Manpower', 
-          'Day Carton', 
-          'Total Carton', 
-          'Blocker', 
-          'Remarks'
-        ]);
-        
-        filteredFinishing.forEach(u => {
-          rows.push([
-            formatDate(u.production_date),
-            formatTime(u.submitted_at),
-            u.lines?.name || u.lines?.line_id || '-',
-            u.work_orders?.po_number || '-',
-            u.buyer_name || u.work_orders?.buyer || '-',
-            u.style_no || u.work_orders?.style || '-',
-            (u.day_qc_pass || 0).toLocaleString(),
-            (u.total_qc_pass || 0).toLocaleString(),
-            (u.day_poly || 0).toLocaleString(),
-            (u.total_poly || 0).toLocaleString(),
-            u.m_power?.toString() || '-',
-            (u.day_carton || 0).toLocaleString(),
-            (u.total_carton || 0).toLocaleString(),
-            u.has_blocker ? 'Yes' : 'No',
-            u.remarks || '-',
-          ]);
-        });
+      } else {
+        if (department === 'sewing') {
+          rows.push(['Date', 'Time', 'Line', 'PO', 'Good Today', 'Reject', 'Rework', 'Cumulative', 'Manpower', 'Blocker']);
+          filterBySearch(sewingActuals).forEach(a => {
+            rows.push([
+              formatDate(a.production_date),
+              formatTime(a.submitted_at),
+              a.lines?.name || a.lines?.line_id || '-',
+              a.work_orders?.po_number || '-',
+              a.good_today.toString(),
+              a.reject_today.toString(),
+              a.rework_today.toString(),
+              a.cumulative_good_total.toString(),
+              a.manpower_actual.toString(),
+              a.has_blocker ? 'Yes' : 'No',
+            ]);
+          });
+        } else {
+          rows.push(['Date', 'Time', 'Line', 'PO', 'Day QC', 'Total QC', 'Day Poly', 'Day Carton', 'Manpower', 'Blocker']);
+          filterBySearch(finishingActuals).forEach(a => {
+            rows.push([
+              formatDate(a.production_date),
+              formatTime(a.submitted_at),
+              a.lines?.name || a.lines?.line_id || '-',
+              a.work_orders?.po_number || '-',
+              a.day_qc_pass.toString(),
+              a.total_qc_pass.toString(),
+              a.day_poly.toString(),
+              a.day_carton.toString(),
+              a.m_power_actual.toString(),
+              a.has_blocker ? 'Yes' : 'No',
+            ]);
+          });
+        }
       }
 
-      // Convert to CSV string
-      const csvContent = rows.map(row => 
+      const csvContent = rows.map(row =>
         row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')
       ).join('\n');
 
-      // Create filename with readable format
       const fileDate = new Date().toISOString().split('T')[0];
-      const typeName = type === 'all' ? 'all_departments' : type;
-      
-      // Create and trigger download
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `production_report_${typeName}_${dateRange}days_${fileDate}.csv`);
+      link.setAttribute('download', `${category}_${department}_${dateRange}days_${fileDate}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      const totalRecords = type === 'all' 
-        ? filteredSewing.length + filteredFinishing.length 
-        : type === 'sewing' ? filteredSewing.length : filteredFinishing.length;
-      toast.success(`Exported ${totalRecords} records`);
+
+      toast.success(`Exported ${currentData.length} records`);
     } catch (error) {
       console.error('Export error:', error);
       toast.error("Failed to export data");
@@ -456,7 +409,7 @@ export default function AllSubmissions() {
             All Submissions
           </h1>
           <p className="text-muted-foreground">
-            View and export historical submission data
+            View and export historical targets and end of day data
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -476,11 +429,11 @@ export default function AllSubmissions() {
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh
           </Button>
-          <Button 
-            variant="default" 
-            size="sm" 
-            onClick={() => exportToCSV(activeTab === 'all' ? 'all' : activeTab as 'sewing' | 'finishing')}
-            disabled={exporting}
+          <Button
+            variant="default"
+            size="sm"
+            onClick={exportToCSV}
+            disabled={exporting || currentData.length === 0}
           >
             {exporting ? (
               <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -492,344 +445,298 @@ export default function AllSubmissions() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Factory className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{sewingUpdates.length}</p>
-                <p className="text-xs text-muted-foreground">Sewing Records</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center">
-                <Package className="h-5 w-5 text-info" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{finishingUpdates.length}</p>
-                <p className="text-xs text-muted-foreground">Finishing Records</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div>
-              <p className="text-2xl font-bold font-mono">{totalOutput.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Total Sewing Output</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div>
-              <p className="text-2xl font-bold font-mono">{totalQcPass.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Total QC Pass</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Category Selection - Big Buttons */}
+      <div className="grid grid-cols-2 gap-4">
+        <Button
+          variant={category === 'targets' ? 'default' : 'outline'}
+          className="h-20 flex flex-col gap-2"
+          onClick={() => setCategory('targets')}
+        >
+          <Target className="h-6 w-6" />
+          <div className="flex flex-col items-center">
+            <span className="font-semibold">Morning Targets</span>
+            <span className="text-xs opacity-80">
+              {counts.sewingTargets + counts.finishingTargets} submissions
+            </span>
+          </div>
+        </Button>
+        <Button
+          variant={category === 'actuals' ? 'default' : 'outline'}
+          className="h-20 flex flex-col gap-2"
+          onClick={() => setCategory('actuals')}
+        >
+          <ClipboardCheck className="h-6 w-6" />
+          <div className="flex flex-col items-center">
+            <span className="font-semibold">End of Day</span>
+            <span className="text-xs opacity-80">
+              {counts.sewingActuals + counts.finishingActuals} submissions
+            </span>
+          </div>
+        </Button>
+      </div>
+
+      {/* Department Selection */}
+      <div className="flex gap-2">
+        <Button
+          variant={department === 'sewing' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setDepartment('sewing')}
+          className="gap-2"
+        >
+          <Factory className="h-4 w-4" />
+          Sewing
+          <Badge variant="outline" className="ml-1">
+            {category === 'targets' ? counts.sewingTargets : counts.sewingActuals}
+          </Badge>
+        </Button>
+        <Button
+          variant={department === 'finishing' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setDepartment('finishing')}
+          className="gap-2"
+        >
+          <Package className="h-4 w-4" />
+          Finishing
+          <Badge variant="outline" className="ml-1">
+            {category === 'targets' ? counts.finishingTargets : counts.finishingActuals}
+          </Badge>
+        </Button>
       </div>
 
       {/* Search */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search by line, PO, or ID..."
+          placeholder="Search by line or PO..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-9"
         />
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="all">All ({sewingUpdates.length + finishingUpdates.length})</TabsTrigger>
-          <TabsTrigger value="sewing">Sewing ({sewingUpdates.length})</TabsTrigger>
-          <TabsTrigger value="finishing">Finishing ({finishingUpdates.length})</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="all" className="mt-4 space-y-4">
-          {/* Sewing Table */}
-          {filteredSewing.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Factory className="h-4 w-4 text-primary" />
-                  Sewing Submissions ({filteredSewing.length})
-                </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => exportToCSV('sewing')}>
-                  <Download className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Line</TableHead>
-                        <TableHead>PO</TableHead>
-                        <TableHead className="text-right">Output</TableHead>
-                        <TableHead className="text-right">Target</TableHead>
-                        <TableHead className="text-right">%</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredSewing.slice(0, 50).map((update) => (
-                        <TableRow 
-                          key={update.id} 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleSewingClick(update)}
-                        >
-                          <TableCell className="font-mono text-sm">{formatDate(update.production_date)}</TableCell>
-                          <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(update.submitted_at)}</TableCell>
-                          <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
-                          <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
-                          <TableCell className="text-right font-mono">{update.output_qty.toLocaleString()}</TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground">{update.target_qty?.toLocaleString() || '-'}</TableCell>
-                          <TableCell className="text-right">
-                            {update.target_qty ? (
-                              <span className={`font-medium ${(update.output_qty / update.target_qty) >= 1 ? 'text-success' : (update.output_qty / update.target_qty) >= 0.8 ? 'text-warning' : 'text-destructive'}`}>
-                                {Math.round((update.output_qty / update.target_qty) * 100)}%
-                              </span>
-                            ) : '-'}
-                          </TableCell>
-                          <TableCell>
-                            {update.has_blocker ? (
-                              <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                            ) : (
-                              <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                {filteredSewing.length > 50 && (
-                  <div className="p-3 text-center text-sm text-muted-foreground border-t">
-                    Showing first 50 of {filteredSewing.length} records. Export to see all.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Finishing Table */}
-          {filteredFinishing.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Package className="h-4 w-4 text-info" />
-                  Finishing Submissions ({filteredFinishing.length})
-                </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => exportToCSV('finishing')}>
-                  <Download className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Line</TableHead>
-                        <TableHead>PO</TableHead>
-                        <TableHead className="text-right">Day QC</TableHead>
-                        <TableHead className="text-right">Total QC</TableHead>
-                        <TableHead className="text-right">Day Poly</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredFinishing.slice(0, 50).map((update) => (
-                        <TableRow 
-                          key={update.id}
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleFinishingClick(update)}
-                        >
-                          <TableCell className="font-mono text-sm">{formatDate(update.production_date)}</TableCell>
-                          <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(update.submitted_at)}</TableCell>
-                          <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
-                          <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
-                          <TableCell className="text-right font-mono">{update.day_qc_pass?.toLocaleString() || 0}</TableCell>
-                          <TableCell className="text-right font-mono">{update.total_qc_pass?.toLocaleString() || 0}</TableCell>
-                          <TableCell className="text-right font-mono">{update.day_poly?.toLocaleString() || 0}</TableCell>
-                          <TableCell>
-                            {update.has_blocker ? (
-                              <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                            ) : (
-                              <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                {filteredFinishing.length > 50 && (
-                  <div className="p-3 text-center text-sm text-muted-foreground border-t">
-                    Showing first 50 of {filteredFinishing.length} records. Export to see all.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {filteredSewing.length === 0 && filteredFinishing.length === 0 && (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <History className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>No submissions found for the selected period</p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="sewing" className="mt-4">
-          <Card>
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Sewing Submissions</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => exportToCSV('sewing')}>
-                <Download className="h-4 w-4 mr-1" />
-                Export
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Line</TableHead>
-                      <TableHead>PO</TableHead>
-                      <TableHead className="text-right">Output</TableHead>
-                      <TableHead className="text-right">Target</TableHead>
-                      <TableHead className="text-right">Manpower</TableHead>
-                      <TableHead className="text-right">Progress</TableHead>
-                      <TableHead>Status</TableHead>
+      {/* Data Table */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            {category === 'targets' ? (
+              <Target className="h-4 w-4 text-primary" />
+            ) : (
+              <ClipboardCheck className="h-4 w-4 text-primary" />
+            )}
+            {department === 'sewing' ? 'Sewing' : 'Finishing'}{' '}
+            {category === 'targets' ? 'Targets' : 'End of Day'}
+            <Badge variant="secondary" className="ml-2">{currentData.length}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            {category === 'targets' && department === 'sewing' && (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Date</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Line</TableHead>
+                    <TableHead>PO</TableHead>
+                    <TableHead className="text-right">Target/hr</TableHead>
+                    <TableHead className="text-right">Manpower</TableHead>
+                    <TableHead className="text-right">Progress</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(currentData as SewingTarget[]).map((target) => (
+                    <TableRow
+                      key={target.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleTargetClick(target)}
+                    >
+                      <TableCell className="font-mono text-sm">{formatDate(target.production_date)}</TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(target.submitted_at)}</TableCell>
+                      <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
+                      <TableCell>{target.work_orders?.po_number || '-'}</TableCell>
+                      <TableCell className="text-right font-mono font-bold">{target.per_hour_target}</TableCell>
+                      <TableCell className="text-right">{target.manpower_planned}</TableCell>
+                      <TableCell className="text-right">{target.planned_stage_progress}%</TableCell>
+                      <TableCell>
+                        {target.is_late ? (
+                          <StatusBadge variant="warning" size="sm">Late</StatusBadge>
+                        ) : (
+                          <StatusBadge variant="success" size="sm">On Time</StatusBadge>
+                        )}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredSewing.map((update) => (
-                      <TableRow 
-                        key={update.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleSewingClick(update)}
-                      >
-                        <TableCell className="font-mono text-sm">{formatDate(update.production_date)}</TableCell>
-                        <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(update.submitted_at)}</TableCell>
-                        <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
-                        <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
-                        <TableCell className="text-right font-mono font-bold">{update.output_qty.toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-mono">{update.target_qty?.toLocaleString() || '-'}</TableCell>
-                        <TableCell className="text-right">{update.manpower || '-'}</TableCell>
-                        <TableCell className="text-right">{update.stage_progress ? `${update.stage_progress}%` : '-'}</TableCell>
-                        <TableCell>
-                          {update.has_blocker ? (
-                            <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                          ) : (
-                            <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredSewing.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                          No sewing submissions found
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="finishing" className="mt-4">
-          <Card>
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Finishing Submissions</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => exportToCSV('finishing')}>
-                <Download className="h-4 w-4 mr-1" />
-                Export
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
+                  ))}
+                  {currentData.length === 0 && (
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Line</TableHead>
-                      <TableHead>PO</TableHead>
-                      <TableHead className="text-right">Day QC</TableHead>
-                      <TableHead className="text-right">Total QC</TableHead>
-                      <TableHead className="text-right">M Power</TableHead>
-                      <TableHead className="text-right">Day Poly</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        No sewing targets found
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredFinishing.map((update) => (
-                      <TableRow 
-                        key={update.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleFinishingClick(update)}
-                      >
-                        <TableCell className="font-mono text-sm">{formatDate(update.production_date)}</TableCell>
-                        <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(update.submitted_at)}</TableCell>
-                        <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
-                        <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
-                        <TableCell className="text-right font-mono font-bold">{update.day_qc_pass?.toLocaleString() || 0}</TableCell>
-                        <TableCell className="text-right font-mono">{update.total_qc_pass?.toLocaleString() || 0}</TableCell>
-                        <TableCell className="text-right">{update.m_power || '-'}</TableCell>
-                        <TableCell className="text-right font-mono">{update.day_poly?.toLocaleString() || 0}</TableCell>
-                        <TableCell>
-                          {update.has_blocker ? (
-                            <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                          ) : (
-                            <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredFinishing.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                          No finishing submissions found
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  )}
+                </TableBody>
+              </Table>
+            )}
 
-      {/* Submission Detail Modal */}
+            {category === 'targets' && department === 'finishing' && (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Date</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Line</TableHead>
+                    <TableHead>PO</TableHead>
+                    <TableHead className="text-right">Target/hr</TableHead>
+                    <TableHead className="text-right">Manpower</TableHead>
+                    <TableHead className="text-right">Hours</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(currentData as FinishingTarget[]).map((target) => (
+                    <TableRow
+                      key={target.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleTargetClick(target)}
+                    >
+                      <TableCell className="font-mono text-sm">{formatDate(target.production_date)}</TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(target.submitted_at)}</TableCell>
+                      <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
+                      <TableCell>{target.work_orders?.po_number || '-'}</TableCell>
+                      <TableCell className="text-right font-mono font-bold">{target.per_hour_target}</TableCell>
+                      <TableCell className="text-right">{target.m_power_planned}</TableCell>
+                      <TableCell className="text-right">{target.day_hour_planned}h</TableCell>
+                      <TableCell>
+                        {target.is_late ? (
+                          <StatusBadge variant="warning" size="sm">Late</StatusBadge>
+                        ) : (
+                          <StatusBadge variant="success" size="sm">On Time</StatusBadge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {currentData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        No finishing targets found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+
+            {category === 'actuals' && department === 'sewing' && (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Date</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Line</TableHead>
+                    <TableHead>PO</TableHead>
+                    <TableHead className="text-right">Good Today</TableHead>
+                    <TableHead className="text-right">Cumulative</TableHead>
+                    <TableHead className="text-right">Manpower</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(currentData as SewingActual[]).map((actual) => (
+                    <TableRow
+                      key={actual.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleActualClick(actual)}
+                    >
+                      <TableCell className="font-mono text-sm">{formatDate(actual.production_date)}</TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(actual.submitted_at)}</TableCell>
+                      <TableCell className="font-medium">{actual.lines?.name || actual.lines?.line_id}</TableCell>
+                      <TableCell>{actual.work_orders?.po_number || '-'}</TableCell>
+                      <TableCell className="text-right font-mono font-bold">{actual.good_today.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono">{actual.cumulative_good_total.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{actual.manpower_actual}</TableCell>
+                      <TableCell>
+                        {actual.has_blocker ? (
+                          <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
+                        ) : (
+                          <StatusBadge variant="success" size="sm">OK</StatusBadge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {currentData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        No sewing end of day data found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+
+            {category === 'actuals' && department === 'finishing' && (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Date</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Line</TableHead>
+                    <TableHead>PO</TableHead>
+                    <TableHead className="text-right">Day QC</TableHead>
+                    <TableHead className="text-right">Total QC</TableHead>
+                    <TableHead className="text-right">Manpower</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(currentData as FinishingActual[]).map((actual) => (
+                    <TableRow
+                      key={actual.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleActualClick(actual)}
+                    >
+                      <TableCell className="font-mono text-sm">{formatDate(actual.production_date)}</TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(actual.submitted_at)}</TableCell>
+                      <TableCell className="font-medium">{actual.lines?.name || actual.lines?.line_id}</TableCell>
+                      <TableCell>{actual.work_orders?.po_number || '-'}</TableCell>
+                      <TableCell className="text-right font-mono font-bold">{actual.day_qc_pass.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono">{actual.total_qc_pass.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{actual.m_power_actual}</TableCell>
+                      <TableCell>
+                        {actual.has_blocker ? (
+                          <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
+                        ) : (
+                          <StatusBadge variant="success" size="sm">OK</StatusBadge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {currentData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        No finishing end of day data found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Target Detail Modal */}
+      <TargetDetailModal
+        target={selectedTarget}
+        open={targetModalOpen}
+        onOpenChange={setTargetModalOpen}
+      />
+
+      {/* Actual Detail Modal */}
       <SubmissionDetailModal
-        submission={selectedSubmission as any}
-        open={detailModalOpen}
-        onOpenChange={setDetailModalOpen}
+        submission={selectedActual}
+        open={actualModalOpen}
+        onOpenChange={setActualModalOpen}
         onDeleted={fetchSubmissions}
         onUpdated={fetchSubmissions}
       />
