@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Loader2, FileText, AlertCircle, Calendar, CheckCircle2, XCircle, Filter, CalendarIcon, Target, Package, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, FileText, AlertCircle, Calendar, CheckCircle2, XCircle, Filter, CalendarIcon, Target, Package, TrendingUp, TrendingDown, Clock } from "lucide-react";
 import { format, subDays, startOfDay, isWithinInterval, parseISO } from "date-fns";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { cn } from "@/lib/utils";
@@ -80,6 +80,10 @@ export default function MySubmissions() {
   const [todaysDailyTarget, setTodaysDailyTarget] = useState(0);
   const [todaysOutput, setTodaysOutput] = useState(0);
   
+  // Deadline times
+  const [morningTargetCutoff, setMorningTargetCutoff] = useState<string | null>(null);
+  const [eveningActualCutoff, setEveningActualCutoff] = useState<string | null>(null);
+  
   // Modal state
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -112,7 +116,8 @@ export default function MySubmissions() {
         todaySewingTargetsRes,
         todayFinishingTargetsRes,
         todaySewingActualsRes,
-        todayFinishingActualsRes
+        todayFinishingActualsRes,
+        factoryRes
       ] = await Promise.all([
         // Last 30 days sewing submissions
         supabase
@@ -173,8 +178,20 @@ export default function MySubmissions() {
           .from('production_updates_finishing')
           .select('qc_pass_qty')
           .eq('submitted_by', user.id)
-          .eq('production_date', today)
+          .eq('production_date', today),
+        // Factory settings for deadlines
+        supabase
+          .from('factory_accounts')
+          .select('morning_target_cutoff, evening_actual_cutoff')
+          .eq('id', profile.factory_id)
+          .single()
       ]);
+
+      // Set deadline times
+      if (factoryRes.data) {
+        setMorningTargetCutoff(factoryRes.data.morning_target_cutoff);
+        setEveningActualCutoff(factoryRes.data.evening_actual_cutoff);
+      }
 
       setSewingSubmissions(sewingRes.data || []);
       setFinishingSubmissions(finishingRes.data || []);
@@ -306,14 +323,45 @@ export default function MySubmissions() {
     );
   }
 
+  // Format time for display (e.g., "09:00" -> "9:00 AM")
+  const formatTime = (time: string | null) => {
+    if (!time) return null;
+    const [hours, minutes] = time.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
   return (
     <div className="p-4 lg:p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">My Submissions</h1>
-        <p className="text-muted-foreground">
-          Track your production updates and submissions history
-        </p>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold">My Submissions</h1>
+          <p className="text-muted-foreground">
+            Track your production updates and submissions history
+          </p>
+        </div>
+        
+        {/* Deadline Times */}
+        {(morningTargetCutoff || eveningActualCutoff) && (
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            {morningTargetCutoff && (
+              <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full">
+                <Clock className="h-4 w-4" />
+                <span className="font-medium">Morning Target:</span>
+                <span>{formatTime(morningTargetCutoff)}</span>
+              </div>
+            )}
+            {eveningActualCutoff && (
+              <div className="flex items-center gap-2 bg-warning/10 text-warning px-3 py-1.5 rounded-full">
+                <Clock className="h-4 w-4" />
+                <span className="font-medium">End of Day:</span>
+                <span>{formatTime(eveningActualCutoff)}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Filters */}
