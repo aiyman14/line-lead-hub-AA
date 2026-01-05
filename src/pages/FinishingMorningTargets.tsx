@@ -49,7 +49,7 @@ interface Floor {
 
 export default function FinishingMorningTargets() {
   const navigate = useNavigate();
-  const { user, profile, isAdminOrHigher } = useAuth();
+  const { user, profile, factory, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -166,6 +166,16 @@ export default function FinishingMorningTargets() {
     setSubmitting(true);
 
     try {
+      // Check if submission is late based on morning_target_cutoff
+      let isLate = false;
+      if (factory?.morning_target_cutoff) {
+        const now = new Date();
+        const [cutoffHour, cutoffMinute] = factory.morning_target_cutoff.split(':').map(Number);
+        const cutoffTime = new Date();
+        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
+        isLate = now > cutoffTime;
+      }
+
       const insertData = {
         factory_id: profile.factory_id,
         production_date: format(new Date(), "yyyy-MM-dd"),
@@ -183,6 +193,7 @@ export default function FinishingMorningTargets() {
         day_hour_planned: parseFloat(dayHourPlanned),
         day_over_time_planned: parseFloat(dayOverTimePlanned),
         remarks: remarks || null,
+        is_late: isLate,
       };
 
       const { error } = await supabase.from("finishing_targets").insert(insertData as any);
