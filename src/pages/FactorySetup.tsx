@@ -422,7 +422,7 @@ export default function FactorySetup() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-7 mb-6">
+        <TabsList className="grid w-full grid-cols-5 mb-6">
           <TabsTrigger value="units" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Units</span>
@@ -442,14 +442,6 @@ export default function FactorySetup() {
           <TabsTrigger value="blockerTypes" className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
             <span className="hidden sm:inline">Blockers</span>
-          </TabsTrigger>
-          <TabsTrigger value="subscription" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            <span className="hidden sm:inline">Subscription</span>
-          </TabsTrigger>
-          <TabsTrigger value="billing" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            <span className="hidden sm:inline">Billing</span>
           </TabsTrigger>
         </TabsList>
 
@@ -759,44 +751,19 @@ export default function FactorySetup() {
           </Card>
         </TabsContent>
 
-        {/* Subscription Tab */}
-        <TabsContent value="subscription">
-          <Card>
-            <CardHeader>
-              <CardTitle>Subscription</CardTitle>
-              <CardDescription>Manage your factory subscription plan</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground mb-4">
-                View and manage your subscription plan, upgrade to get more features, or start your free trial.
-              </p>
-              <Button onClick={() => navigate('/subscription')}>
-                <CreditCard className="h-4 w-4 mr-2" />
-                Manage Subscription
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Billing Tab */}
-        <TabsContent value="billing">
-          <Card>
-            <CardHeader>
-              <CardTitle>Billing</CardTitle>
-              <CardDescription>View billing history and payment methods</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground mb-4">
-                Access your invoices, update payment methods, and view your billing history.
-              </p>
-              <Button onClick={() => navigate('/billing')}>
-                <Receipt className="h-4 w-4 mr-2" />
-                View Billing
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
+
+      {/* Subscription & Billing Buttons */}
+      <div className="flex gap-4 mt-6">
+        <Button variant="outline" onClick={() => navigate('/subscription')} className="flex-1">
+          <CreditCard className="h-4 w-4 mr-2" />
+          Subscription
+        </Button>
+        <Button variant="outline" onClick={() => navigate('/billing')} className="flex-1">
+          <Receipt className="h-4 w-4 mr-2" />
+          Billing
+        </Button>
+      </div>
 
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
