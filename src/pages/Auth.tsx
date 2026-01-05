@@ -39,7 +39,7 @@ const signupSchema = z.object({
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
-  const { signIn, signUp, user, profile } = useAuth();
+  const { signIn, signUp, user, profile, hasRole, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -65,14 +65,14 @@ export default function Auth() {
   // Redirect if already logged in (but not if in password reset mode)
   useEffect(() => {
     if (user && !isPasswordResetMode) {
-      // Check if user has a factory - if not, redirect to subscription
       if (profile?.factory_id) {
-        navigate("/dashboard");
-      } else {
-        navigate("/subscription");
+        const isWorker = (profile.department != null) || (hasRole('worker') && !hasRole('supervisor') && !isAdminOrHigher());
+        navigate(isWorker ? "/my-submissions" : "/dashboard", { replace: true });
+      } else if (profile) {
+        navigate("/subscription", { replace: true });
       }
     }
-  }, [user, profile, navigate, isPasswordResetMode]);
+  }, [user, profile, navigate, isPasswordResetMode, hasRole, isAdminOrHigher]);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -161,7 +161,8 @@ export default function Auth() {
       setNewPassword("");
       setConfirmNewPassword("");
       window.history.replaceState(null, '', window.location.pathname);
-      navigate("/dashboard");
+      // Let the redirect useEffect choose the correct landing page
+      navigate("/", { replace: true });
     }
   };
 
@@ -199,7 +200,7 @@ export default function Auth() {
         title: "Welcome back!",
         description: "You have successfully logged in.",
       });
-      navigate("/dashboard");
+      // Navigation will happen via the redirect useEffect once profile/roles are loaded
     }
   };
 

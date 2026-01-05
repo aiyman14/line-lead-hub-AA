@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
 
 export default function Index() {
-  const { user, loading } = useAuth();
+  const { user, loading, profile, hasRole, isAdminOrHigher } = useAuth();
 
   // Show loading state
   if (loading) {
@@ -24,9 +24,16 @@ export default function Index() {
     );
   }
 
-  // Redirect authenticated users to dashboard
+  // Redirect authenticated users based on role
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    if (!profile) return null;
+
+    if (!profile.factory_id) {
+      return <Navigate to="/subscription" replace />;
+    }
+
+    const isWorker = (profile.department != null) || (hasRole('worker') && !hasRole('supervisor') && !isAdminOrHigher());
+    return <Navigate to={isWorker ? "/my-submissions" : "/dashboard"} replace />;
   }
 
   // Redirect unauthenticated users to auth page

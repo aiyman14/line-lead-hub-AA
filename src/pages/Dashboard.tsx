@@ -89,7 +89,7 @@ interface ActiveBlocker {
 export default function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { profile, factory, isAdminOrHigher, hasRole, loading: authLoading, roles } = useAuth();
+  const { profile, factory, isAdminOrHigher, hasRole, loading: authLoading } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     updatesToday: 0,
     blockersToday: 0,
@@ -104,24 +104,23 @@ export default function Dashboard() {
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const isWorker = hasRole('worker') && !isAdminOrHigher();
+  const canViewDashboard = hasRole('supervisor') || isAdminOrHigher();
 
-  // Redirect workers to my-submissions - they shouldn't see the control dashboard
+  // Redirect non-privileged users (workers) away from the control dashboard
   useEffect(() => {
-    // Wait for auth to finish loading and roles to be populated
-    if (!authLoading && roles.length > 0 && isWorker) {
+    if (!authLoading && profile?.factory_id && !canViewDashboard) {
       navigate('/my-submissions', { replace: true });
     }
-  }, [authLoading, roles, isWorker, navigate]);
+  }, [authLoading, profile?.factory_id, canViewDashboard, navigate]);
 
   useEffect(() => {
-    if (profile?.factory_id && !isWorker) {
+    if (profile?.factory_id && canViewDashboard) {
       fetchDashboardData();
     }
-  }, [profile?.factory_id, isWorker]);
+  }, [profile?.factory_id, canViewDashboard]);
 
-  // Show loading while auth is loading or while redirecting worker
-  if (authLoading || (roles.length > 0 && isWorker)) {
+  // Show loading while auth is loading or while redirecting non-privileged users
+  if (authLoading || (!canViewDashboard && profile?.factory_id)) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -331,8 +330,8 @@ export default function Dashboard() {
     });
   };
 
-  // Workers are redirected via useEffect, return null as fallback
-  if (isWorker) {
+  // Non-privileged users are redirected via useEffect, return null as fallback
+  if (!canViewDashboard) {
     return null;
   }
 
