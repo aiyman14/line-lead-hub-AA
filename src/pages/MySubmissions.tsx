@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Loader2, FileText, AlertCircle, Calendar, CheckCircle2, XCircle, Filter, CalendarIcon, Target, Package, TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { Loader2, FileText, AlertCircle, Calendar, CheckCircle2, XCircle, Filter, CalendarIcon, Target, Package, TrendingUp, TrendingDown, Clock, Sunrise, Moon } from "lucide-react";
 import { format, subDays, startOfDay, isWithinInterval, parseISO } from "date-fns";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ interface SewingSubmission {
   style_code: string | null;
   po_number: string | null;
   lines?: { line_id: string; name: string | null };
+  submission_type: 'morning_target' | 'end_of_day';
 }
 
 interface FinishingSubmission {
@@ -43,6 +44,7 @@ interface FinishingSubmission {
   buyer_name: string | null;
   style_no: string | null;
   lines?: { line_id: string; name: string | null };
+  submission_type: 'morning_target' | 'end_of_day';
 }
 
 interface MissedDay {
@@ -109,6 +111,8 @@ export default function MySubmissions() {
       const [
         sewingRes,
         finishingRes,
+        sewingTargetsRes,
+        finishingTargetsRes,
         sewingCountRes,
         finishingCountRes,
         lineAssignmentsRes,
@@ -119,26 +123,40 @@ export default function MySubmissions() {
         todayFinishingActualsRes,
         factoryRes
       ] = await Promise.all([
-        // Last 30 days sewing submissions
+        // Last 30 days sewing submissions (end of day)
         supabase
           .from('production_updates_sewing')
           .select('*, lines(line_id, name)')
           .eq('submitted_by', user.id)
           .gte('production_date', thirtyDaysAgo)
           .order('production_date', { ascending: false }),
-        // Last 30 days finishing submissions
+        // Last 30 days finishing submissions (end of day)
         supabase
           .from('production_updates_finishing')
           .select('*, lines(line_id, name)')
           .eq('submitted_by', user.id)
           .gte('production_date', thirtyDaysAgo)
           .order('production_date', { ascending: false }),
-        // All-time sewing count
+        // Last 30 days sewing morning targets
+        supabase
+          .from('sewing_targets')
+          .select('*, lines(line_id, name)')
+          .eq('submitted_by', user.id)
+          .gte('production_date', thirtyDaysAgo)
+          .order('production_date', { ascending: false }),
+        // Last 30 days finishing morning targets
+        supabase
+          .from('finishing_targets')
+          .select('*, lines(line_id, name)')
+          .eq('submitted_by', user.id)
+          .gte('production_date', thirtyDaysAgo)
+          .order('production_date', { ascending: false }),
+        // All-time sewing count (both types)
         supabase
           .from('production_updates_sewing')
           .select('id', { count: 'exact', head: true })
           .eq('submitted_by', user.id),
-        // All-time finishing count
+        // All-time finishing count (both types)
         supabase
           .from('production_updates_finishing')
           .select('id', { count: 'exact', head: true })
@@ -193,8 +211,64 @@ export default function MySubmissions() {
         setEveningActualCutoff(factoryRes.data.evening_actual_cutoff);
       }
 
-      setSewingSubmissions(sewingRes.data || []);
-      setFinishingSubmissions(finishingRes.data || []);
+      // Combine end-of-day and morning target submissions with type markers
+      const sewingEndOfDay = (sewingRes.data || []).map(s => ({
+        ...s,
+        submission_type: 'end_of_day' as const
+      }));
+      const sewingMorning = (sewingTargetsRes.data || []).map(s => ({
+        id: s.id,
+        production_date: s.production_date,
+        submitted_at: s.submitted_at,
+        line_id: s.line_id,
+        output_qty: 0, // Morning targets don't have output
+        target_qty: s.per_hour_target,
+        reject_qty: null,
+        rework_qty: null,
+        has_blocker: false,
+        blocker_impact: null,
+        buyer_name: s.buyer_name,
+        style_code: s.style_code,
+        po_number: null,
+        lines: s.lines,
+        submission_type: 'morning_target' as const
+      }));
+      
+      const finishingEndOfDay = (finishingRes.data || []).map(s => ({
+        ...s,
+        submission_type: 'end_of_day' as const
+      }));
+      const finishingMorning = (finishingTargetsRes.data || []).map(s => ({
+        id: s.id,
+        production_date: s.production_date,
+        submitted_at: s.submitted_at,
+        line_id: s.line_id,
+        qc_pass_qty: 0, // Morning targets don't have output
+        day_poly: null,
+        day_carton: null,
+        has_blocker: false,
+        blocker_impact: null,
+        buyer_name: s.buyer_name,
+        style_no: s.style_no,
+        lines: s.lines,
+        submission_type: 'morning_target' as const
+      }));
+
+      // Combine and sort by date/time
+      const combinedSewing = [...sewingEndOfDay, ...sewingMorning].sort((a, b) => {
+        const dateCompare = new Date(b.production_date).getTime() - new Date(a.production_date).getTime();
+        if (dateCompare !== 0) return dateCompare;
+        return new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime();
+      });
+      
+      const combinedFinishing = [...finishingEndOfDay, ...finishingMorning].sort((a, b) => {
+        const dateCompare = new Date(b.production_date).getTime() - new Date(a.production_date).getTime();
+        if (dateCompare !== 0) return dateCompare;
+        return new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime();
+      });
+
+      setSewingSubmissions(combinedSewing);
+      setFinishingSubmissions(combinedFinishing);
       setTotalSewingAllTime(sewingCountRes.count || 0);
       setTotalFinishingAllTime(finishingCountRes.count || 0);
       
@@ -602,7 +676,7 @@ export default function MySubmissions() {
             <div className="space-y-3">
               {filteredSewingSubmissions.map((submission) => (
                 <Card 
-                  key={submission.id} 
+                  key={`${submission.id}-${submission.submission_type}`} 
                   className="cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => {
                     setSelectedSubmission({ ...submission, type: 'sewing' });
@@ -612,17 +686,37 @@ export default function MySubmissions() {
                   <CardContent className="py-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <Calendar className="h-5 w-5 text-primary" />
+                        <div className={cn(
+                          "h-10 w-10 rounded-lg flex items-center justify-center",
+                          submission.submission_type === 'morning_target' 
+                            ? "bg-warning/10" 
+                            : "bg-primary/10"
+                        )}>
+                          {submission.submission_type === 'morning_target' ? (
+                            <Sunrise className="h-5 w-5 text-warning" />
+                          ) : (
+                            <Moon className="h-5 w-5 text-primary" />
+                          )}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium">
                               {submission.lines?.name || 'Unknown Line'}
                             </span>
                             <Badge variant="outline" className="text-xs">
                               {format(new Date(submission.production_date), 'MMM d, yyyy')}
                             </Badge>
+                            {submission.submission_type === 'morning_target' ? (
+                              <Badge className="text-xs bg-warning/20 text-warning border-warning/30 hover:bg-warning/30">
+                                <Sunrise className="h-3 w-3 mr-1" />
+                                Morning Target
+                              </Badge>
+                            ) : (
+                              <Badge className="text-xs bg-primary/20 text-primary border-primary/30 hover:bg-primary/30">
+                                <Moon className="h-3 w-3 mr-1" />
+                                End of Day
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             {submission.po_number} • {submission.buyer_name} • {submission.style_code}
@@ -631,8 +725,17 @@ export default function MySubmissions() {
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-right">
-                          <p className="font-semibold">{submission.output_qty?.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground">Output</p>
+                          {submission.submission_type === 'morning_target' ? (
+                            <>
+                              <p className="font-semibold">{submission.target_qty?.toLocaleString() || 0}/hr</p>
+                              <p className="text-xs text-muted-foreground">Target</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="font-semibold">{submission.output_qty?.toLocaleString()}</p>
+                              <p className="text-xs text-muted-foreground">Output</p>
+                            </>
+                          )}
                         </div>
                         {submission.has_blocker && (
                           <Badge variant="destructive" className="text-xs">
@@ -660,7 +763,7 @@ export default function MySubmissions() {
             <div className="space-y-3">
               {filteredFinishingSubmissions.map((submission) => (
                 <Card 
-                  key={submission.id} 
+                  key={`${submission.id}-${submission.submission_type}`} 
                   className="cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => {
                     setSelectedSubmission({ ...submission, type: 'finishing' });
@@ -670,17 +773,37 @@ export default function MySubmissions() {
                   <CardContent className="py-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center">
-                          <Calendar className="h-5 w-5 text-info" />
+                        <div className={cn(
+                          "h-10 w-10 rounded-lg flex items-center justify-center",
+                          submission.submission_type === 'morning_target' 
+                            ? "bg-warning/10" 
+                            : "bg-info/10"
+                        )}>
+                          {submission.submission_type === 'morning_target' ? (
+                            <Sunrise className="h-5 w-5 text-warning" />
+                          ) : (
+                            <Moon className="h-5 w-5 text-info" />
+                          )}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium">
                               {submission.lines?.name || 'Unknown Line'}
                             </span>
                             <Badge variant="outline" className="text-xs">
                               {format(new Date(submission.production_date), 'MMM d, yyyy')}
                             </Badge>
+                            {submission.submission_type === 'morning_target' ? (
+                              <Badge className="text-xs bg-warning/20 text-warning border-warning/30 hover:bg-warning/30">
+                                <Sunrise className="h-3 w-3 mr-1" />
+                                Morning Target
+                              </Badge>
+                            ) : (
+                              <Badge className="text-xs bg-info/20 text-info border-info/30 hover:bg-info/30">
+                                <Moon className="h-3 w-3 mr-1" />
+                                End of Day
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             {submission.buyer_name} • {submission.style_no}
@@ -689,8 +812,17 @@ export default function MySubmissions() {
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-right">
-                          <p className="font-semibold">{submission.qc_pass_qty?.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground">QC Pass</p>
+                          {submission.submission_type === 'morning_target' ? (
+                            <>
+                              <p className="font-semibold">Target Set</p>
+                              <p className="text-xs text-muted-foreground">Morning</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="font-semibold">{submission.qc_pass_qty?.toLocaleString()}</p>
+                              <p className="text-xs text-muted-foreground">QC Pass</p>
+                            </>
+                          )}
                         </div>
                         {submission.has_blocker && (
                           <Badge variant="destructive" className="text-xs">
