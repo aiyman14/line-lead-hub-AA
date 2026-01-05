@@ -21,8 +21,8 @@ import {
   ChevronLeft,
   ChevronRight,
   UserCog,
-  Sunrise,
-  Sunset,
+  Crosshair,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -62,8 +62,8 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Receipt,
   HeadphonesIcon: Headphones,
   UserCog,
-  Sunrise,
-  Sunset,
+  Crosshair,
+  ClipboardCheck,
 };
 
 const navLabelKeys: Record<string, string> = {

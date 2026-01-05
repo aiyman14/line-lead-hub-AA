@@ -137,24 +137,24 @@ export const DEFAULT_BLOCKER_TYPES = [
 // Worker navigation is determined dynamically based on department
 export const NAV_ITEMS = {
   worker_sewing: [
-    { path: '/sewing/morning-targets', label: 'Sewing Morning Targets', icon: 'Sunrise' },
-    { path: '/sewing/end-of-day', label: 'Sewing End of Day', icon: 'Sunset' },
+    { path: '/sewing/morning-targets', label: 'Sewing Morning Targets', icon: 'Crosshair' },
+    { path: '/sewing/end-of-day', label: 'Sewing End of Day', icon: 'ClipboardCheck' },
     { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/my-submissions', label: 'My Submissions', icon: 'FileText' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   worker_finishing: [
-    { path: '/finishing/morning-targets', label: 'Finishing Morning Targets', icon: 'Sunrise' },
-    { path: '/finishing/end-of-day', label: 'Finishing End of Day', icon: 'Sunset' },
+    { path: '/finishing/morning-targets', label: 'Finishing Morning Targets', icon: 'Crosshair' },
+    { path: '/finishing/end-of-day', label: 'Finishing End of Day', icon: 'ClipboardCheck' },
     { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/my-submissions', label: 'My Submissions', icon: 'FileText' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   worker: [
-    { path: '/sewing/morning-targets', label: 'Sewing Morning Targets', icon: 'Sunrise' },
-    { path: '/sewing/end-of-day', label: 'Sewing End of Day', icon: 'Sunset' },
-    { path: '/finishing/morning-targets', label: 'Finishing Morning Targets', icon: 'Sunrise' },
-    { path: '/finishing/end-of-day', label: 'Finishing End of Day', icon: 'Sunset' },
+    { path: '/sewing/morning-targets', label: 'Sewing Morning Targets', icon: 'Crosshair' },
+    { path: '/sewing/end-of-day', label: 'Sewing End of Day', icon: 'ClipboardCheck' },
+    { path: '/finishing/morning-targets', label: 'Finishing Morning Targets', icon: 'Crosshair' },
+    { path: '/finishing/end-of-day', label: 'Finishing End of Day', icon: 'ClipboardCheck' },
     { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/my-submissions', label: 'My Submissions', icon: 'FileText' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
