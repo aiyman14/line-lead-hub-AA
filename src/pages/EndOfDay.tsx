@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format } from "date-fns";
 import SewingEndOfDayForm from "@/components/forms/SewingEndOfDayForm";
 import FinishingEndOfDayForm from "@/components/forms/FinishingEndOfDayForm";
 
 export default function EndOfDay() {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState("sewing");
+
+  const dateLocale = i18n.language === 'bn' ? 'bn-BD' : 'en-US';
 
   return (
     <div className="container max-w-2xl py-4 px-4 pb-8">
@@ -18,15 +21,17 @@ export default function EndOfDay() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-bold">End of Day Output</h1>
-          <p className="text-sm text-muted-foreground">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
+          <h1 className="text-xl font-bold">{t("forms.endOfDayOutput")}</h1>
+          <p className="text-sm text-muted-foreground">
+            {new Date().toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 mb-6">
-          <TabsTrigger value="sewing">Sewing</TabsTrigger>
-          <TabsTrigger value="finishing">Finishing</TabsTrigger>
+          <TabsTrigger value="sewing">{t("forms.sewing")}</TabsTrigger>
+          <TabsTrigger value="finishing">{t("forms.finishing")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sewing">

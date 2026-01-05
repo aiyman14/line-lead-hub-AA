@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -49,9 +50,12 @@ interface Floor {
 
 export default function FinishingMorningTargets() {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
   const { user, profile, factory, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  const dateLocale = i18n.language === 'bn' ? 'bn-BD' : 'en-US';
 
   // Master data
   const [lines, setLines] = useState<Line[]>([]);
@@ -130,7 +134,7 @@ export default function FinishingMorningTargets() {
       setFloors(floorsRes.data || []);
     } catch (error) {
       console.error("Error fetching form data:", error);
-      toast.error("Failed to load form data");
+      toast.error(t("common.submissionFailed"));
     } finally {
       setLoading(false);
     }
@@ -139,12 +143,12 @@ export default function FinishingMorningTargets() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedLineId) newErrors.line = "Line is required";
-    if (!selectedWorkOrderId) newErrors.workOrder = "PO is required";
-    if (!perHourTarget || parseInt(perHourTarget) <= 0) newErrors.perHourTarget = "Per hour target is required";
-    if (!mPowerPlanned || parseInt(mPowerPlanned) <= 0) newErrors.mPowerPlanned = "M Power is required";
-    if (!dayHourPlanned || parseFloat(dayHourPlanned) < 0) newErrors.dayHourPlanned = "Day hours is required";
-    if (dayOverTimePlanned === "" || parseFloat(dayOverTimePlanned) < 0) newErrors.dayOverTimePlanned = "OT hours must be 0 or more";
+    if (!selectedLineId) newErrors.line = t("forms.lineRequired");
+    if (!selectedWorkOrderId) newErrors.workOrder = t("forms.poRequired");
+    if (!perHourTarget || parseInt(perHourTarget) <= 0) newErrors.perHourTarget = t("forms.targetRequired");
+    if (!mPowerPlanned || parseInt(mPowerPlanned) <= 0) newErrors.mPowerPlanned = t("forms.mPowerRequired");
+    if (!dayHourPlanned || parseFloat(dayHourPlanned) < 0) newErrors.dayHourPlanned = t("forms.dayHoursRequired");
+    if (dayOverTimePlanned === "" || parseFloat(dayOverTimePlanned) < 0) newErrors.dayOverTimePlanned = t("forms.otHoursRequired");
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -154,19 +158,18 @@ export default function FinishingMorningTargets() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error("Please fill in all required fields");
+      toast.error(t("common.fillRequiredFields"));
       return;
     }
 
     if (!profile?.factory_id || !user?.id) {
-      toast.error("Missing user or factory information");
+      toast.error(t("common.submissionFailed"));
       return;
     }
 
     setSubmitting(true);
 
     try {
-      // Check if submission is late based on morning_target_cutoff
       let isLate = false;
       if (factory?.morning_target_cutoff) {
         const now = new Date();
@@ -200,14 +203,14 @@ export default function FinishingMorningTargets() {
 
       if (error) {
         if (error.code === "23505") {
-          toast.error("Target already submitted for this line and PO today");
+          toast.error(t("common.submissionFailed"));
         } else {
           throw error;
         }
         return;
       }
 
-      toast.success("Morning targets submitted successfully!");
+      toast.success(t("common.submissionSuccess"));
       
       if (isAdminOrHigher()) {
         navigate("/dashboard");
@@ -216,7 +219,7 @@ export default function FinishingMorningTargets() {
       }
     } catch (error: any) {
       console.error("Error submitting targets:", error);
-      toast.error(error.message || "Failed to submit targets");
+      toast.error(t("common.submissionFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -233,7 +236,7 @@ export default function FinishingMorningTargets() {
   if (!profile?.factory_id) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-4">
-        <p className="text-muted-foreground">No factory assigned to your account.</p>
+        <p className="text-muted-foreground">{t("common.noFactoryAssigned")}</p>
       </div>
     );
   }
@@ -245,8 +248,10 @@ export default function FinishingMorningTargets() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-bold">Finishing — Morning Targets</h1>
-          <p className="text-sm text-muted-foreground">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
+          <h1 className="text-xl font-bold">{t("forms.finishingMorningTargets")}</h1>
+          <p className="text-sm text-muted-foreground">
+            {new Date().toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
         </div>
       </div>
 
@@ -254,14 +259,14 @@ export default function FinishingMorningTargets() {
         {/* Line & PO Selection */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Select Line & PO</CardTitle>
+            <CardTitle className="text-base">{t("forms.selectLinePO")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Line No. *</Label>
+              <Label>{t("forms.lineNo")} *</Label>
               <Select value={selectedLineId} onValueChange={setSelectedLineId}>
                 <SelectTrigger className={errors.line ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select line" />
+                  <SelectValue placeholder={t("forms.selectLine")} />
                 </SelectTrigger>
                 <SelectContent>
                   {lines.map((line) => (
@@ -275,10 +280,10 @@ export default function FinishingMorningTargets() {
             </div>
 
             <div className="space-y-2">
-              <Label>PO Number *</Label>
+              <Label>{t("forms.poNumber")} *</Label>
               <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
                 <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select PO" />
+                  <SelectValue placeholder={t("forms.selectPO")} />
                 </SelectTrigger>
                 <SelectContent>
                   {filteredWorkOrders.map((wo) => (
@@ -297,32 +302,32 @@ export default function FinishingMorningTargets() {
         {selectedWorkOrder && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Order Details (Auto-filled)</CardTitle>
+              <CardTitle className="text-base">{t("forms.orderDetailsAuto")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Buyer:</span>
+                  <span className="text-muted-foreground">{t("forms.buyer")}:</span>
                   <p className="font-medium">{selectedWorkOrder.buyer}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Style:</span>
+                  <span className="text-muted-foreground">{t("forms.style")}:</span>
                   <p className="font-medium">{selectedWorkOrder.style}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Item:</span>
+                  <span className="text-muted-foreground">{t("forms.item")}:</span>
                   <p className="font-medium">{selectedWorkOrder.item || "-"}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Order Qty:</span>
+                  <span className="text-muted-foreground">{t("forms.orderQty")}:</span>
                   <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Unit:</span>
+                  <span className="text-muted-foreground">{t("forms.unit")}:</span>
                   <p className="font-medium">{unitName || "-"}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Floor:</span>
+                  <span className="text-muted-foreground">{t("forms.floor")}:</span>
                   <p className="font-medium">{floorName || "-"}</p>
                 </div>
               </div>
@@ -333,12 +338,12 @@ export default function FinishingMorningTargets() {
         {/* Target Fields */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Today's Targets</CardTitle>
+            <CardTitle className="text-base">{t("forms.todaysTargets")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Per Hour Target *</Label>
+                <Label>{t("forms.perHourTarget")} *</Label>
                 <Input
                   type="number"
                   value={perHourTarget}
@@ -350,7 +355,7 @@ export default function FinishingMorningTargets() {
               </div>
 
               <div className="space-y-2">
-                <Label>M Power Planned *</Label>
+                <Label>{t("forms.mPowerPlanned")} *</Label>
                 <Input
                   type="number"
                   value={mPowerPlanned}
@@ -364,7 +369,7 @@ export default function FinishingMorningTargets() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Day Hours Planned *</Label>
+                <Label>{t("forms.dayHoursPlanned")} *</Label>
                 <Input
                   type="number"
                   step="0.5"
@@ -377,7 +382,7 @@ export default function FinishingMorningTargets() {
               </div>
 
               <div className="space-y-2">
-                <Label>OT Hours Planned *</Label>
+                <Label>{t("forms.otHoursPlannedLabel")} *</Label>
                 <Input
                   type="number"
                   step="0.5"
@@ -395,34 +400,31 @@ export default function FinishingMorningTargets() {
         {/* Optional Fields */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Optional</CardTitle>
+            <CardTitle className="text-base">{t("forms.optional")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <Label>Remarks</Label>
+              <Label>{t("forms.remarks")}</Label>
               <Textarea
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Any additional notes..."
+                placeholder={t("forms.addAnyNotes")}
                 rows={3}
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Submit Button */}
-        <div className="mt-6 pb-2">
-          <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              "Submit Morning Targets"
-            )}
-          </Button>
-        </div>
+        <Button type="submit" className="w-full" disabled={submitting}>
+          {submitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {t("forms.submitting")}
+            </>
+          ) : (
+            t("forms.submitTargets")
+          )}
+        </Button>
       </form>
     </div>
   );
