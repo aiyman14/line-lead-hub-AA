@@ -44,6 +44,8 @@ export default function SetupHome() {
     floorsCount: 0,
   });
   const [cutoffTime, setCutoffTime] = useState("16:00");
+  const [morningTargetCutoff, setMorningTargetCutoff] = useState("10:00");
+  const [eveningActualCutoff, setEveningActualCutoff] = useState("18:00");
   const [isSavingCutoff, setIsSavingCutoff] = useState(false);
 
   useEffect(() => {
@@ -57,6 +59,12 @@ export default function SetupHome() {
   useEffect(() => {
     if (factory?.cutoff_time) {
       setCutoffTime(factory.cutoff_time.slice(0, 5)); // HH:MM format
+    }
+    if (factory?.morning_target_cutoff) {
+      setMorningTargetCutoff(factory.morning_target_cutoff.slice(0, 5));
+    }
+    if (factory?.evening_actual_cutoff) {
+      setEveningActualCutoff(factory.evening_actual_cutoff.slice(0, 5));
     }
   }, [factory]);
 
@@ -96,11 +104,15 @@ export default function SetupHome() {
     try {
       const { error } = await supabase
         .from('factory_accounts')
-        .update({ cutoff_time: cutoffTime + ':00' })
+        .update({ 
+          cutoff_time: cutoffTime + ':00',
+          morning_target_cutoff: morningTargetCutoff + ':00',
+          evening_actual_cutoff: eveningActualCutoff + ':00'
+        })
         .eq('id', profile.factory_id);
       
       if (error) throw error;
-      toast({ title: "Cutoff time updated" });
+      toast({ title: "Cutoff times updated" });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
@@ -252,33 +264,60 @@ export default function SetupHome() {
         </Card>
       </div>
 
-      {/* Cutoff Time Setting */}
+      {/* Cutoff Time Settings */}
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Clock className="h-4 w-4" />
-            Daily Cutoff Time
+            Cutoff Time Settings
           </CardTitle>
           <CardDescription>
-            Submissions after this time are considered "missing" for the day
+            Configure when target and actual submissions are due
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-end gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <div className="space-y-2">
-              <Label>Cutoff Time</Label>
+              <Label className="text-sm font-medium">Morning Target Cutoff</Label>
+              <Input
+                type="time"
+                value={morningTargetCutoff}
+                onChange={(e) => setMorningTargetCutoff(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Deadline for submitting morning targets
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Evening Actual Cutoff</Label>
+              <Input
+                type="time"
+                value={eveningActualCutoff}
+                onChange={(e) => setEveningActualCutoff(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Deadline for submitting end-of-day actuals
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Daily Cutoff</Label>
               <Input
                 type="time"
                 value={cutoffTime}
                 onChange={(e) => setCutoffTime(e.target.value)}
-                className="w-32"
+                className="w-full"
               />
+              <p className="text-xs text-muted-foreground">
+                General daily cutoff time
+              </p>
             </div>
-            <Button onClick={handleSaveCutoff} disabled={isSavingCutoff}>
-              {isSavingCutoff && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save
-            </Button>
           </div>
+          <Button onClick={handleSaveCutoff} disabled={isSavingCutoff}>
+            {isSavingCutoff && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Save Cutoff Times
+          </Button>
         </CardContent>
       </Card>
 
