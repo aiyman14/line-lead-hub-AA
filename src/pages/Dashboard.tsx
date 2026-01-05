@@ -36,6 +36,7 @@ interface DashboardStats {
 interface TargetSubmission {
   id: string;
   type: 'sewing' | 'finishing';
+  line_uuid: string;
   line_id: string;
   line_name: string;
   work_order_id: string;
@@ -60,6 +61,7 @@ interface TargetSubmission {
 interface EndOfDaySubmission {
   id: string;
   type: 'sewing' | 'finishing';
+  line_uuid: string;
   line_id: string;
   line_name: string;
   output: number;
@@ -105,6 +107,12 @@ interface EndOfDaySubmission {
   remarks?: string | null;
 }
 
+interface LineInfo {
+  id: string;
+  line_id: string;
+  name: string | null;
+}
+
 interface ActiveBlocker {
   id: string;
   type: 'sewing' | 'finishing';
@@ -131,6 +139,7 @@ export default function Dashboard() {
   const [finishingTargets, setFinishingTargets] = useState<TargetSubmission[]>([]);
   const [sewingEndOfDay, setSewingEndOfDay] = useState<EndOfDaySubmission[]>([]);
   const [finishingEndOfDay, setFinishingEndOfDay] = useState<EndOfDaySubmission[]>([]);
+  const [allLines, setAllLines] = useState<LineInfo[]>([]);
   const [activeBlockers, setActiveBlockers] = useState<ActiveBlocker[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
@@ -167,10 +176,18 @@ export default function Dashboard() {
     const today = new Date().toISOString().split('T')[0];
 
     try {
+      // Fetch all active lines
+      const { data: linesData } = await supabase
+        .from('lines')
+        .select('id, line_id, name')
+        .eq('factory_id', profile.factory_id)
+        .eq('is_active', true)
+        .order('line_id');
+
       // Fetch sewing targets
       const { data: sewingTargetsData } = await supabase
         .from('sewing_targets')
-        .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style)')
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
@@ -178,7 +195,7 @@ export default function Dashboard() {
       // Fetch finishing targets
       const { data: finishingTargetsData } = await supabase
         .from('finishing_targets')
-        .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style)')
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
@@ -186,7 +203,7 @@ export default function Dashboard() {
       // Fetch sewing end of day (actuals)
       const { data: sewingActualsData, count: sewingCount } = await supabase
         .from('production_updates_sewing')
-        .select('*, lines(line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
+        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
@@ -194,7 +211,7 @@ export default function Dashboard() {
       // Fetch finishing end of day (actuals)
       const { data: finishingActualsData, count: finishingCount } = await supabase
         .from('production_updates_finishing')
-        .select('*, lines(line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
+        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
@@ -233,6 +250,7 @@ export default function Dashboard() {
       const formattedSewingTargets: TargetSubmission[] = (sewingTargetsData || []).map(t => ({
         id: t.id,
         type: 'sewing' as const,
+        line_uuid: t.line_id,
         line_id: t.lines?.line_id || 'Unknown',
         line_name: t.lines?.name || t.lines?.line_id || 'Unknown',
         work_order_id: t.work_order_id,
@@ -255,6 +273,7 @@ export default function Dashboard() {
       const formattedFinishingTargets: TargetSubmission[] = (finishingTargetsData || []).map(t => ({
         id: t.id,
         type: 'finishing' as const,
+        line_uuid: t.line_id,
         line_id: t.lines?.line_id || 'Unknown',
         line_name: t.lines?.name || t.lines?.line_id || 'Unknown',
         work_order_id: t.work_order_id,
@@ -275,6 +294,7 @@ export default function Dashboard() {
       const formattedSewingEOD: EndOfDaySubmission[] = (sewingActualsData || []).map(u => ({
         id: u.id,
         type: 'sewing' as const,
+        line_uuid: u.line_id,
         line_id: u.lines?.line_id || 'Unknown',
         line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
         output: u.output_qty,
@@ -302,6 +322,7 @@ export default function Dashboard() {
       const formattedFinishingEOD: EndOfDaySubmission[] = (finishingActualsData || []).map(u => ({
         id: u.id,
         type: 'finishing' as const,
+        line_uuid: u.line_id,
         line_id: u.lines?.line_id || 'Unknown',
         line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
         output: u.day_qc_pass || 0,
@@ -398,6 +419,7 @@ export default function Dashboard() {
       setFinishingTargets(formattedFinishingTargets);
       setSewingEndOfDay(formattedSewingEOD);
       setFinishingEndOfDay(formattedFinishingEOD);
+      setAllLines(linesData || []);
       setActiveBlockers(blockers.slice(0, 5));
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -700,18 +722,17 @@ export default function Dashboard() {
 
           {/* Target vs Actual Comparison */}
           <TargetVsActualComparison
+            allLines={allLines}
             targets={currentTargets.map(t => ({
-              line_id: t.line_id,
+              line_uuid: t.line_uuid,
               line_name: t.line_name,
-              po_number: t.po_number,
               per_hour_target: t.per_hour_target,
               manpower_planned: t.manpower_planned,
               m_power_planned: t.m_power_planned,
             }))}
             actuals={currentEndOfDay.map(a => ({
-              line_id: a.line_id,
+              line_uuid: a.line_uuid,
               line_name: a.line_name,
-              po_number: a.po_number,
               output: a.output,
               manpower: a.manpower,
               m_power: a.m_power,

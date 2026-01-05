@@ -2,19 +2,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowUp, ArrowDown, Minus, TrendingUp, Factory, Package } from "lucide-react";
 
+interface LineData {
+  id: string; // UUID
+  line_id: string; // Display ID like "Line 4"
+  name: string | null;
+}
+
 interface TargetData {
-  line_id: string;
+  line_uuid: string; // Actual line UUID
   line_name: string;
-  po_number: string | null;
   per_hour_target: number;
   manpower_planned?: number | null;
   m_power_planned?: number | null;
 }
 
 interface ActualData {
-  line_id: string;
+  line_uuid: string; // Actual line UUID
   line_name: string;
-  po_number: string | null;
   output: number;
   manpower?: number | null;
   m_power?: number | null;
@@ -22,6 +26,7 @@ interface ActualData {
 }
 
 interface TargetVsActualComparisonProps {
+  allLines: LineData[];
   targets: TargetData[];
   actuals: ActualData[];
   type: 'sewing' | 'finishing';
@@ -29,9 +34,8 @@ interface TargetVsActualComparisonProps {
 }
 
 interface ComparisonRow {
-  line_id: string;
+  line_uuid: string;
   line_name: string;
-  po_number: string | null;
   targetPerHour: number;
   plannedManpower: number;
   actualOutput: number;
@@ -62,50 +66,70 @@ function PerformanceBadge({ percent, trend }: { percent: number; trend: 'up' | '
   );
 }
 
-export function TargetVsActualComparison({ targets, actuals, type, loading }: TargetVsActualComparisonProps) {
-  // Merge targets and actuals by line_id
-  const comparisonData: ComparisonRow[] = [];
-  const processedLines = new Set<string>();
-
-  // First add all lines with targets
+export function TargetVsActualComparison({ allLines, targets, actuals, type, loading }: TargetVsActualComparisonProps) {
+  // Group targets by line UUID and sum values
+  const targetsByLine = new Map<string, { totalTarget: number; totalManpower: number; count: number }>();
   targets.forEach(target => {
-    const actual = actuals.find(a => a.line_id === target.line_id);
-    processedLines.add(target.line_id);
-    
-    comparisonData.push({
-      line_id: target.line_id,
-      line_name: target.line_name,
-      po_number: target.po_number,
-      targetPerHour: target.per_hour_target,
-      plannedManpower: target.manpower_planned || target.m_power_planned || 0,
-      actualOutput: actual?.output || 0,
-      actualManpower: actual?.manpower || actual?.m_power || 0,
-      hasBlocker: actual?.has_blocker || false,
-      hasTarget: true,
-      hasActual: !!actual,
-    });
-  });
-
-  // Then add lines with actuals but no targets
-  actuals.forEach(actual => {
-    if (!processedLines.has(actual.line_id)) {
-      comparisonData.push({
-        line_id: actual.line_id,
-        line_name: actual.line_name,
-        po_number: actual.po_number,
-        targetPerHour: 0,
-        plannedManpower: 0,
-        actualOutput: actual.output,
-        actualManpower: actual.manpower || actual.m_power || 0,
-        hasBlocker: actual.has_blocker,
-        hasTarget: false,
-        hasActual: true,
+    const existing = targetsByLine.get(target.line_uuid);
+    if (existing) {
+      existing.totalTarget += target.per_hour_target;
+      existing.totalManpower += target.manpower_planned || target.m_power_planned || 0;
+      existing.count += 1;
+    } else {
+      targetsByLine.set(target.line_uuid, {
+        totalTarget: target.per_hour_target,
+        totalManpower: target.manpower_planned || target.m_power_planned || 0,
+        count: 1,
       });
     }
   });
 
-  // Sort by line name
-  comparisonData.sort((a, b) => a.line_name.localeCompare(b.line_name));
+  // Group actuals by line UUID and sum values
+  const actualsByLine = new Map<string, { totalOutput: number; totalManpower: number; hasBlocker: boolean; count: number }>();
+  actuals.forEach(actual => {
+    const existing = actualsByLine.get(actual.line_uuid);
+    if (existing) {
+      existing.totalOutput += actual.output;
+      existing.totalManpower += actual.manpower || actual.m_power || 0;
+      existing.hasBlocker = existing.hasBlocker || actual.has_blocker;
+      existing.count += 1;
+    } else {
+      actualsByLine.set(actual.line_uuid, {
+        totalOutput: actual.output,
+        totalManpower: actual.manpower || actual.m_power || 0,
+        hasBlocker: actual.has_blocker,
+        count: 1,
+      });
+    }
+  });
+
+  // Build comparison data for ALL lines
+  const comparisonData: ComparisonRow[] = allLines.map(line => {
+    const targetData = targetsByLine.get(line.id);
+    const actualData = actualsByLine.get(line.id);
+
+    return {
+      line_uuid: line.id,
+      line_name: line.name || line.line_id,
+      targetPerHour: targetData?.totalTarget || 0,
+      plannedManpower: targetData?.totalManpower || 0,
+      actualOutput: actualData?.totalOutput || 0,
+      actualManpower: actualData?.totalManpower || 0,
+      hasBlocker: actualData?.hasBlocker || false,
+      hasTarget: !!targetData,
+      hasActual: !!actualData,
+    };
+  });
+
+  // Sort by line name naturally (Line 1, Line 2, Line 10, etc.)
+  comparisonData.sort((a, b) => {
+    const aMatch = a.line_name.match(/(\d+)/);
+    const bMatch = b.line_name.match(/(\d+)/);
+    if (aMatch && bMatch) {
+      return parseInt(aMatch[1]) - parseInt(bMatch[1]);
+    }
+    return a.line_name.localeCompare(b.line_name);
+  });
 
   if (loading) {
     return (
@@ -127,7 +151,7 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
     );
   }
 
-  if (comparisonData.length === 0) {
+  if (allLines.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -139,8 +163,8 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
         <CardContent>
           <div className="text-center py-8 text-muted-foreground">
             <TrendingUp className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>No data to compare</p>
-            <p className="text-sm">Submit morning targets and end of day reports to see comparison</p>
+            <p>No lines configured</p>
+            <p className="text-sm">Add production lines to see comparison</p>
           </div>
         </CardContent>
       </Card>
@@ -174,7 +198,11 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
           </CardTitle>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Overall:</span>
-            <PerformanceBadge percent={overallPerformance.percent} trend={overallPerformance.trend} />
+            {totals.targetOutput > 0 ? (
+              <PerformanceBadge percent={overallPerformance.percent} trend={overallPerformance.trend} />
+            ) : (
+              <Badge variant="secondary" className="text-xs">No targets</Badge>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -197,7 +225,7 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
 
             return (
               <div
-                key={row.line_id}
+                key={row.line_uuid}
                 className={`grid grid-cols-12 gap-2 items-center px-3 py-3 rounded-lg border transition-colors ${
                   row.hasBlocker 
                     ? 'border-destructive/30 bg-destructive/5' 
@@ -214,9 +242,6 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {row.po_number || 'No PO'}
-                  </p>
                 </div>
 
                 {/* Target */}
@@ -245,8 +270,10 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
                   <div className="flex items-center justify-end gap-1 text-sm">
                     {row.hasActual ? (
                       <span className="font-mono">{row.actualManpower}</span>
+                    ) : row.hasTarget ? (
+                      <span className="text-muted-foreground">{row.plannedManpower}</span>
                     ) : (
-                      <span className="text-muted-foreground">{row.plannedManpower || '-'}</span>
+                      <span className="text-muted-foreground">-</span>
                     )}
                     {row.hasTarget && row.hasActual && row.plannedManpower > 0 && (
                       <span className="text-xs text-muted-foreground">
@@ -262,8 +289,10 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
                     <PerformanceBadge percent={performance.percent} trend={performance.trend} />
                   ) : !row.hasTarget && row.hasActual ? (
                     <Badge variant="outline" className="text-xs">No target set</Badge>
-                  ) : (
+                  ) : row.hasTarget && !row.hasActual ? (
                     <Badge variant="secondary" className="text-xs">Awaiting EOD</Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-xs">No data</Badge>
                   )}
                 </div>
               </div>
@@ -271,21 +300,29 @@ export function TargetVsActualComparison({ targets, actuals, type, loading }: Ta
           })}
 
           {/* Summary Row */}
-          <div className="grid grid-cols-12 gap-2 items-center px-3 py-3 rounded-lg bg-primary/5 border border-primary/20 mt-2">
-            <div className="col-span-3 font-medium">Total</div>
-            <div className="col-span-2 text-right font-mono font-medium">
-              {totals.targetOutput.toLocaleString()}
+          {(totals.targetOutput > 0 || totals.actualOutput > 0) && (
+            <div className="grid grid-cols-12 gap-2 items-center px-3 py-3 rounded-lg bg-primary/5 border border-primary/20 mt-2">
+              <div className="col-span-3 font-medium">Total</div>
+              <div className="col-span-2 text-right font-mono font-medium">
+                {totals.targetOutput > 0 ? totals.targetOutput.toLocaleString() : '-'}
+              </div>
+              <div className="col-span-2 text-right font-mono font-bold text-lg">
+                {totals.actualOutput > 0 ? totals.actualOutput.toLocaleString() : '-'}
+              </div>
+              <div className="col-span-2 text-right font-mono">
+                {totals.actualManpower > 0 || totals.plannedManpower > 0 
+                  ? `${totals.actualManpower} / ${totals.plannedManpower}`
+                  : '-'}
+              </div>
+              <div className="col-span-3 text-right">
+                {totals.targetOutput > 0 ? (
+                  <PerformanceBadge percent={overallPerformance.percent} trend={overallPerformance.trend} />
+                ) : (
+                  <Badge variant="secondary" className="text-xs">-</Badge>
+                )}
+              </div>
             </div>
-            <div className="col-span-2 text-right font-mono font-bold text-lg">
-              {totals.actualOutput.toLocaleString()}
-            </div>
-            <div className="col-span-2 text-right font-mono">
-              {totals.actualManpower} / {totals.plannedManpower}
-            </div>
-            <div className="col-span-3 text-right">
-              <PerformanceBadge percent={overallPerformance.percent} trend={overallPerformance.trend} />
-            </div>
-          </div>
+          )}
         </div>
       </CardContent>
     </Card>
