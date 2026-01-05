@@ -9,7 +9,9 @@ import { Loader2, Calendar, TrendingUp, TrendingDown, Minus, Factory, Package, C
 interface DailyStats {
   date: string;
   dayName: string;
+  sewingTarget: number;
   sewingOutput: number;
+  finishingTarget: number;
   finishingQcPass: number;
   sewingUpdates: number;
   finishingUpdates: number;
@@ -61,7 +63,9 @@ export default function ThisWeek() {
           days.push({
             date: dateStr,
             dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
+            sewingTarget: 0,
             sewingOutput: 0,
+            finishingTarget: 0,
             finishingQcPass: 0,
             sewingUpdates: 0,
             finishingUpdates: 0,
@@ -70,7 +74,7 @@ export default function ThisWeek() {
           continue;
         }
 
-        const [sewingRes, finishingRes] = await Promise.all([
+        const [sewingRes, finishingRes, sewingTargetsRes, finishingTargetsRes] = await Promise.all([
           supabase
             .from('production_updates_sewing')
             .select('output_qty, has_blocker')
@@ -81,14 +85,30 @@ export default function ThisWeek() {
             .select('day_qc_pass, has_blocker')
             .eq('factory_id', profile.factory_id)
             .eq('production_date', dateStr),
+          supabase
+            .from('sewing_targets')
+            .select('per_hour_target, manpower_planned')
+            .eq('factory_id', profile.factory_id)
+            .eq('production_date', dateStr),
+          supabase
+            .from('finishing_targets')
+            .select('per_hour_target, m_power_planned, day_hour_planned')
+            .eq('factory_id', profile.factory_id)
+            .eq('production_date', dateStr),
         ]);
 
         const sewingData = sewingRes.data || [];
         const finishingData = finishingRes.data || [];
+        const sewingTargetsData = sewingTargetsRes.data || [];
+        const finishingTargetsData = finishingTargetsRes.data || [];
 
         const daySewingOutput = sewingData.reduce((sum, u) => sum + (u.output_qty || 0), 0);
         const dayFinishingQc = finishingData.reduce((sum, u) => sum + (u.day_qc_pass || 0), 0);
         const dayBlockers = sewingData.filter(u => u.has_blocker).length + finishingData.filter(u => u.has_blocker).length;
+
+        // Calculate targets (per_hour_target * 8 hours as daily estimate)
+        const daySewingTarget = sewingTargetsData.reduce((sum, t) => sum + ((t.per_hour_target || 0) * 8), 0);
+        const dayFinishingTarget = finishingTargetsData.reduce((sum, t) => sum + ((t.per_hour_target || 0) * (t.day_hour_planned || 8)), 0);
 
         totalSewing += daySewingOutput;
         totalFinishing += dayFinishingQc;
@@ -98,7 +118,9 @@ export default function ThisWeek() {
         days.push({
           date: dateStr,
           dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
+          sewingTarget: daySewingTarget,
           sewingOutput: daySewingOutput,
+          finishingTarget: dayFinishingTarget,
           finishingQcPass: dayFinishingQc,
           sewingUpdates: sewingData.length,
           finishingUpdates: finishingData.length,
@@ -120,8 +142,8 @@ export default function ThisWeek() {
     }
   }
 
-  const maxSewing = Math.max(...weekStats.map(d => d.sewingOutput), 1);
-  const maxFinishing = Math.max(...weekStats.map(d => d.finishingQcPass), 1);
+  const maxSewing = Math.max(...weekStats.map(d => Math.max(d.sewingOutput, d.sewingTarget)), 1);
+  const maxFinishing = Math.max(...weekStats.map(d => Math.max(d.finishingQcPass, d.finishingTarget)), 1);
 
   const getTrend = (current: number, previous: number) => {
     if (previous === 0) return { icon: Minus, color: 'text-muted-foreground' };
@@ -257,7 +279,8 @@ export default function ThisWeek() {
                 {weekStats.map((day, index) => {
                   const isToday = day.date === today;
                   const isFuture = new Date(day.date) > new Date();
-                  const barHeight = isFuture ? 0 : (day.sewingOutput / maxSewing) * 100;
+                  const outputBarHeight = isFuture ? 0 : (day.sewingOutput / maxSewing) * 100;
+                  const targetBarHeight = isFuture ? 0 : (day.sewingTarget / maxSewing) * 100;
                   const previousDay = weekStats[index - 1];
                   const trend = previousDay && !isFuture ? getTrend(day.sewingOutput, previousDay.sewingOutput) : null;
                   const TrendIcon = trend?.icon;
@@ -267,10 +290,16 @@ export default function ThisWeek() {
                       <p className={`text-xs font-medium mb-2 ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
                         {day.dayName}
                       </p>
-                      <div className="h-24 flex items-end justify-center mb-2">
+                      <div className="h-24 flex items-end justify-center gap-1 mb-2">
                         <div
-                          className={`w-8 rounded-t transition-all ${isFuture ? 'bg-muted' : isToday ? 'bg-primary' : 'bg-primary/60'}`}
-                          style={{ height: `${Math.max(barHeight, 4)}%` }}
+                          className={`w-3 rounded-t transition-all ${isFuture ? 'bg-muted' : 'bg-muted-foreground/30'}`}
+                          style={{ height: `${Math.max(targetBarHeight, 4)}%` }}
+                          title={`Target: ${day.sewingTarget.toLocaleString()}`}
+                        />
+                        <div
+                          className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted' : isToday ? 'bg-primary' : 'bg-primary/60'}`}
+                          style={{ height: `${Math.max(outputBarHeight, 4)}%` }}
+                          title={`Output: ${day.sewingOutput.toLocaleString()}`}
                         />
                       </div>
                       <p className={`text-sm font-mono font-bold ${isFuture ? 'text-muted-foreground' : ''}`}>
@@ -282,6 +311,16 @@ export default function ThisWeek() {
                     </div>
                   );
                 })}
+              </div>
+              <div className="flex items-center justify-center gap-4 mt-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-muted-foreground/30" />
+                  <span>Target</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-primary/60" />
+                  <span>Output</span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -297,7 +336,8 @@ export default function ThisWeek() {
                 {weekStats.map((day, index) => {
                   const isToday = day.date === today;
                   const isFuture = new Date(day.date) > new Date();
-                  const barHeight = isFuture ? 0 : (day.finishingQcPass / maxFinishing) * 100;
+                  const outputBarHeight = isFuture ? 0 : (day.finishingQcPass / maxFinishing) * 100;
+                  const targetBarHeight = isFuture ? 0 : (day.finishingTarget / maxFinishing) * 100;
                   const previousDay = weekStats[index - 1];
                   const trend = previousDay && !isFuture ? getTrend(day.finishingQcPass, previousDay.finishingQcPass) : null;
                   const TrendIcon = trend?.icon;
@@ -307,10 +347,16 @@ export default function ThisWeek() {
                       <p className={`text-xs font-medium mb-2 ${isToday ? 'text-info' : 'text-muted-foreground'}`}>
                         {day.dayName}
                       </p>
-                      <div className="h-24 flex items-end justify-center mb-2">
+                      <div className="h-24 flex items-end justify-center gap-1 mb-2">
                         <div
-                          className={`w-8 rounded-t transition-all ${isFuture ? 'bg-muted' : isToday ? 'bg-info' : 'bg-info/60'}`}
-                          style={{ height: `${Math.max(barHeight, 4)}%` }}
+                          className={`w-3 rounded-t transition-all ${isFuture ? 'bg-muted' : 'bg-muted-foreground/30'}`}
+                          style={{ height: `${Math.max(targetBarHeight, 4)}%` }}
+                          title={`Target: ${day.finishingTarget.toLocaleString()}`}
+                        />
+                        <div
+                          className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted' : isToday ? 'bg-info' : 'bg-info/60'}`}
+                          style={{ height: `${Math.max(outputBarHeight, 4)}%` }}
+                          title={`QC Pass: ${day.finishingQcPass.toLocaleString()}`}
                         />
                       </div>
                       <p className={`text-sm font-mono font-bold ${isFuture ? 'text-muted-foreground' : ''}`}>
@@ -322,6 +368,16 @@ export default function ThisWeek() {
                     </div>
                   );
                 })}
+              </div>
+              <div className="flex items-center justify-center gap-4 mt-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-muted-foreground/30" />
+                  <span>Target</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-info/60" />
+                  <span>QC Pass</span>
+                </div>
               </div>
             </CardContent>
           </Card>
