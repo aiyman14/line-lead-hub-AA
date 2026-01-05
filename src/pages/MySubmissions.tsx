@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Loader2, FileText, AlertCircle, Calendar, CheckCircle2, XCircle, Filter, CalendarIcon, Target, Package, TrendingUp, TrendingDown, Clock, Sunrise, Moon } from "lucide-react";
+import { Loader2, FileText, AlertCircle, Calendar, CheckCircle2, XCircle, Filter, CalendarIcon, Target, Package, TrendingUp, TrendingDown, Clock, Crosshair, ClipboardCheck } from "lucide-react";
 import { format, subDays, startOfDay, isWithinInterval, parseISO } from "date-fns";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { cn } from "@/lib/utils";
@@ -693,9 +693,9 @@ export default function MySubmissions() {
                             : "bg-primary/10"
                         )}>
                           {submission.submission_type === 'morning_target' ? (
-                            <Sunrise className="h-5 w-5 text-warning" />
+                            <Crosshair className="h-5 w-5 text-warning" />
                           ) : (
-                            <Moon className="h-5 w-5 text-primary" />
+                            <ClipboardCheck className="h-5 w-5 text-primary" />
                           )}
                         </div>
                         <div>
@@ -708,12 +708,12 @@ export default function MySubmissions() {
                             </Badge>
                             {submission.submission_type === 'morning_target' ? (
                               <Badge className="text-xs bg-warning/20 text-warning border-warning/30 hover:bg-warning/30">
-                                <Sunrise className="h-3 w-3 mr-1" />
+                                <Crosshair className="h-3 w-3 mr-1" />
                                 Morning Target
                               </Badge>
                             ) : (
                               <Badge className="text-xs bg-primary/20 text-primary border-primary/30 hover:bg-primary/30">
-                                <Moon className="h-3 w-3 mr-1" />
+                                <ClipboardCheck className="h-3 w-3 mr-1" />
                                 End of Day
                               </Badge>
                             )}
@@ -780,9 +780,9 @@ export default function MySubmissions() {
                             : "bg-info/10"
                         )}>
                           {submission.submission_type === 'morning_target' ? (
-                            <Sunrise className="h-5 w-5 text-warning" />
+                            <Crosshair className="h-5 w-5 text-warning" />
                           ) : (
-                            <Moon className="h-5 w-5 text-info" />
+                            <ClipboardCheck className="h-5 w-5 text-info" />
                           )}
                         </div>
                         <div>
@@ -795,12 +795,12 @@ export default function MySubmissions() {
                             </Badge>
                             {submission.submission_type === 'morning_target' ? (
                               <Badge className="text-xs bg-warning/20 text-warning border-warning/30 hover:bg-warning/30">
-                                <Sunrise className="h-3 w-3 mr-1" />
+                                <Crosshair className="h-3 w-3 mr-1" />
                                 Morning Target
                               </Badge>
                             ) : (
                               <Badge className="text-xs bg-info/20 text-info border-info/30 hover:bg-info/30">
-                                <Moon className="h-3 w-3 mr-1" />
+                                <ClipboardCheck className="h-3 w-3 mr-1" />
                                 End of Day
                               </Badge>
                             )}
