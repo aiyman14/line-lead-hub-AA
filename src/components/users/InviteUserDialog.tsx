@@ -114,6 +114,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           data: {
             full_name: formData.fullName,
             invited_by_admin: "true",
+            factory_id: profile.factory_id, // Pass factory_id so trigger sets it automatically
           },
         },
       });
