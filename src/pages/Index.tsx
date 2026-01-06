@@ -32,8 +32,18 @@ export default function Index() {
       return <Navigate to="/subscription" replace />;
     }
 
+    // Check for cutting role first
+    if (hasRole('cutting')) {
+      return <Navigate to="/cutting/submissions" replace />;
+    }
+
+    // Check for storage role
+    if (hasRole('storage')) {
+      return <Navigate to="/storage" replace />;
+    }
+
     const isWorker = (profile.department != null) || (hasRole('worker') && !hasRole('supervisor') && !isAdminOrHigher());
-    return <Navigate to={isWorker ? "/my-submissions" : "/dashboard"} replace />;
+    return <Navigate to={isWorker ? "/sewing/morning-targets" : "/dashboard"} replace />;
   }
 
   // Redirect unauthenticated users to auth page
