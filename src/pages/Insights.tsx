@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { 
   Loader2, TrendingUp, TrendingDown, Target, Users, AlertTriangle, 
   Factory, Package, BarChart3, Calendar, ArrowUp, ArrowDown, 
-  Minus, Zap, Clock, CheckCircle2, XCircle, Activity, ChevronRight
+  Minus, Zap, Clock, CheckCircle2, XCircle, ChevronRight
 } from "lucide-react";
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -427,7 +427,7 @@ export default function Insights() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Activity className="h-6 w-6 text-primary" />
+            <TrendingUp className="h-6 w-6 text-primary" />
             Production Insights
           </h1>
           <p className="text-muted-foreground">Deep-dive analytics and performance trends</p>

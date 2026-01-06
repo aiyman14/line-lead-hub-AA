@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Factory, Package, Search, Download, RefreshCw, History, Calendar, Target, ClipboardCheck, Scissors } from "lucide-react";
+import { Loader2, Factory, Package, Search, Download, RefreshCw, FileText, Calendar, Target, ClipboardCheck, Scissors } from "lucide-react";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { TargetDetailModal } from "@/components/TargetDetailModal";
 import { ExportSubmissionsDialog } from "@/components/ExportSubmissionsDialog";
@@ -347,7 +347,7 @@ export default function AllSubmissions() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <History className="h-6 w-6 text-primary" />
+            <FileText className="h-6 w-6 text-primary" />
             All Submissions
           </h1>
           <p className="text-muted-foreground">
