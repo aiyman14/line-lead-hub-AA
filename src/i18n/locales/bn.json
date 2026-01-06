@@ -93,7 +93,8 @@
     "support": "সাপোর্ট",
     "storage": "স্টোরেজ",
     "binCardEntry": "বিন কার্ড এন্ট্রি",
-    "allBinCards": "সব বিন কার্ড"
+    "allBinCards": "সব বিন কার্ড",
+    "cutting": "কাটিং"
   },
   "roles": {
     "worker": "কর্মী",

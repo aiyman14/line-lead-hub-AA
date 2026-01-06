@@ -93,7 +93,8 @@
     "support": "Support",
     "storage": "Storage",
     "binCardEntry": "Bin Card Entry",
-    "allBinCards": "All Bin Cards"
+    "allBinCards": "All Bin Cards",
+    "cutting": "Cutting"
   },
   "roles": {
     "worker": "Worker",
