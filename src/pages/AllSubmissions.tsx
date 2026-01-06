@@ -19,6 +19,7 @@ import { Loader2, Factory, Package, Search, Download, RefreshCw, History, Calend
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { TargetDetailModal } from "@/components/TargetDetailModal";
 import { ExportSubmissionsDialog } from "@/components/ExportSubmissionsDialog";
+import { FinishingDailySheetsTable } from "@/components/submissions/FinishingDailySheetsTable";
 import { toast } from "sonner";
 
 // Types for targets
@@ -394,233 +395,148 @@ export default function AllSubmissions() {
         >
           <Package className="h-4 w-4" />
           Finishing
-          <Badge variant="outline" className="ml-1">
-            {category === 'targets' ? counts.finishingTargets : counts.finishingActuals}
-          </Badge>
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by line or PO..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-9"
+      {/* Finishing uses new Daily Sheets view */}
+      {department === 'finishing' && profile?.factory_id && (
+        <FinishingDailySheetsTable
+          factoryId={profile.factory_id}
+          dateRange={dateRange}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
         />
-      </div>
+      )}
 
-      {/* Data Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            {category === 'targets' ? (
-              <Target className="h-4 w-4 text-primary" />
-            ) : (
-              <ClipboardCheck className="h-4 w-4 text-primary" />
-            )}
-            {department === 'sewing' ? 'Sewing' : 'Finishing'}{' '}
-            {category === 'targets' ? 'Targets' : 'End of Day'}
-            <Badge variant="secondary" className="ml-2">{currentData.length}</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            {category === 'targets' && department === 'sewing' && (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Line</TableHead>
-                    <TableHead>PO</TableHead>
-                    <TableHead className="text-right">Target/hr</TableHead>
-                    <TableHead className="text-right">Manpower</TableHead>
-                    <TableHead className="text-right">Progress</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(currentData as SewingTarget[]).map((target) => (
-                    <TableRow
-                      key={target.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleTargetClick(target)}
-                    >
-                      <TableCell className="font-mono text-sm">{formatDate(target.production_date)}</TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(target.submitted_at)}</TableCell>
-                      <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
-                      <TableCell>{target.work_orders?.po_number || '-'}</TableCell>
-                      <TableCell className="text-right font-mono font-bold">{target.per_hour_target}</TableCell>
-                      <TableCell className="text-right">{target.manpower_planned}</TableCell>
-                      <TableCell className="text-right">{target.planned_stage_progress}%</TableCell>
-                      <TableCell>
-                        {target.is_late ? (
-                          <StatusBadge variant="warning" size="sm">Late</StatusBadge>
-                        ) : (
-                          <StatusBadge variant="success" size="sm">On Time</StatusBadge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {currentData.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                        No sewing targets found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
-
-            {category === 'targets' && department === 'finishing' && (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Line</TableHead>
-                    <TableHead>PO</TableHead>
-                    <TableHead className="text-right">Target/hr</TableHead>
-                    <TableHead className="text-right">Manpower</TableHead>
-                    <TableHead className="text-right">Hours</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(currentData as FinishingTarget[]).map((target) => (
-                    <TableRow
-                      key={target.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleTargetClick(target)}
-                    >
-                      <TableCell className="font-mono text-sm">{formatDate(target.production_date)}</TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(target.submitted_at)}</TableCell>
-                      <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
-                      <TableCell>{target.work_orders?.po_number || '-'}</TableCell>
-                      <TableCell className="text-right font-mono font-bold">{target.per_hour_target}</TableCell>
-                      <TableCell className="text-right">{target.m_power_planned}</TableCell>
-                      <TableCell className="text-right">{target.day_hour_planned}h</TableCell>
-                      <TableCell>
-                        {target.is_late ? (
-                          <StatusBadge variant="warning" size="sm">Late</StatusBadge>
-                        ) : (
-                          <StatusBadge variant="success" size="sm">On Time</StatusBadge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {currentData.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                        No finishing targets found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
-
-            {category === 'actuals' && department === 'sewing' && (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Line</TableHead>
-                    <TableHead>PO</TableHead>
-                    <TableHead className="text-right">Good Today</TableHead>
-                    <TableHead className="text-right">Cumulative</TableHead>
-                    <TableHead className="text-right">Manpower</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(currentData as SewingActual[]).map((actual) => (
-                    <TableRow
-                      key={actual.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleActualClick(actual)}
-                    >
-                      <TableCell className="font-mono text-sm">{formatDate(actual.production_date)}</TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(actual.submitted_at)}</TableCell>
-                      <TableCell className="font-medium">{actual.lines?.name || actual.lines?.line_id}</TableCell>
-                      <TableCell>{actual.work_orders?.po_number || '-'}</TableCell>
-                      <TableCell className="text-right font-mono font-bold">{actual.good_today.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-mono">{actual.cumulative_good_total.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">{actual.manpower_actual}</TableCell>
-                      <TableCell>
-                        {actual.has_blocker ? (
-                          <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                        ) : (
-                          <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {currentData.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                        No sewing end of day data found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
-
-            {category === 'actuals' && department === 'finishing' && (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Line</TableHead>
-                    <TableHead>PO</TableHead>
-                    <TableHead className="text-right">Day QC</TableHead>
-                    <TableHead className="text-right">Total QC</TableHead>
-                    <TableHead className="text-right">Manpower</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(currentData as FinishingActual[]).map((actual) => (
-                    <TableRow
-                      key={actual.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleActualClick(actual)}
-                    >
-                      <TableCell className="font-mono text-sm">{formatDate(actual.production_date)}</TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(actual.submitted_at)}</TableCell>
-                      <TableCell className="font-medium">{actual.lines?.name || actual.lines?.line_id}</TableCell>
-                      <TableCell>{actual.work_orders?.po_number || '-'}</TableCell>
-                      <TableCell className="text-right font-mono font-bold">{actual.day_qc_pass.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-mono">{actual.total_qc_pass.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">{actual.m_power_actual}</TableCell>
-                      <TableCell>
-                        {actual.has_blocker ? (
-                          <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                        ) : (
-                          <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {currentData.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                        No finishing end of day data found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
+      {/* Sewing uses existing view */}
+      {department === 'sewing' && (
+        <>
+          {/* Search */}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by line or PO..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
           </div>
-        </CardContent>
-      </Card>
+
+          {/* Data Table */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                {category === 'targets' ? (
+                  <Target className="h-4 w-4 text-primary" />
+                ) : (
+                  <ClipboardCheck className="h-4 w-4 text-primary" />
+                )}
+                Sewing {category === 'targets' ? 'Targets' : 'End of Day'}
+                <Badge variant="secondary" className="ml-2">{currentData.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                {category === 'targets' && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Date</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Line</TableHead>
+                        <TableHead>PO</TableHead>
+                        <TableHead className="text-right">Target/hr</TableHead>
+                        <TableHead className="text-right">Manpower</TableHead>
+                        <TableHead className="text-right">Progress</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(currentData as SewingTarget[]).map((target) => (
+                        <TableRow
+                          key={target.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleTargetClick(target)}
+                        >
+                          <TableCell className="font-mono text-sm">{formatDate(target.production_date)}</TableCell>
+                          <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(target.submitted_at)}</TableCell>
+                          <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
+                          <TableCell>{target.work_orders?.po_number || '-'}</TableCell>
+                          <TableCell className="text-right font-mono font-bold">{target.per_hour_target}</TableCell>
+                          <TableCell className="text-right">{target.manpower_planned}</TableCell>
+                          <TableCell className="text-right">{target.planned_stage_progress}%</TableCell>
+                          <TableCell>
+                            {target.is_late ? (
+                              <StatusBadge variant="warning" size="sm">Late</StatusBadge>
+                            ) : (
+                              <StatusBadge variant="success" size="sm">On Time</StatusBadge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {currentData.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            No sewing targets found
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+
+                {category === 'actuals' && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Date</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Line</TableHead>
+                        <TableHead>PO</TableHead>
+                        <TableHead className="text-right">Good Today</TableHead>
+                        <TableHead className="text-right">Cumulative</TableHead>
+                        <TableHead className="text-right">Manpower</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(currentData as SewingActual[]).map((actual) => (
+                        <TableRow
+                          key={actual.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleActualClick(actual)}
+                        >
+                          <TableCell className="font-mono text-sm">{formatDate(actual.production_date)}</TableCell>
+                          <TableCell className="font-mono text-sm text-muted-foreground">{formatTime(actual.submitted_at)}</TableCell>
+                          <TableCell className="font-medium">{actual.lines?.name || actual.lines?.line_id}</TableCell>
+                          <TableCell>{actual.work_orders?.po_number || '-'}</TableCell>
+                          <TableCell className="text-right font-mono font-bold">{actual.good_today.toLocaleString()}</TableCell>
+                          <TableCell className="text-right font-mono">{actual.cumulative_good_total.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">{actual.manpower_actual}</TableCell>
+                          <TableCell>
+                            {actual.has_blocker ? (
+                              <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
+                            ) : (
+                              <StatusBadge variant="success" size="sm">OK</StatusBadge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {currentData.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            No sewing end of day data found
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       {/* Target Detail Modal */}
       <TargetDetailModal
