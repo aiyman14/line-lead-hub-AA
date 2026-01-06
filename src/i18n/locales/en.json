@@ -90,14 +90,17 @@
     "billingPlan": "Billing & Plan",
     "tenants": "Tenants",
     "plans": "Plans",
-    "support": "Support"
+    "support": "Support",
+    "binCardEntry": "Bin Card Entry",
+    "myBinCards": "My Bin Cards"
   },
   "roles": {
     "worker": "Worker",
     "supervisor": "Supervisor",
     "admin": "Admin",
     "owner": "Owner",
-    "superadmin": "Super Admin"
+    "superadmin": "Super Admin",
+    "storage": "Storage"
   },
   "dashboard": {
     "title": "Daily Control Dashboard",
