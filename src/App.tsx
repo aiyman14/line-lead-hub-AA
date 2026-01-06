@@ -32,6 +32,7 @@ import WorkOrdersView from "./pages/WorkOrdersView";
 import Insights from "./pages/Insights";
 import UsersPage from "./pages/Users";
 import AllSubmissions from "./pages/AllSubmissions";
+import LegacyMySubmissionsRedirect from "./pages/LegacyMySubmissionsRedirect";
 
 import Preferences from "./pages/Preferences";
 import Subscription from "./pages/Subscription";
@@ -85,6 +86,7 @@ function AppRoutes() {
         <Route path="/setup/dropdowns" element={<SubscriptionGate><DropdownSettings /></SubscriptionGate>} />
         <Route path="/users" element={<SubscriptionGate><UsersPage /></SubscriptionGate>} />
         <Route path="/submissions" element={<SubscriptionGate><AllSubmissions /></SubscriptionGate>} />
+        <Route path="/my-submissions" element={<SubscriptionGate><LegacyMySubmissionsRedirect /></SubscriptionGate>} />
         
         <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
         <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />

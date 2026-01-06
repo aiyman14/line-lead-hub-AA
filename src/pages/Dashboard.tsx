@@ -147,13 +147,25 @@ export default function Dashboard() {
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [targetModalOpen, setTargetModalOpen] = useState(false);
 
-  const canViewDashboard = hasRole('supervisor') || isAdminOrHigher();
+  const canViewDashboard = hasRole("supervisor") || isAdminOrHigher();
 
   useEffect(() => {
-    if (!authLoading && profile?.factory_id && !canViewDashboard) {
-      navigate('/my-submissions', { replace: true });
+    if (authLoading) return;
+    if (!profile?.factory_id || canViewDashboard) return;
+
+    // Users without dashboard access should go to their module home.
+    if (hasRole("cutting")) {
+      navigate("/cutting/submissions", { replace: true });
+      return;
     }
-  }, [authLoading, profile?.factory_id, canViewDashboard, navigate]);
+
+    if (hasRole("storage")) {
+      navigate("/storage", { replace: true });
+      return;
+    }
+
+    navigate("/sewing/morning-targets", { replace: true });
+  }, [authLoading, profile?.factory_id, canViewDashboard, navigate, hasRole]);
 
   useEffect(() => {
     if (profile?.factory_id && canViewDashboard) {

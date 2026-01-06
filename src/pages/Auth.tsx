@@ -39,7 +39,7 @@ const signupSchema = z.object({
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
-  const { signIn, signUp, user, profile, hasRole, isAdminOrHigher } = useAuth();
+  const { signIn, signUp, user, profile, hasRole, isAdminOrHigher, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -64,25 +64,32 @@ export default function Auth() {
 
   // Redirect if already logged in (but not if in password reset mode)
   useEffect(() => {
+    // Important: wait until roles are loaded, otherwise cutting users can be mis-routed.
+    if (authLoading) return;
+
     if (user && !isPasswordResetMode) {
       if (profile?.factory_id) {
         // Check for cutting role first
-        if (hasRole('cutting')) {
+        if (hasRole("cutting")) {
           navigate("/cutting/submissions", { replace: true });
           return;
         }
         // Check for storage role
-        if (hasRole('storage')) {
+        if (hasRole("storage")) {
           navigate("/storage", { replace: true });
           return;
         }
-        const isWorker = (profile.department != null) || (hasRole('worker') && !hasRole('supervisor') && !isAdminOrHigher());
+
+        const isWorker =
+          profile.department != null ||
+          (hasRole("worker") && !hasRole("supervisor") && !isAdminOrHigher());
+
         navigate(isWorker ? "/sewing/morning-targets" : "/dashboard", { replace: true });
       } else if (profile) {
         navigate("/subscription", { replace: true });
       }
     }
-  }, [user, profile, navigate, isPasswordResetMode, hasRole, isAdminOrHigher]);
+  }, [authLoading, user, profile, navigate, isPasswordResetMode, hasRole, isAdminOrHigher]);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
