@@ -220,29 +220,13 @@ export default function CuttingForm() {
         isLateEvening = now > cutoffTime;
       }
 
-      // Get a default cutting section for this factory
-      const { data: cuttingSectionData } = await supabase
-        .from("cutting_sections")
-        .select("id")
-        .eq("factory_id", profile.factory_id)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
-
-      const cuttingSectionId = cuttingSectionData?.id;
       const lineId = selectedLine.id;
-
-      if (!cuttingSectionId) {
-        toast.error("No cutting section configured. Please contact admin.");
-        return;
-      }
 
       // Insert targets
       const targetData = {
         factory_id: profile.factory_id,
         production_date: today,
         submitted_by: user.id,
-        cutting_section_id: cuttingSectionId,
         line_id: lineId,
         work_order_id: selectedWorkOrder.id,
         buyer: selectedWorkOrder.buyer,
@@ -274,7 +258,6 @@ export default function CuttingForm() {
         factory_id: profile.factory_id,
         production_date: today,
         submitted_by: user.id,
-        cutting_section_id: cuttingSectionId,
         line_id: lineId,
         work_order_id: selectedWorkOrder.id,
         buyer: selectedWorkOrder.buyer,

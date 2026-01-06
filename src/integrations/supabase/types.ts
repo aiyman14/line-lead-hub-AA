@@ -159,7 +159,7 @@ export type Database = {
           buyer: string | null
           colour: string | null
           created_at: string | null
-          cutting_section_id: string
+          cutting_section_id: string | null
           day_cutting: number
           day_input: number
           factory_id: string
@@ -181,7 +181,7 @@ export type Database = {
           buyer?: string | null
           colour?: string | null
           created_at?: string | null
-          cutting_section_id: string
+          cutting_section_id?: string | null
           day_cutting?: number
           day_input?: number
           factory_id: string
@@ -203,7 +203,7 @@ export type Database = {
           buyer?: string | null
           colour?: string | null
           created_at?: string | null
-          cutting_section_id?: string
+          cutting_section_id?: string | null
           day_cutting?: number
           day_input?: number
           factory_id?: string
@@ -292,7 +292,7 @@ export type Database = {
           colour: string | null
           created_at: string | null
           cutting_capacity: number
-          cutting_section_id: string
+          cutting_section_id: string | null
           factory_id: string
           id: string
           is_late: boolean | null
@@ -314,7 +314,7 @@ export type Database = {
           colour?: string | null
           created_at?: string | null
           cutting_capacity?: number
-          cutting_section_id: string
+          cutting_section_id?: string | null
           factory_id: string
           id?: string
           is_late?: boolean | null
@@ -336,7 +336,7 @@ export type Database = {
           colour?: string | null
           created_at?: string | null
           cutting_capacity?: number
-          cutting_section_id?: string
+          cutting_section_id?: string | null
           factory_id?: string
           id?: string
           is_late?: boolean | null
