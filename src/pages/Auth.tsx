@@ -44,25 +44,22 @@ export default function Auth() {
   const location = useLocation();
   const { toast } = useToast();
 
-  // Password reset mode state
-  const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
+  // Password reset mode state - check synchronously from URL on mount
+  const getIsRecoveryMode = () => {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get('access_token');
+    const type = hashParams.get('type');
+    return !!(accessToken && type === 'recovery');
+  };
+  
+  const [isPasswordResetMode, setIsPasswordResetMode] = useState(getIsRecoveryMode);
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   const [resetPasswordErrors, setResetPasswordErrors] = useState<Record<string, string>>({});
 
-  // Check for password reset token in URL hash and via auth state change
+  // Also listen for PASSWORD_RECOVERY event from Supabase auth
   useEffect(() => {
-    // Check URL hash for recovery tokens
-    const hashParams = new URLSearchParams(location.hash.substring(1));
-    const accessToken = hashParams.get('access_token');
-    const type = hashParams.get('type');
-    
-    if (accessToken && type === 'recovery') {
-      setIsPasswordResetMode(true);
-    }
-
-    // Also listen for PASSWORD_RECOVERY event from Supabase auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsPasswordResetMode(true);
@@ -72,7 +69,7 @@ export default function Auth() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [location]);
+  }, []);
 
   // Redirect if already logged in (but not if in password reset mode)
   useEffect(() => {
