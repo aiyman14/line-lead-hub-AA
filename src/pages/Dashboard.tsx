@@ -275,7 +275,7 @@ export default function Dashboard() {
       // Fetch cutting actuals for today
       const { data: cuttingActualsData } = await supabase
         .from('cutting_actuals')
-        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style, color)')
+        .select('*, lines!cutting_actuals_line_id_fkey(id, line_id, name), work_orders(po_number, buyer, style, color)')
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
