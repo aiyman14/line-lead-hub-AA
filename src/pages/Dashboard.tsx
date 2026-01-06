@@ -380,6 +380,12 @@ export default function Dashboard() {
         avgEfficiency: 0,
       });
 
+      console.log('Dashboard data:', {
+        finishingDailySheetsData,
+        formattedFinishingEOD,
+        allLinesData: linesData,
+      });
+      
       setSewingTargets(formattedSewingTargets);
       setFinishingTargets(formattedFinishingTargets);
       setSewingEndOfDay(formattedSewingEOD);
