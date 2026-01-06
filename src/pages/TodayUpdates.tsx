@@ -310,73 +310,70 @@ export default function TodayUpdates() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      {/* Summary Cards - Grouped Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Updates Count Card */}
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Factory className="h-5 w-5 text-primary" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Today's Updates</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-4 gap-4">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Factory className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold">{sewingUpdates.length}</p>
+                  <p className="text-xs text-muted-foreground">Sewing</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-info/10 flex items-center justify-center">
+                  <Package className="h-4 w-4 text-info" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold">{finishingSheets.length}</p>
+                  <p className="text-xs text-muted-foreground">Finishing</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-warning/10 flex items-center justify-center">
+                  <Scissors className="h-4 w-4 text-warning" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold">{cuttingActuals.length}</p>
+                  <p className="text-xs text-muted-foreground">Cutting</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-success/10 flex items-center justify-center">
+                  <Archive className="h-4 w-4 text-success" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold">{storageTransactions.length}</p>
+                  <p className="text-xs text-muted-foreground">Storage</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Output Totals Card */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Output Totals</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <p className="text-2xl font-bold font-mono text-primary">{totalOutput.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Sewing Output</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">{sewingUpdates.length}</p>
-                <p className="text-xs text-muted-foreground">Sewing</p>
+                <p className="text-2xl font-bold font-mono text-success">{totalFinishingOutput.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Finishing Output</p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center">
-                <Package className="h-5 w-5 text-info" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{finishingSheets.length}</p>
-                <p className="text-xs text-muted-foreground">Finishing</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <Scissors className="h-5 w-5 text-warning" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{cuttingActuals.length}</p>
-                <p className="text-xs text-muted-foreground">Cutting</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
-                <Archive className="h-5 w-5 text-success" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{storageTransactions.length}</p>
-                <p className="text-xs text-muted-foreground">Storage</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div>
-              <p className="text-2xl font-bold font-mono text-primary">{totalOutput.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Sewing Output</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div>
-              <p className="text-2xl font-bold font-mono text-success">{totalFinishingOutput.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Finishing Output</p>
             </div>
           </CardContent>
         </Card>
