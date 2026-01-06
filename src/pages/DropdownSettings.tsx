@@ -106,12 +106,13 @@ const OPTION_CONFIGS = {
 interface SortableRowProps {
   opt: DropdownOption;
   hasCode: boolean;
+  canReorder: boolean;
   onEdit: (opt: DropdownOption) => void;
   onDelete: (id: string) => void;
   onToggleActive: (id: string, currentValue: boolean) => void;
 }
 
-function SortableRow({ opt, hasCode, onEdit, onDelete, onToggleActive }: SortableRowProps) {
+function SortableRow({ opt, hasCode, canReorder, onEdit, onDelete, onToggleActive }: SortableRowProps) {
   const {
     attributes,
     listeners,
@@ -119,7 +120,7 @@ function SortableRow({ opt, hasCode, onEdit, onDelete, onToggleActive }: Sortabl
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: opt.id });
+  } = useSortable({ id: opt.id, disabled: !canReorder });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -134,13 +135,19 @@ function SortableRow({ opt, hasCode, onEdit, onDelete, onToggleActive }: Sortabl
       className={`${!opt.is_active ? 'opacity-60' : ''} ${isDragging ? 'bg-muted' : ''}`}
     >
       <TableCell>
-        <div
-          className="flex items-center justify-center cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
-        </div>
+        {canReorder ? (
+          <div
+            className="flex items-center justify-center cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center p-1">
+            <span className="text-xs text-muted-foreground">—</span>
+          </div>
+        )}
       </TableCell>
       {hasCode && (
         <TableCell className="font-mono text-sm">{opt.code || '-'}</TableCell>
@@ -413,10 +420,7 @@ export default function DropdownSettings() {
     if (!over || active.id === over.id) return;
     
     // blocker_type doesn't have sort_order column - it's ordered alphabetically
-    if (activeTab === 'blocker_type') {
-      toast({ variant: "destructive", title: "Blocker Types are ordered alphabetically and cannot be reordered" });
-      return;
-    }
+    if (activeTab === 'blocker_type') return;
     
     const currentOptions = [...options[activeTab]];
     const oldIndex = currentOptions.findIndex(o => o.id === active.id);
@@ -621,6 +625,7 @@ export default function DropdownSettings() {
                                 key={opt.id}
                                 opt={opt}
                                 hasCode={cfg.hasCode}
+                                canReorder={key !== 'blocker_type'}
                                 onEdit={openEditDialog}
                                 onDelete={handleDelete}
                                 onToggleActive={toggleActive}
