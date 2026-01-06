@@ -32,7 +32,7 @@ import WorkOrdersView from "./pages/WorkOrdersView";
 import Insights from "./pages/Insights";
 import UsersPage from "./pages/Users";
 import AllSubmissions from "./pages/AllSubmissions";
-import MySubmissions from "./pages/MySubmissions";
+
 import Preferences from "./pages/Preferences";
 import Subscription from "./pages/Subscription";
 import Billing from "./pages/Billing";
@@ -85,7 +85,7 @@ function AppRoutes() {
         <Route path="/setup/dropdowns" element={<SubscriptionGate><DropdownSettings /></SubscriptionGate>} />
         <Route path="/users" element={<SubscriptionGate><UsersPage /></SubscriptionGate>} />
         <Route path="/submissions" element={<SubscriptionGate><AllSubmissions /></SubscriptionGate>} />
-        <Route path="/my-submissions" element={<SubscriptionGate><MySubmissions /></SubscriptionGate>} />
+        
         <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
         <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />
         <Route path="/billing-plan" element={<BillingPlan />} />
