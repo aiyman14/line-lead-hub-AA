@@ -66,8 +66,8 @@ export default function WorkOrdersView() {
           .eq('factory_id', profile.factory_id)
           .in('work_order_id', workOrderIds),
         supabase
-          .from('production_updates_finishing')
-          .select('work_order_id, day_qc_pass')
+          .from('finishing_daily_sheets')
+          .select('work_order_id, finishing_hourly_logs(poly_actual, carton_actual)')
           .eq('factory_id', profile.factory_id)
           .in('work_order_id', workOrderIds),
       ]);
@@ -79,10 +79,15 @@ export default function WorkOrdersView() {
         sewingByWo.set(u.work_order_id || '', current + (u.output_qty || 0));
       });
 
+      // QC Pass = Total Poly + Total Carton from hourly logs
       const finishingByWo = new Map<string, number>();
-      finishingRes.data?.forEach(u => {
-        const current = finishingByWo.get(u.work_order_id || '') || 0;
-        finishingByWo.set(u.work_order_id || '', current + (u.day_qc_pass || 0));
+      finishingRes.data?.forEach((sheet: any) => {
+        const logs = sheet.finishing_hourly_logs || [];
+        const totalPoly = logs.reduce((sum: number, l: any) => sum + (l.poly_actual || 0), 0);
+        const totalCarton = logs.reduce((sum: number, l: any) => sum + (l.carton_actual || 0), 0);
+        const qcPass = totalPoly + totalCarton;
+        const current = finishingByWo.get(sheet.work_order_id || '') || 0;
+        finishingByWo.set(sheet.work_order_id || '', current + qcPass);
       });
 
       const formattedWorkOrders: WorkOrder[] = (workOrdersData || []).map(wo => ({
