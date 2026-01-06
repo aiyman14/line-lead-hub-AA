@@ -132,12 +132,12 @@ export function LineEfficiencyTargets({ linePerformance = [] }: LineEfficiencyTa
   const getStatusBadge = (current: number | undefined, target: number) => {
     if (current === undefined) return null;
     if (current >= target) {
-      return <Badge className="bg-success/20 text-success border-success/30">On Target</Badge>;
+      return <Badge className="bg-success/20 text-success border-success/30 flex items-center justify-center">On Target</Badge>;
     }
     if (current >= target * 0.9) {
-      return <Badge className="bg-warning/20 text-warning border-warning/30">Near Target</Badge>;
+      return <Badge className="bg-warning/20 text-warning border-warning/30 flex items-center justify-center">Near Target</Badge>;
     }
-    return <Badge className="bg-destructive/20 text-destructive border-destructive/30">Below Target</Badge>;
+    return <Badge className="bg-destructive/20 text-destructive border-destructive/30 flex items-center justify-center">Below Target</Badge>;
   };
 
   if (loading) {
@@ -172,8 +172,9 @@ export function LineEfficiencyTargets({ linePerformance = [] }: LineEfficiencyTa
             {lines.map((line) => (
               <div
                 key={line.id}
-                className="p-4 rounded-lg border bg-muted/20 space-y-3"
+                className="p-4 rounded-lg border bg-muted/20 space-y-3 overflow-x-auto"
               >
+                <div className="min-w-[400px]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="font-medium">{line.name || line.line_id}</span>
@@ -253,6 +254,7 @@ export function LineEfficiencyTargets({ linePerformance = [] }: LineEfficiencyTa
                         : `${line.target_efficiency - line.currentEfficiency}% below target`}
                     </p>
                   )}
+                </div>
                 </div>
               </div>
             ))}
