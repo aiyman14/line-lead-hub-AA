@@ -424,20 +424,6 @@ export default function Dashboard() {
             })}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link to="/update/sewing">
-            <Button size="sm" variant="outline">
-              <Plus className="h-4 w-4 mr-1" />
-              {t('dashboard.sewing')}
-            </Button>
-          </Link>
-          <Link to="/update/finishing">
-            <Button size="sm" variant="outline">
-              <Plus className="h-4 w-4 mr-1" />
-              {t('dashboard.finishing')}
-            </Button>
-          </Link>
-        </div>
       </div>
 
       {/* KPI Cards */}
