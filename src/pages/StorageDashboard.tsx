@@ -67,7 +67,8 @@ interface DashboardStats {
 }
 
 export default function StorageDashboard() {
-  const { profile, isAdminOrHigher } = useAuth();
+  const { profile, isAdminOrHigher, factory } = useAuth();
+  const lowStockThreshold = factory?.low_stock_threshold ?? 10;
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(true);
@@ -162,7 +163,7 @@ export default function StorageDashboard() {
         
         // Calculate totals
         totalCurrentBalance = Array.from(latestByCard.values()).reduce((sum, bal) => sum + bal, 0);
-        lowBalanceCount = Array.from(latestByCard.values()).filter(bal => bal <= 10).length;
+        lowBalanceCount = Array.from(latestByCard.values()).filter(bal => bal <= lowStockThreshold).length;
         
         // Calculate monthly received and issued
         (allTxns || []).forEach(txn => {
@@ -387,7 +388,7 @@ export default function StorageDashboard() {
                 <div className={`text-2xl font-bold ${stats.lowBalanceCards > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>
                   {stats.lowBalanceCards}
                 </div>
-                <p className="text-sm text-muted-foreground">Low Stock Items (≤10)</p>
+                <p className="text-sm text-muted-foreground">Low Stock Items (≤{lowStockThreshold})</p>
               </CardContent>
             </Card>
           </div>

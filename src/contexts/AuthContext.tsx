@@ -32,6 +32,7 @@ interface Factory {
   timezone: string;
   logo_url: string | null;
   max_lines: number | null;
+  low_stock_threshold: number;
 }
 
 interface AuthContextType {

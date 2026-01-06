@@ -2,13 +2,17 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "next-themes";
+import { supabase } from "@/integrations/supabase/client";
 import { NotificationPreferences } from "@/components/NotificationPreferences";
 import { TerminateAccountDialog } from "@/components/TerminateAccountDialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Settings2, Bell, Palette, Globe, Sun, Moon, Monitor, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, Settings2, Bell, Palette, Globe, Sun, Moon, Monitor, AlertTriangle, Package } from "lucide-react";
 
 type Language = 'en' | 'bn';
 
@@ -19,12 +23,23 @@ const LANGUAGES = [
 
 export default function Preferences() {
   const { t, i18n } = useTranslation();
-  const { profile, loading } = useAuth();
+  const { profile, loading, factory, isAdminOrHigher } = useAuth();
+  const { toast } = useToast();
   const { theme, setTheme } = useTheme();
   const [language, setLanguage] = useState<Language>(() => {
     return (localStorage.getItem('app-language') as Language) || 'en';
   });
   const [mounted, setMounted] = useState(false);
+  
+  // Storage settings
+  const [lowStockThreshold, setLowStockThreshold] = useState<number>(10);
+  const [savingStorageSettings, setSavingStorageSettings] = useState(false);
+  
+  useEffect(() => {
+    if (factory?.low_stock_threshold) {
+      setLowStockThreshold(factory.low_stock_threshold);
+    }
+  }, [factory?.low_stock_threshold]);
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -36,6 +51,24 @@ export default function Preferences() {
     localStorage.setItem('app-language', value);
     i18n.changeLanguage(value);
   };
+
+  async function handleSaveStorageSettings() {
+    if (!profile?.factory_id) return;
+    setSavingStorageSettings(true);
+    try {
+      const { error } = await supabase
+        .from('factory_accounts')
+        .update({ low_stock_threshold: lowStockThreshold })
+        .eq('id', profile.factory_id);
+      
+      if (error) throw error;
+      toast({ title: "Settings saved" });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setSavingStorageSettings(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -179,6 +212,51 @@ export default function Preferences() {
           <NotificationPreferences />
         </CardContent>
       </Card>
+
+      {/* Storage Settings - Admin Only */}
+      {isAdminOrHigher() && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>Storage Settings</CardTitle>
+            </div>
+            <CardDescription>
+              Configure storage and inventory thresholds
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <Label htmlFor="lowStockThreshold" className="text-base font-medium">
+                Low Stock Threshold
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Items with balance at or below this value will be marked as low stock on the Storage Dashboard.
+              </p>
+              <div className="flex items-center gap-3">
+                <Input
+                  id="lowStockThreshold"
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={lowStockThreshold}
+                  onChange={(e) => setLowStockThreshold(Number(e.target.value))}
+                  className="w-32"
+                />
+                <Button 
+                  onClick={handleSaveStorageSettings} 
+                  disabled={savingStorageSettings}
+                >
+                  {savingStorageSettings ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Danger Zone - Terminate Account */}
       <Card className="border-destructive/50">

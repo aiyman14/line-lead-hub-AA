@@ -245,6 +245,7 @@ export type Database = {
           is_active: boolean | null
           line_slot_limit: number | null
           logo_url: string | null
+          low_stock_threshold: number
           max_lines: number | null
           morning_target_cutoff: string | null
           name: string
@@ -271,6 +272,7 @@ export type Database = {
           is_active?: boolean | null
           line_slot_limit?: number | null
           logo_url?: string | null
+          low_stock_threshold?: number
           max_lines?: number | null
           morning_target_cutoff?: string | null
           name: string
@@ -297,6 +299,7 @@ export type Database = {
           is_active?: boolean | null
           line_slot_limit?: number | null
           logo_url?: string | null
+          low_stock_threshold?: number
           max_lines?: number | null
           morning_target_cutoff?: string | null
           name?: string
