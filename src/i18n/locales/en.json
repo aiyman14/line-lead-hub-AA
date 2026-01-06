@@ -98,7 +98,7 @@
     "cutting": "Cutting"
   },
   "roles": {
-    "worker": "Worker",
+    "worker": "Manager",
     "supervisor": "Supervisor",
     "admin": "Admin",
     "owner": "Owner",
