@@ -18,7 +18,7 @@ export type AppRole = typeof ROLES[keyof typeof ROLES];
 
 // Role display names
 export const ROLE_LABELS: Record<AppRole, string> = {
-  worker: 'Worker',
+  worker: 'Manager',
   supervisor: 'Supervisor',
   admin: 'Admin',
   owner: 'Owner',
