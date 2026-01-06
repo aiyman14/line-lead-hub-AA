@@ -75,12 +75,12 @@ export function KPICard({
           <p className="kpi-label">{title}</p>
           <p className="kpi-number">{value}</p>
           {subtitle && (
-            <p className="text-sm text-muted-foreground">{subtitle}</p>
+            <p className="text-xs md:text-sm text-muted-foreground">{subtitle}</p>
           )}
         </div>
         {Icon && (
-          <div className="rounded-lg bg-primary/10 p-2.5">
-            <Icon className="h-5 w-5 text-primary" />
+          <div className="rounded-lg bg-primary/10 p-1.5 md:p-2.5 shrink-0">
+            <Icon className="h-4 w-4 md:h-5 md:w-5 text-primary" />
           </div>
         )}
       </div>

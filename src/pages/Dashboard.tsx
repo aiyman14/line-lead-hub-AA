@@ -545,7 +545,7 @@ export default function Dashboard() {
   const currentEndOfDay = departmentTab === 'sewing' ? sewingEndOfDay : finishingEndOfDay;
 
   return (
-    <div className="p-4 lg:p-6 space-y-6">
+    <div className="p-3 md:p-4 lg:p-6 space-y-4 md:space-y-6 overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -562,7 +562,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
         <KPICard
           title={t('dashboard.updatesToday')}
           value={stats.updatesToday}
@@ -599,45 +599,45 @@ export default function Dashboard() {
 
       {/* Department Tabs */}
       <Tabs value={departmentTab} onValueChange={(v) => setDepartmentTab(v as 'sewing' | 'finishing' | 'cutting' | 'storage')} className="space-y-4">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4">
-          <TabsTrigger value="sewing" className="flex items-center gap-2">
-            <Factory className="h-4 w-4" />
-            Sewing
+        <TabsList className="w-full grid grid-cols-4 h-auto p-1">
+          <TabsTrigger value="sewing" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
+            <Factory className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="hidden xs:inline">Sewing</span>
           </TabsTrigger>
-          <TabsTrigger value="finishing" className="flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            Finishing
+          <TabsTrigger value="finishing" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
+            <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="hidden xs:inline">Finishing</span>
           </TabsTrigger>
-          <TabsTrigger value="cutting" className="flex items-center gap-2">
-            <Scissors className="h-4 w-4" />
-            Cutting
+          <TabsTrigger value="cutting" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
+            <Scissors className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="hidden xs:inline">Cutting</span>
           </TabsTrigger>
-          <TabsTrigger value="storage" className="flex items-center gap-2">
-            <Archive className="h-4 w-4" />
-            Storage
+          <TabsTrigger value="storage" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
+            <Archive className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="hidden xs:inline">Storage</span>
           </TabsTrigger>
         </TabsList>
 
         {/* Sewing Tab Content */}
-        <TabsContent value="sewing" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TabsContent value="sewing" className="space-y-4 md:space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             {/* Morning Targets Card */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Crosshair className="h-5 w-5 text-primary" />
+              <CardHeader className="flex flex-col xs:flex-row xs:items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                  <Crosshair className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                   Morning Targets
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex gap-1 sm:gap-2">
                   <Link to="/submissions?department=sewing&category=targets">
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 text-xs sm:text-sm">
                       View All
-                      <ChevronRight className="h-4 w-4 ml-1" />
+                      <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 ml-0.5 sm:ml-1" />
                     </Button>
                   </Link>
                   <Link to="/sewing/morning-targets">
-                    <Button variant="ghost" size="sm">
-                      <Plus className="h-4 w-4 mr-1" />
+                    <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 text-xs sm:text-sm">
+                      <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0.5 sm:mr-1" />
                       Add
                     </Button>
                   </Link>
@@ -697,21 +697,21 @@ export default function Dashboard() {
 
             {/* End of Day Card */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <ClipboardCheck className="h-5 w-5 text-info" />
+              <CardHeader className="flex flex-col xs:flex-row xs:items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4 sm:h-5 sm:w-5 text-info" />
                   End of Day
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex gap-1 sm:gap-2">
                   <Link to="/submissions?department=sewing&category=actuals">
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 text-xs sm:text-sm">
                       View All
-                      <ChevronRight className="h-4 w-4 ml-1" />
+                      <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 ml-0.5 sm:ml-1" />
                     </Button>
                   </Link>
                   <Link to="/sewing/end-of-day">
-                    <Button variant="ghost" size="sm">
-                      <Plus className="h-4 w-4 mr-1" />
+                    <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 text-xs sm:text-sm">
+                      <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0.5 sm:mr-1" />
                       Add
                     </Button>
                   </Link>
@@ -820,22 +820,22 @@ export default function Dashboard() {
         </TabsContent>
 
         {/* Finishing Tab Content - Completely Different View */}
-        <TabsContent value="finishing" className="space-y-6">
+        <TabsContent value="finishing" className="space-y-4 md:space-y-6">
           <FinishingDashboard />
         </TabsContent>
 
         {/* Cutting Tab Content */}
-        <TabsContent value="cutting" className="space-y-6">
+        <TabsContent value="cutting" className="space-y-4 md:space-y-6">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Scissors className="h-5 w-5 text-warning" />
-                Today's Cutting Submissions
+            <CardHeader className="flex flex-col xs:flex-row xs:items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Scissors className="h-4 w-4 sm:h-5 sm:w-5 text-warning" />
+                Today's Cutting
               </CardTitle>
               <Link to="/submissions?department=cutting">
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 text-xs sm:text-sm">
                   View All
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 ml-0.5 sm:ml-1" />
                 </Button>
               </Link>
             </CardHeader>
@@ -892,18 +892,17 @@ export default function Dashboard() {
           </Card>
         </TabsContent>
 
-        {/* Storage Tab Content */}
-        <TabsContent value="storage" className="space-y-6">
+        <TabsContent value="storage" className="space-y-4 md:space-y-6">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Archive className="h-5 w-5 text-primary" />
+            <CardHeader className="flex flex-col xs:flex-row xs:items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Archive className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                 Bin Cards
               </CardTitle>
               <Link to="/submissions?department=storage">
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 text-xs sm:text-sm">
                   View All
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 ml-0.5 sm:ml-1" />
                 </Button>
               </Link>
             </CardHeader>
