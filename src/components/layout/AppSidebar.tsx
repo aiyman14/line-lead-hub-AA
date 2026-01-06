@@ -131,15 +131,26 @@ export function AppSidebar() {
   };
 
   // Get highest role for navigation
-  // Note: storage is a separate role, not in hierarchy - check it first
+  // Note: storage and cutting are separate roles, not in hierarchy - check them first
   const isStorageRole = roles.some(ur => ur.role === 'storage');
+  const isCuttingRole = roles.some(ur => ur.role === 'cutting');
   const roleHierarchy = ['superadmin', 'owner', 'admin', 'supervisor', 'worker'];
   const highestRole = roleHierarchy.find(r => 
     roles.some(ur => ur.role === r)
-  ) || (isStorageRole ? 'storage' : 'worker');
+  ) || (isStorageRole ? 'storage' : (isCuttingRole ? 'cutting' : 'worker'));
 
   // Get nav items based on role and department
   let navItems = NAV_ITEMS[highestRole as keyof typeof NAV_ITEMS] || NAV_ITEMS.worker;
+
+  // For storage-only users, use storage navigation
+  if (isStorageRole && highestRole === 'storage') {
+    navItems = NAV_ITEMS.storage;
+  }
+  
+  // For cutting-only users, use cutting navigation
+  if (isCuttingRole && highestRole === 'cutting') {
+    navItems = NAV_ITEMS.cutting;
+  }
 
   // For workers, filter navigation based on department
   if (highestRole === 'worker' && profile?.department) {

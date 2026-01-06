@@ -45,7 +45,7 @@ import StorageDashboard from "./pages/StorageDashboard";
 import CuttingMorningTargets from "./pages/CuttingMorningTargets";
 import CuttingEndOfDay from "./pages/CuttingEndOfDay";
 import CuttingSummary from "./pages/CuttingSummary";
-
+import CuttingMySubmissions from "./pages/CuttingMySubmissions";
 const queryClient = new QueryClient();
 
 function AppRoutes() {
@@ -97,6 +97,7 @@ function AppRoutes() {
         <Route path="/cutting/morning-targets" element={<SubscriptionGate><CuttingMorningTargets /></SubscriptionGate>} />
         <Route path="/cutting/end-of-day" element={<SubscriptionGate><CuttingEndOfDay /></SubscriptionGate>} />
         <Route path="/cutting/summary" element={<SubscriptionGate><CuttingSummary /></SubscriptionGate>} />
+        <Route path="/cutting/my-submissions" element={<SubscriptionGate><CuttingMySubmissions /></SubscriptionGate>} />
       </Route>
       
       <Route path="*" element={<NotFound />} />
