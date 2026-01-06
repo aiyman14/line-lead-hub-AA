@@ -19,6 +19,7 @@ import { Loader2, Factory, Package, Search, Download, RefreshCw, Scissors, Archi
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { CuttingDetailModal } from "@/components/CuttingDetailModal";
 import { StorageBinCardDetailModal } from "@/components/StorageBinCardDetailModal";
+import { ExportSubmissionsDialog } from "@/components/ExportSubmissionsDialog";
 
 interface SewingUpdate {
   id: string;
@@ -159,6 +160,7 @@ export default function TodayUpdates() {
   const [binCardTransactions, setBinCardTransactions] = useState<any[]>([]);
   const [storageModalOpen, setStorageModalOpen] = useState(false);
   const [storageLoading, setStorageLoading] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -396,7 +398,7 @@ export default function TodayUpdates() {
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => setExportDialogOpen(true)}>
             <Download className="h-4 w-4 mr-1" />
             Export
           </Button>
@@ -912,6 +914,47 @@ export default function TodayUpdates() {
         transactions={binCardTransactions}
         open={storageModalOpen}
         onOpenChange={setStorageModalOpen}
+      />
+
+      {/* Export Dialog */}
+      <ExportSubmissionsDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        data={{
+          sewingTargets: [],
+          finishingTargets: [],
+          sewingActuals: sewingUpdates.map(u => ({
+            ...u,
+            good_today: u.output_qty,
+            reject_today: u.reject_qty,
+            rework_today: u.rework_qty,
+            cumulative_good_total: u.output_qty,
+            manpower_actual: u.manpower,
+            ot_hours_actual: u.ot_hours,
+            actual_stage_progress: u.stage_progress,
+            remarks: u.notes,
+          })),
+          finishingActuals: finishingSheets.map(s => ({
+            ...s,
+            day_poly: (s.finishing_hourly_logs || []).reduce((sum, l) => sum + (l.poly_actual || 0), 0),
+            day_carton: (s.finishing_hourly_logs || []).reduce((sum, l) => sum + (l.carton_actual || 0), 0),
+            total_poly: (s.finishing_hourly_logs || []).reduce((sum, l) => sum + (l.poly_actual || 0), 0),
+            total_carton: (s.finishing_hourly_logs || []).reduce((sum, l) => sum + (l.carton_actual || 0), 0),
+          })),
+          cuttingTargets: [],
+          cuttingActuals: cuttingActuals,
+          storageBinCards: storageTransactions.map(t => ({
+            id: t.storage_bin_cards?.id,
+            created_at: t.created_at,
+            buyer: t.storage_bin_cards?.buyer,
+            style: t.storage_bin_cards?.style,
+            work_orders: t.storage_bin_cards?.work_orders,
+            totalReceived: t.receive_qty,
+            totalIssued: t.issue_qty,
+            balance: t.balance_qty,
+          })),
+        }}
+        dateRange="1"
       />
     </div>
   );
