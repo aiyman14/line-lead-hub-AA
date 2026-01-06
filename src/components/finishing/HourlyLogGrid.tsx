@@ -102,7 +102,9 @@ export function HourlyLogGrid({
               >
                 <td className="border p-2 font-medium">
                   <div className="flex items-center gap-2">
-                    {slot}
+                    <span className={cn(slot.startsWith("OT-") && "text-amber-600 dark:text-amber-400")}>
+                      {slot}
+                    </span>
                     {isCurrent && !isSubmitted && (
                       <Badge variant="outline" className="text-xs">Now</Badge>
                     )}

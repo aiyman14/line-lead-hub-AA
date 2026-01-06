@@ -2352,6 +2352,11 @@ export type Database = {
         | "04-05"
         | "05-06"
         | "06-07"
+        | "OT-1"
+        | "OT-2"
+        | "OT-3"
+        | "OT-4"
+        | "OT-5"
       subscription_tier:
         | "starter"
         | "professional"
@@ -2510,6 +2515,11 @@ export const Constants = {
         "04-05",
         "05-06",
         "06-07",
+        "OT-1",
+        "OT-2",
+        "OT-3",
+        "OT-4",
+        "OT-5",
       ],
       subscription_tier: [
         "starter",
