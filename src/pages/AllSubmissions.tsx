@@ -383,28 +383,40 @@ export default function AllSubmissions() {
 
       {/* Category Selection - Only for Sewing */}
       {department === 'sewing' && (
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <Button
-            variant={category === 'targets' ? 'secondary' : 'ghost'}
-            size="sm"
+            variant={category === 'targets' ? 'default' : 'outline'}
             onClick={() => setCategory('targets')}
-            className="gap-2"
+            className={`gap-2 px-5 py-2.5 h-auto ${
+              category === 'targets' 
+                ? 'shadow-md' 
+                : 'hover:bg-primary/10 hover:border-primary/50'
+            }`}
           >
-            <Target className="h-4 w-4" />
-            Morning Targets
-            <Badge variant="outline" className="ml-1">
+            <Target className="h-5 w-5" />
+            <span className="font-medium">Morning Targets</span>
+            <Badge 
+              variant={category === 'targets' ? 'secondary' : 'outline'} 
+              className={`ml-1 ${category === 'targets' ? 'bg-primary-foreground/20 text-primary-foreground' : ''}`}
+            >
               {counts.sewingTargets}
             </Badge>
           </Button>
           <Button
-            variant={category === 'actuals' ? 'secondary' : 'ghost'}
-            size="sm"
+            variant={category === 'actuals' ? 'default' : 'outline'}
             onClick={() => setCategory('actuals')}
-            className="gap-2"
+            className={`gap-2 px-5 py-2.5 h-auto ${
+              category === 'actuals' 
+                ? 'shadow-md' 
+                : 'hover:bg-primary/10 hover:border-primary/50'
+            }`}
           >
-            <ClipboardCheck className="h-4 w-4" />
-            End of Day
-            <Badge variant="outline" className="ml-1">
+            <ClipboardCheck className="h-5 w-5" />
+            <span className="font-medium">End of Day</span>
+            <Badge 
+              variant={category === 'actuals' ? 'secondary' : 'outline'} 
+              className={`ml-1 ${category === 'actuals' ? 'bg-primary-foreground/20 text-primary-foreground' : ''}`}
+            >
               {counts.sewingActuals}
             </Badge>
           </Button>
