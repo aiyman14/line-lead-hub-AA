@@ -211,7 +211,7 @@ export function AppSidebar() {
                 {t('app.name')}
               </span>
               <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
-                Operated by WovenTex
+                Powered by WovenTex
               </span>
             </div>
           )}
