@@ -42,6 +42,11 @@ export default function Index() {
       return <Navigate to="/storage" replace />;
     }
 
+    // Check for finishing department workers
+    if (profile.department === 'finishing') {
+      return <Navigate to="/finishing/my-submissions" replace />;
+    }
+
     const isWorker = (profile.department != null) || (hasRole('worker') && !hasRole('supervisor') && !isAdminOrHigher());
     return <Navigate to={isWorker ? "/sewing/morning-targets" : "/dashboard"} replace />;
   }
