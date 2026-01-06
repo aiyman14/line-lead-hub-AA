@@ -83,9 +83,11 @@
     "workOrders": "Work Orders",
     "insights": "Insights",
     "factoryProfile": "Factory Profile",
+    "factorySetup": "Factory Setup",
     "users": "Users",
     "subscription": "Subscription",
     "billing": "Billing",
+    "billingPlan": "Billing & Plan",
     "tenants": "Tenants",
     "plans": "Plans",
     "support": "Support"
