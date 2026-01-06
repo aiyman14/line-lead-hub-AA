@@ -427,21 +427,22 @@ export default function AllSubmissions() {
 
       {/* Category Selection - Only for Sewing */}
       {department === 'sewing' && (
-        <div className="flex gap-3">
+        <div className="flex justify-center gap-2">
           <Button
             variant={category === 'targets' ? 'default' : 'outline'}
             onClick={() => setCategory('targets')}
-            className={`gap-2 px-5 py-2.5 h-auto ${
+            size="sm"
+            className={`gap-1.5 ${
               category === 'targets' 
                 ? 'shadow-md' 
                 : 'hover:bg-primary/10 hover:border-primary/50'
             }`}
           >
-            <Target className="h-5 w-5" />
+            <Target className="h-4 w-4" />
             <span className="font-medium">Morning Targets</span>
             <Badge 
               variant={category === 'targets' ? 'secondary' : 'outline'} 
-              className={`ml-1 ${category === 'targets' ? 'bg-primary-foreground/20 text-primary-foreground' : ''}`}
+              className={`ml-0.5 text-xs ${category === 'targets' ? 'bg-primary-foreground/20 text-primary-foreground' : ''}`}
             >
               {counts.sewingTargets}
             </Badge>
@@ -449,17 +450,18 @@ export default function AllSubmissions() {
           <Button
             variant={category === 'actuals' ? 'default' : 'outline'}
             onClick={() => setCategory('actuals')}
-            className={`gap-2 px-5 py-2.5 h-auto ${
+            size="sm"
+            className={`gap-1.5 ${
               category === 'actuals' 
                 ? 'shadow-md' 
                 : 'hover:bg-primary/10 hover:border-primary/50'
             }`}
           >
-            <ClipboardCheck className="h-5 w-5" />
+            <ClipboardCheck className="h-4 w-4" />
             <span className="font-medium">End of Day</span>
             <Badge 
               variant={category === 'actuals' ? 'secondary' : 'outline'} 
-              className={`ml-1 ${category === 'actuals' ? 'bg-primary-foreground/20 text-primary-foreground' : ''}`}
+              className={`ml-0.5 text-xs ${category === 'actuals' ? 'bg-primary-foreground/20 text-primary-foreground' : ''}`}
             >
               {counts.sewingActuals}
             </Badge>
