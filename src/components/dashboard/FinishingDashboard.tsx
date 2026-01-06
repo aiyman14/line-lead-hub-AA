@@ -143,63 +143,53 @@ export function FinishingDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Finishing Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Daily Sheets</p>
-                <p className="text-2xl font-bold mt-1">{stats.totalSheets}</p>
-                <p className="text-xs text-muted-foreground">{stats.linesWithSheets} lines active</p>
-              </div>
+      {/* Finishing Stats - Consolidated into 2 cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Activity Card */}
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-4">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                 <ClipboardList className="h-5 w-5 text-primary" />
               </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Today's Activity</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <p className="text-3xl font-bold">{stats.totalSheets}</p>
+                <p className="text-sm text-muted-foreground">Daily Sheets</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{stats.linesWithSheets} lines active</p>
+              </div>
+              <div>
+                <p className="text-3xl font-bold">{stats.totalHoursLogged}</p>
+                <p className="text-sm text-muted-foreground">Hours Logged</p>
+                <p className="text-xs text-muted-foreground mt-0.5">across all sheets</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-info">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Hours Logged</p>
-                <p className="text-2xl font-bold mt-1">{stats.totalHoursLogged}</p>
-                <p className="text-xs text-muted-foreground">across all sheets</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center">
-                <Timer className="h-5 w-5 text-info" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-success">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Poly</p>
-                <p className="text-2xl font-bold mt-1">{stats.totalPoly.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">pieces packed</p>
-              </div>
+        {/* Output Card */}
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-4">
               <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
                 <Package className="h-5 w-5 text-success" />
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-warning">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Carton</p>
-                <p className="text-2xl font-bold mt-1">{stats.totalCarton.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">cartons packed</p>
+                <p className="text-sm font-medium text-muted-foreground">Today's Output</p>
               </div>
-              <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <Boxes className="h-5 w-5 text-warning" />
+            </div>
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <p className="text-3xl font-bold text-success">{stats.totalPoly.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">Poly Packed</p>
+              </div>
+              <div>
+                <p className="text-3xl font-bold text-warning">{stats.totalCarton.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">Cartons Packed</p>
               </div>
             </div>
           </CardContent>
