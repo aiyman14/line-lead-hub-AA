@@ -247,9 +247,6 @@ export default function CuttingSummary() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
           <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
             <Scissors className="h-5 w-5 text-primary" />
           </div>
