@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
-import { Loader2, AlertCircle, Lock, LogOut } from 'lucide-react';
+import { Loader2, AlertCircle, Lock, LogOut, CreditCard } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -59,6 +59,10 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
+              <Button onClick={() => navigate('/billing-plan')} className="w-full">
+                <CreditCard className="h-4 w-4 mr-2" />
+                Renew Subscription
+              </Button>
               <Button onClick={handleSignOut} variant="outline" className="w-full">
                 <LogOut className="h-4 w-4 mr-2" />
                 Sign Out
