@@ -73,7 +73,6 @@ export default function ReportBlocker() {
   const [blockerImpactOptions, setBlockerImpactOptions] = useState<DropdownOption[]>([]);
 
   // Form fields
-  const [selectedLine, setSelectedLine] = useState("");
   const [selectedPO, setSelectedPO] = useState("");
   const [blockerType, setBlockerType] = useState("");
   const [blockerOwner, setBlockerOwner] = useState("");
@@ -114,31 +113,27 @@ export default function ReportBlocker() {
     }
   }, [profile?.factory_id, profile]);
 
-  // Filter work orders by selected line
-  const filteredWorkOrders = selectedLine
-    ? workOrders.filter((wo) => wo.line_id === selectedLine)
-    : [];
-
-  // Auto-fill Unit/Floor when Line is selected
+  // Auto-fill Unit/Floor when PO is selected
   useEffect(() => {
-    if (selectedLine) {
-      const line = lines.find((l) => l.id === selectedLine);
-      if (line) {
-        const unit = units.find((u) => u.id === line.unit_id);
-        const floor = floors.find((f) => f.id === line.floor_id);
-        setUnitName(unit?.name || "");
-        setFloorName(floor?.name || "");
-      }
-      // Reset PO when line changes
-      if (!filteredWorkOrders.find((wo) => wo.id === selectedPO)) {
-        setSelectedPO("");
+    if (selectedPO) {
+      const wo = workOrders.find((w) => w.id === selectedPO);
+      if (wo?.line_id) {
+        const line = lines.find((l) => l.id === wo.line_id);
+        if (line) {
+          const unit = units.find((u) => u.id === line.unit_id);
+          const floor = floors.find((f) => f.id === line.floor_id);
+          setUnitName(unit?.name || "");
+          setFloorName(floor?.name || "");
+        }
+      } else {
+        setUnitName("");
+        setFloorName("");
       }
     } else {
       setUnitName("");
       setFloorName("");
-      setSelectedPO("");
     }
-  }, [selectedLine, lines, units, floors]);
+  }, [selectedPO, workOrders, lines, units, floors]);
 
   // Auto-fill blocker owner/impact when blocker type is selected
   useEffect(() => {
@@ -255,7 +250,7 @@ export default function ReportBlocker() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedLine) newErrors.line = "Line is required";
+    if (!selectedPO) newErrors.po = "PO is required";
     if (!blockerType) newErrors.blockerType = "Blocker Type is required";
     if (!blockerOwner) newErrors.blockerOwner = "Blocker Owner is required";
     if (!blockerImpact) newErrors.blockerImpact = "Blocker Impact is required";
@@ -289,11 +284,12 @@ export default function ReportBlocker() {
         : "low";
 
       const workOrder = workOrders.find((w) => w.id === selectedPO);
+      const lineId = workOrder?.line_id || lines[0]?.id;
 
       const insertData: Record<string, unknown> = {
         factory_id: profile?.factory_id,
-        line_id: selectedLine,
-        work_order_id: selectedPO || null,
+        line_id: lineId,
+        work_order_id: selectedPO,
         production_date: new Date().toISOString().split("T")[0],
         submitted_by: user?.id,
         submitted_at: new Date().toISOString(),
@@ -423,55 +419,37 @@ export default function ReportBlocker() {
           </Card>
         ) : null}
 
-        {/* Line & PO Selection */}
+        {/* PO Selection */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{t('reportBlocker.location')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>{t('blockers.line')} *</Label>
-              <Select value={selectedLine} onValueChange={setSelectedLine}>
-                <SelectTrigger className={`h-12 ${errors.line ? "border-destructive" : ""}`}>
-                  <SelectValue placeholder={t('common.selectLine')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {lines.map((line) => (
-                    <SelectItem key={line.id} value={line.id}>
-                      {line.name || line.line_id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.line && <p className="text-xs text-destructive">{errors.line}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label>PO ({t('common.optional')})</Label>
-              <Select value={selectedPO} onValueChange={setSelectedPO} disabled={!selectedLine}>
-                <SelectTrigger className="h-12">
+              <Label>PO *</Label>
+              <Select value={selectedPO} onValueChange={setSelectedPO}>
+                <SelectTrigger className={`h-12 ${errors.po ? "border-destructive" : ""}`}>
                   <SelectValue
                     placeholder={
-                      !selectedLine
-                        ? t('common.selectLineFirst')
-                        : filteredWorkOrders.length === 0
-                        ? t('common.noPOsForLine')
+                      workOrders.length === 0
+                        ? t('common.noPOsAvailable')
                         : t('common.selectPO')
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredWorkOrders.map((wo) => (
+                  {workOrders.map((wo) => (
                     <SelectItem key={wo.id} value={wo.id}>
                       {wo.po_number} - {wo.style} ({wo.buyer})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {errors.po && <p className="text-xs text-destructive">{errors.po}</p>}
             </div>
 
             {/* Auto-filled context */}
-            {selectedLine && (unitName || floorName) && (
+            {selectedPO && (unitName || floorName) && (
               <div className="grid grid-cols-2 gap-4 pt-2">
                 {unitName && (
                   <div className="space-y-1">

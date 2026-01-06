@@ -1,5 +1,6 @@
 {
   "common": {
+    "noPOsAvailable": "কোনো PO উপলব্ধ নেই",
     "loading": "লোড হচ্ছে...",
     "save": "সংরক্ষণ",
     "cancel": "বাতিল",

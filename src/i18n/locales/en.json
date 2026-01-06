@@ -1,5 +1,6 @@
 {
   "common": {
+    "noPOsAvailable": "No POs available",
     "loading": "Loading...",
     "save": "Save",
     "cancel": "Cancel",

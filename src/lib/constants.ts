@@ -217,11 +217,13 @@ export const NAV_ITEMS = {
   storage: [
     { path: '/storage', label: 'Bin Card Entry', icon: 'Package' },
     { path: '/storage/history', label: 'All Bin Cards', icon: 'FileText' },
+    { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   cutting: [
     { path: '/cutting/form', label: 'Daily Cutting Report', icon: 'Scissors' },
     { path: '/cutting/submissions', label: 'All Submissions', icon: 'FileText' },
+    { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
 };
