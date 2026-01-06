@@ -397,7 +397,7 @@ export default function StorageBinCard() {
   }
 
   return (
-    <div className="container mx-auto max-w-5xl space-y-4 md:space-y-6 px-3 py-4 md:p-6">
+    <div className="container mx-auto max-w-5xl space-y-4 md:space-y-6 px-3 pt-4 pb-24 md:p-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Package className="h-7 w-7 md:h-8 md:w-8 text-primary shrink-0" />
@@ -415,14 +415,16 @@ export default function StorageBinCard() {
         <CardContent>
           <Popover open={searchOpen} onOpenChange={setSearchOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start min-w-0">
                 <Search className="mr-2 h-4 w-4" />
-                {selectedWorkOrder 
-                  ? `${selectedWorkOrder.po_number} - ${selectedWorkOrder.buyer} / ${selectedWorkOrder.style}`
-                  : "Search by PO, Buyer, Style, Item..."}
+                <span className="truncate">
+                  {selectedWorkOrder
+                    ? `${selectedWorkOrder.po_number} - ${selectedWorkOrder.buyer} / ${selectedWorkOrder.style}`
+                    : "Search by PO, Buyer, Style, Item..."}
+                </span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[calc(100vw-24px)] max-w-[400px] p-0" align="start">
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-w-[400px] p-0" align="start">
               <Command shouldFilter={true}>
                 <CommandInput 
                   placeholder="Search PO, buyer, style, item..." 
@@ -628,7 +630,7 @@ export default function StorageBinCard() {
                 <Plus className="h-4 w-4" />
                 Add Today's Entry ({format(new Date(), "dd/MM/yyyy")})
               </h4>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
                   <Label>Receive Qty</Label>
                   <Input
@@ -661,7 +663,7 @@ export default function StorageBinCard() {
                     className={`bg-muted ${wouldGoNegative ? 'text-destructive border-destructive' : ''}`}
                   />
                 </div>
-                <div className="md:col-span-1 col-span-2">
+                <div className="md:col-span-1 sm:col-span-2">
                   <Label>Remarks</Label>
                   <Textarea
                     value={newTxn.remarks}
