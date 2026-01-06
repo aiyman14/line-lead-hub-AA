@@ -40,38 +40,28 @@ interface SewingUpdate {
   work_orders: { po_number: string; buyer: string; style: string } | null;
 }
 
-interface FinishingUpdate {
+interface FinishingDailySheet {
   id: string;
   line_id: string;
-  day_qc_pass: number | null;
-  total_qc_pass: number | null;
-  m_power: number | null;
-  day_poly: number | null;
-  total_poly: number | null;
-  per_hour_target: number | null;
-  average_production: number | null;
-  day_over_time: number | null;
-  total_over_time: number | null;
-  day_hour: number | null;
-  total_hour: number | null;
-  day_carton: number | null;
-  total_carton: number | null;
-  order_quantity: number | null;
-  has_blocker: boolean;
-  blocker_description: string | null;
-  blocker_impact: string | null;
-  blocker_owner: string | null;
-  blocker_status: string | null;
-  remarks: string | null;
-  submitted_at: string;
   production_date: string;
-  buyer_name: string | null;
-  style_no: string | null;
-  item_name: string | null;
-  unit_name: string | null;
-  floor_name: string | null;
+  created_at: string;
+  buyer: string | null;
+  style: string | null;
+  po_no: string | null;
   lines: { line_id: string; name: string | null } | null;
   work_orders: { po_number: string; buyer: string; style: string } | null;
+  finishing_hourly_logs: Array<{
+    id: string;
+    hour_slot: string;
+    poly_actual: number | null;
+    carton_actual: number | null;
+    thread_cutting_actual: number | null;
+    inside_check_actual: number | null;
+    top_side_check_actual: number | null;
+    buttoning_actual: number | null;
+    iron_actual: number | null;
+    get_up_actual: number | null;
+  }>;
 }
 
 type ModalSubmission = {
@@ -97,34 +87,17 @@ type ModalSubmission = {
   notes?: string | null;
   submitted_at: string;
   production_date: string;
-  // Finishing specific
-  buyer_name?: string | null;
-  style_no?: string | null;
-  item_name?: string | null;
-  order_quantity?: number | null;
-  unit_name?: string | null;
-  floor_name?: string | null;
-  m_power?: number | null;
-  per_hour_target?: number | null;
-  day_qc_pass?: number | null;
-  total_qc_pass?: number | null;
-  day_poly?: number | null;
-  total_poly?: number | null;
-  average_production?: number | null;
-  day_over_time?: number | null;
-  total_over_time?: number | null;
-  day_hour?: number | null;
-  total_hour?: number | null;
-  day_carton?: number | null;
-  total_carton?: number | null;
-  remarks?: string | null;
+  // Finishing daily sheet specific
+  hours_logged?: number;
+  total_poly?: number;
+  total_carton?: number;
 };
 
 export default function TodayUpdates() {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [sewingUpdates, setSewingUpdates] = useState<SewingUpdate[]>([]);
-  const [finishingUpdates, setFinishingUpdates] = useState<FinishingUpdate[]>([]);
+  const [finishingSheets, setFinishingSheets] = useState<FinishingDailySheet[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [selectedSubmission, setSelectedSubmission] = useState<ModalSubmission | null>(null);
@@ -150,15 +123,19 @@ export default function TodayUpdates() {
           .eq('production_date', today)
           .order('submitted_at', { ascending: false }),
         supabase
-          .from('production_updates_finishing')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+          .from('finishing_daily_sheets')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style), finishing_hourly_logs(*)')
           .eq('factory_id', profile.factory_id)
           .eq('production_date', today)
-          .order('submitted_at', { ascending: false }),
+          .order('created_at', { ascending: false }),
       ]);
 
       setSewingUpdates(sewingRes.data || []);
-      setFinishingUpdates(finishingRes.data || []);
+      // Filter to only include sheets with at least 1 hour logged
+      const sheetsWithLogs = (finishingRes.data || []).filter(
+        (sheet: any) => (sheet.finishing_hourly_logs || []).length > 0
+      );
+      setFinishingSheets(sheetsWithLogs);
     } catch (error) {
       console.error('Error fetching updates:', error);
     } finally {
@@ -178,13 +155,15 @@ export default function TodayUpdates() {
     (u.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredFinishing = finishingUpdates.filter(u =>
-    (u.lines?.name || u.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (u.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredFinishing = finishingSheets.filter(s =>
+    (s.lines?.name || s.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.work_orders?.po_number || s.po_no || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const totalOutput = sewingUpdates.reduce((sum, u) => sum + (u.output_qty || 0), 0);
-  const totalQcPass = finishingUpdates.reduce((sum, u) => sum + (u.day_qc_pass || 0), 0);
+  const totalPoly = finishingSheets.reduce((sum, s) => 
+    sum + (s.finishing_hourly_logs || []).reduce((logSum, l) => logSum + (l.poly_actual || 0), 0), 0
+  );
 
   const handleSewingClick = (update: SewingUpdate) => {
     setSelectedSubmission({
@@ -214,39 +193,28 @@ export default function TodayUpdates() {
     setDetailModalOpen(true);
   };
 
-  const handleFinishingClick = (update: FinishingUpdate) => {
+  const handleFinishingClick = (sheet: FinishingDailySheet) => {
+    const logs = sheet.finishing_hourly_logs || [];
+    const totalPoly = logs.reduce((sum, l) => sum + (l.poly_actual || 0), 0);
+    const totalCarton = logs.reduce((sum, l) => sum + (l.carton_actual || 0), 0);
+    
     setSelectedSubmission({
-      id: update.id,
+      id: sheet.id,
       type: 'finishing',
-      line_name: update.lines?.name || update.lines?.line_id || 'Unknown',
-      po_number: update.work_orders?.po_number || null,
-      buyer_name: update.buyer_name,
-      style_no: update.style_no,
-      item_name: update.item_name,
-      order_quantity: update.order_quantity,
-      unit_name: update.unit_name,
-      floor_name: update.floor_name,
-      m_power: update.m_power,
-      per_hour_target: update.per_hour_target,
-      day_qc_pass: update.day_qc_pass,
-      total_qc_pass: update.total_qc_pass,
-      day_poly: update.day_poly,
-      total_poly: update.total_poly,
-      average_production: update.average_production,
-      day_over_time: update.day_over_time,
-      total_over_time: update.total_over_time,
-      day_hour: update.day_hour,
-      total_hour: update.total_hour,
-      day_carton: update.day_carton,
-      total_carton: update.total_carton,
-      remarks: update.remarks,
-      has_blocker: update.has_blocker,
-      blocker_description: update.blocker_description,
-      blocker_impact: update.blocker_impact,
-      blocker_owner: update.blocker_owner,
-      blocker_status: update.blocker_status,
-      submitted_at: update.submitted_at,
-      production_date: update.production_date,
+      line_name: sheet.lines?.name || sheet.lines?.line_id || 'Unknown',
+      po_number: sheet.work_orders?.po_number || sheet.po_no || null,
+      buyer: sheet.work_orders?.buyer || sheet.buyer,
+      style: sheet.work_orders?.style || sheet.style,
+      hours_logged: logs.length,
+      total_poly: totalPoly,
+      total_carton: totalCarton,
+      has_blocker: false,
+      blocker_description: null,
+      blocker_impact: null,
+      blocker_owner: null,
+      blocker_status: null,
+      submitted_at: sheet.created_at,
+      production_date: sheet.production_date,
     });
     setDetailModalOpen(true);
   };
@@ -303,8 +271,8 @@ export default function TodayUpdates() {
                 <Package className="h-5 w-5 text-info" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{finishingUpdates.length}</p>
-                <p className="text-xs text-muted-foreground">Finishing Updates</p>
+                <p className="text-2xl font-bold">{finishingSheets.length}</p>
+                <p className="text-xs text-muted-foreground">Finishing Sheets</p>
               </div>
             </div>
           </CardContent>
@@ -320,8 +288,8 @@ export default function TodayUpdates() {
         <Card>
           <CardContent className="p-4">
             <div>
-              <p className="text-2xl font-bold font-mono">{totalQcPass.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Total QC Pass</p>
+              <p className="text-2xl font-bold font-mono">{totalPoly.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Total Poly</p>
             </div>
           </CardContent>
         </Card>
@@ -341,9 +309,9 @@ export default function TodayUpdates() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="all">All ({sewingUpdates.length + finishingUpdates.length})</TabsTrigger>
+          <TabsTrigger value="all">All ({sewingUpdates.length + finishingSheets.length})</TabsTrigger>
           <TabsTrigger value="sewing">Sewing ({sewingUpdates.length})</TabsTrigger>
-          <TabsTrigger value="finishing">Finishing ({finishingUpdates.length})</TabsTrigger>
+          <TabsTrigger value="finishing">Finishing ({finishingSheets.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all" className="mt-4 space-y-4">
@@ -422,34 +390,31 @@ export default function TodayUpdates() {
                         <TableHead>Time</TableHead>
                         <TableHead>Line</TableHead>
                         <TableHead>PO</TableHead>
-                        <TableHead className="text-right">Day QC Pass</TableHead>
-                        <TableHead className="text-right">Total QC Pass</TableHead>
-                        <TableHead className="text-right">Day Poly</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Hours Logged</TableHead>
+                        <TableHead className="text-right">Total Poly</TableHead>
+                        <TableHead className="text-right">Total Carton</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredFinishing.map((update) => (
-                        <TableRow 
-                          key={update.id}
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleFinishingClick(update)}
-                        >
-                          <TableCell className="font-mono text-sm">{formatTime(update.submitted_at)}</TableCell>
-                          <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
-                          <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
-                          <TableCell className="text-right font-mono">{update.day_qc_pass?.toLocaleString() || 0}</TableCell>
-                          <TableCell className="text-right font-mono">{update.total_qc_pass?.toLocaleString() || 0}</TableCell>
-                          <TableCell className="text-right font-mono">{update.day_poly?.toLocaleString() || 0}</TableCell>
-                          <TableCell>
-                            {update.has_blocker ? (
-                              <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                            ) : (
-                              <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {filteredFinishing.map((sheet) => {
+                        const logs = sheet.finishing_hourly_logs || [];
+                        const polyTotal = logs.reduce((s, l) => s + (l.poly_actual || 0), 0);
+                        const cartonTotal = logs.reduce((s, l) => s + (l.carton_actual || 0), 0);
+                        return (
+                          <TableRow 
+                            key={sheet.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => handleFinishingClick(sheet)}
+                          >
+                            <TableCell className="font-mono text-sm">{formatTime(sheet.created_at)}</TableCell>
+                            <TableCell className="font-medium">{sheet.lines?.name || sheet.lines?.line_id}</TableCell>
+                            <TableCell>{sheet.work_orders?.po_number || sheet.po_no || '-'}</TableCell>
+                            <TableCell className="text-right font-mono">{logs.length}</TableCell>
+                            <TableCell className="text-right font-mono">{polyTotal.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{cartonTotal.toLocaleString()}</TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -525,49 +490,44 @@ export default function TodayUpdates() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Line</TableHead>
-                      <TableHead>PO</TableHead>
-                      <TableHead className="text-right">Day QC Pass</TableHead>
-                      <TableHead className="text-right">Total QC Pass</TableHead>
-                      <TableHead className="text-right">M Power</TableHead>
-                      <TableHead className="text-right">Day Poly</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredFinishing.map((update) => (
-                      <TableRow 
-                        key={update.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleFinishingClick(update)}
-                      >
-                        <TableCell className="font-mono text-sm">{formatTime(update.submitted_at)}</TableCell>
-                        <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
-                        <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
-                        <TableCell className="text-right font-mono font-bold">{update.day_qc_pass?.toLocaleString() || 0}</TableCell>
-                        <TableCell className="text-right font-mono">{update.total_qc_pass?.toLocaleString() || 0}</TableCell>
-                        <TableCell className="text-right">{update.m_power || '-'}</TableCell>
-                        <TableCell className="text-right font-mono">{update.day_poly?.toLocaleString() || 0}</TableCell>
-                        <TableCell>
-                          {update.has_blocker ? (
-                            <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                          ) : (
-                            <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredFinishing.length === 0 && (
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                          No finishing updates today
-                        </TableCell>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Line</TableHead>
+                        <TableHead>PO</TableHead>
+                        <TableHead className="text-right">Hours Logged</TableHead>
+                        <TableHead className="text-right">Total Poly</TableHead>
+                        <TableHead className="text-right">Total Carton</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredFinishing.map((sheet) => {
+                        const logs = sheet.finishing_hourly_logs || [];
+                        const polyTotal = logs.reduce((s, l) => s + (l.poly_actual || 0), 0);
+                        const cartonTotal = logs.reduce((s, l) => s + (l.carton_actual || 0), 0);
+                        return (
+                          <TableRow 
+                            key={sheet.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => handleFinishingClick(sheet)}
+                          >
+                            <TableCell className="font-mono text-sm">{formatTime(sheet.created_at)}</TableCell>
+                            <TableCell className="font-medium">{sheet.lines?.name || sheet.lines?.line_id}</TableCell>
+                            <TableCell>{sheet.work_orders?.po_number || sheet.po_no || '-'}</TableCell>
+                            <TableCell className="text-right font-mono font-bold">{logs.length}</TableCell>
+                            <TableCell className="text-right font-mono">{polyTotal.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{cartonTotal.toLocaleString()}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {filteredFinishing.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                            No finishing sheets today
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
                 </Table>
               </div>
             </CardContent>

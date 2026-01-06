@@ -21,7 +21,7 @@ interface ActualData {
   line_name: string;
   output: number;
   manpower?: number | null;
-  m_power?: number | null;
+  hours_logged?: number | null; // For finishing daily sheets
   has_blocker: boolean;
 }
 
@@ -90,13 +90,13 @@ export function TargetVsActualComparison({ allLines, targets, actuals, type, loa
     const existing = actualsByLine.get(actual.line_uuid);
     if (existing) {
       existing.totalOutput += actual.output;
-      existing.totalManpower += actual.manpower || actual.m_power || 0;
+      existing.totalManpower += actual.manpower || 0;
       existing.hasBlocker = existing.hasBlocker || actual.has_blocker;
       existing.count += 1;
     } else {
       actualsByLine.set(actual.line_uuid, {
         totalOutput: actual.output,
-        totalManpower: actual.manpower || actual.m_power || 0,
+        totalManpower: actual.manpower || 0,
         hasBlocker: actual.has_blocker,
         count: 1,
       });

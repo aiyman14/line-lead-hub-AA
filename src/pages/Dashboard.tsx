@@ -84,27 +84,10 @@ interface EndOfDaySubmission {
   ot_hours?: number | null;
   ot_manpower?: number | null;
   notes?: string | null;
-  // Finishing specific
-  buyer_name?: string | null;
-  style_no?: string | null;
-  item_name?: string | null;
-  order_quantity?: number | null;
-  unit_name?: string | null;
-  floor_name?: string | null;
-  m_power?: number | null;
-  per_hour_target?: number | null;
-  day_qc_pass?: number | null;
-  total_qc_pass?: number | null;
-  day_poly?: number | null;
-  total_poly?: number | null;
-  average_production?: number | null;
-  day_over_time?: number | null;
-  total_over_time?: number | null;
-  day_hour?: number | null;
-  total_hour?: number | null;
-  day_carton?: number | null;
-  total_carton?: number | null;
-  remarks?: string | null;
+  // Finishing daily sheet specific
+  hours_logged?: number;
+  total_poly?: number;
+  total_carton?: number;
 }
 
 interface LineInfo {
@@ -220,13 +203,13 @@ export default function Dashboard() {
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
 
-      // Fetch finishing end of day (actuals)
-      const { data: finishingActualsData, count: finishingCount } = await supabase
-        .from('production_updates_finishing')
-        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
+      // Fetch finishing daily sheets (new structure)
+      const { data: finishingDailySheetsData, count: finishingCount } = await supabase
+        .from('finishing_daily_sheets')
+        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style), finishing_hourly_logs(*)', { count: 'exact' })
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
-        .order('submitted_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       // Blocker counts
       const { count: sewingBlockersCount } = await supabase
@@ -237,13 +220,8 @@ export default function Dashboard() {
         .eq('has_blocker', true)
         .neq('blocker_status', 'resolved');
 
-      const { count: finishingBlockersCount } = await supabase
-        .from('production_updates_finishing')
-        .select('*', { count: 'exact', head: true })
-        .eq('factory_id', profile.factory_id)
-        .eq('production_date', today)
-        .eq('has_blocker', true)
-        .neq('blocker_status', 'resolved');
+      // Note: Daily sheets don't have blockers - finishing blockers now only come from legacy data
+      const finishingBlockersCount = 0;
 
       // Fetch active lines and work orders
       const { count: linesCount } = await supabase
@@ -330,45 +308,36 @@ export default function Dashboard() {
         notes: u.notes,
       }));
 
-      // Format finishing end of day
-      const formattedFinishingEOD: EndOfDaySubmission[] = (finishingActualsData || []).map(u => ({
-        id: u.id,
-        type: 'finishing' as const,
-        line_uuid: u.line_id,
-        line_id: u.lines?.line_id || 'Unknown',
-        line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
-        output: u.day_qc_pass || 0,
-        submitted_at: u.submitted_at,
-        production_date: u.production_date,
-        has_blocker: u.has_blocker || false,
-        blocker_description: u.blocker_description,
-        blocker_impact: u.blocker_impact,
-        blocker_owner: u.blocker_owner,
-        blocker_status: u.blocker_status,
-        po_number: u.work_orders?.po_number || null,
-        buyer: u.work_orders?.buyer || null,
-        style: u.work_orders?.style || null,
-        buyer_name: u.buyer_name,
-        style_no: u.style_no,
-        item_name: u.item_name,
-        order_quantity: u.order_quantity,
-        unit_name: u.unit_name,
-        floor_name: u.floor_name,
-        m_power: u.m_power,
-        per_hour_target: u.per_hour_target,
-        day_qc_pass: u.day_qc_pass,
-        total_qc_pass: u.total_qc_pass,
-        day_poly: u.day_poly,
-        total_poly: u.total_poly,
-        average_production: u.average_production,
-        day_over_time: u.day_over_time,
-        total_over_time: u.total_over_time,
-        day_hour: u.day_hour,
-        total_hour: u.total_hour,
-        day_carton: u.day_carton,
-        total_carton: u.total_carton,
-        remarks: u.remarks,
-      }));
+      // Format finishing daily sheets (new structure with hourly logs)
+      const formattedFinishingEOD: EndOfDaySubmission[] = (finishingDailySheetsData || [])
+        .filter((sheet: any) => (sheet.finishing_hourly_logs || []).length > 0)
+        .map((sheet: any) => {
+          const logs = sheet.finishing_hourly_logs || [];
+          const totalPoly = logs.reduce((sum: number, l: any) => sum + (l.poly_actual || 0), 0);
+          const totalCarton = logs.reduce((sum: number, l: any) => sum + (l.carton_actual || 0), 0);
+          
+          return {
+            id: sheet.id,
+            type: 'finishing' as const,
+            line_uuid: sheet.line_id,
+            line_id: sheet.lines?.line_id || 'Unknown',
+            line_name: sheet.lines?.name || sheet.lines?.line_id || 'Unknown',
+            output: totalPoly, // Use total poly as the main output metric
+            submitted_at: sheet.created_at,
+            production_date: sheet.production_date,
+            has_blocker: false,
+            blocker_description: null,
+            blocker_impact: null,
+            blocker_owner: null,
+            blocker_status: null,
+            po_number: sheet.work_orders?.po_number || sheet.po_no || null,
+            buyer: sheet.work_orders?.buyer || sheet.buyer || null,
+            style: sheet.work_orders?.style || sheet.style || null,
+            hours_logged: logs.length,
+            total_poly: totalPoly,
+            total_carton: totalCarton,
+          };
+        });
 
       // Fetch active blockers
       const { data: sewingBlockers } = await supabase
@@ -380,14 +349,8 @@ export default function Dashboard() {
         .order('submitted_at', { ascending: false })
         .limit(5);
 
-      const { data: finishingBlockers } = await supabase
-        .from('production_updates_finishing')
-        .select('id, blocker_description, blocker_impact, submitted_at, lines(line_id, name)')
-        .eq('factory_id', profile.factory_id)
-        .eq('has_blocker', true)
-        .neq('blocker_status', 'resolved')
-        .order('submitted_at', { ascending: false })
-        .limit(5);
+      // Note: The new finishing daily sheets don't have blockers
+      // Only sewing blockers are tracked now
 
       const blockers: ActiveBlocker[] = [];
       sewingBlockers?.forEach(u => {
@@ -400,21 +363,11 @@ export default function Dashboard() {
           created_at: u.submitted_at,
         });
       });
-      finishingBlockers?.forEach(u => {
-        blockers.push({
-          id: u.id,
-          type: 'finishing',
-          description: u.blocker_description || 'No description',
-          impact: u.blocker_impact || 'medium',
-          line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
-          created_at: u.submitted_at,
-        });
-      });
 
       // Calculate missing lines
       const linesWithUpdates = new Set([
         ...(sewingActualsData || []).map(u => u.line_id),
-        ...(finishingActualsData || []).map(u => u.line_id),
+        ...(finishingDailySheetsData || []).filter((s: any) => (s.finishing_hourly_logs || []).length > 0).map((s: any) => s.line_id),
       ]);
       const missingCount = (linesCount || 0) - linesWithUpdates.size;
 
@@ -657,31 +610,16 @@ export default function Dashboard() {
                             type: 'finishing' as const,
                             line_name: update.line_name,
                             po_number: update.po_number,
-                            buyer_name: update.buyer_name,
-                            style_no: update.style_no,
-                            item_name: update.item_name,
-                            order_quantity: update.order_quantity,
-                            unit_name: update.unit_name,
-                            floor_name: update.floor_name,
-                            m_power: update.m_power,
-                            per_hour_target: update.per_hour_target,
-                            day_qc_pass: update.day_qc_pass,
-                            total_qc_pass: update.total_qc_pass,
-                            day_poly: update.day_poly,
+                            buyer: update.buyer,
+                            style: update.style,
+                            hours_logged: update.hours_logged,
                             total_poly: update.total_poly,
-                            average_production: update.average_production,
-                            day_over_time: update.day_over_time,
-                            total_over_time: update.total_over_time,
-                            day_hour: update.day_hour,
-                            total_hour: update.total_hour,
-                            day_carton: update.day_carton,
                             total_carton: update.total_carton,
-                            remarks: update.remarks,
-                            has_blocker: update.has_blocker,
-                            blocker_description: update.blocker_description,
-                            blocker_impact: update.blocker_impact,
-                            blocker_owner: update.blocker_owner,
-                            blocker_status: update.blocker_status,
+                            has_blocker: false,
+                            blocker_description: null,
+                            blocker_impact: null,
+                            blocker_owner: null,
+                            blocker_status: null,
                             submitted_at: update.submitted_at,
                             production_date: update.production_date,
                           };
@@ -747,7 +685,7 @@ export default function Dashboard() {
               line_name: a.line_name,
               output: a.output,
               manpower: a.manpower,
-              m_power: a.m_power,
+              hours_logged: a.hours_logged,
               has_blocker: a.has_blocker,
             }))}
             type={departmentTab}
