@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -74,6 +75,7 @@ export default function WorkOrders() {
   const [loading, setLoading] = useState(true);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
+  const [workOrderLineAssignments, setWorkOrderLineAssignments] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState("");
   
   // Dialog state
@@ -96,17 +98,43 @@ export default function WorkOrders() {
     target_per_day: '',
     status: 'not_started',
     is_active: true,
-    line_id: '',
   });
+  const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (profile?.factory_id) {
       fetchWorkOrders();
       fetchLines();
+      fetchLineAssignments();
     } else if (profile !== undefined) {
       setLoading(false);
     }
   }, [profile?.factory_id, profile]);
+
+  async function fetchLineAssignments() {
+    if (!profile?.factory_id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('work_order_line_assignments')
+        .select('work_order_id, line_id')
+        .eq('factory_id', profile.factory_id);
+      
+      if (error) throw error;
+      
+      // Group by work_order_id
+      const assignments: Record<string, string[]> = {};
+      (data || []).forEach((row: any) => {
+        if (!assignments[row.work_order_id]) {
+          assignments[row.work_order_id] = [];
+        }
+        assignments[row.work_order_id].push(row.line_id);
+      });
+      setWorkOrderLineAssignments(assignments);
+    } catch (error) {
+      console.error('Error fetching line assignments:', error);
+    }
+  }
 
   async function fetchLines() {
     if (!profile?.factory_id) return;
@@ -161,8 +189,8 @@ export default function WorkOrders() {
       target_per_day: '',
       status: 'not_started',
       is_active: true,
-      line_id: '',
     });
+    setSelectedLineIds([]);
     setIsDialogOpen(true);
   }
 
@@ -182,8 +210,8 @@ export default function WorkOrders() {
       target_per_day: wo.target_per_day?.toString() || '',
       status: wo.status || 'not_started',
       is_active: wo.is_active,
-      line_id: wo.line_id || '',
     });
+    setSelectedLineIds(workOrderLineAssignments[wo.id] || []);
     setIsDialogOpen(true);
   }
 
@@ -211,26 +239,67 @@ export default function WorkOrders() {
         target_per_day: formData.target_per_day ? parseInt(formData.target_per_day) : null,
         status: formData.status,
         is_active: formData.is_active,
-        line_id: formData.line_id || null,
+        line_id: selectedLineIds.length === 1 ? selectedLineIds[0] : null, // Keep backward compatibility
       };
       
+      let workOrderId: string;
+      
       if (dialogMode === 'create') {
-        const { error } = await supabase.from('work_orders').insert(data);
+        const { data: insertedData, error } = await supabase
+          .from('work_orders')
+          .insert(data)
+          .select('id')
+          .single();
         if (error) throw error;
+        workOrderId = insertedData.id;
         toast({ title: "Work order created" });
       } else if (editingItem) {
         const { error } = await supabase.from('work_orders').update(data).eq('id', editingItem.id);
         if (error) throw error;
+        workOrderId = editingItem.id;
         toast({ title: "Work order updated" });
+      } else {
+        throw new Error("No work order to update");
+      }
+      
+      // Update line assignments
+      // First, delete existing assignments
+      await supabase
+        .from('work_order_line_assignments')
+        .delete()
+        .eq('work_order_id', workOrderId);
+      
+      // Then insert new assignments
+      if (selectedLineIds.length > 0) {
+        const assignments = selectedLineIds.map(lineId => ({
+          work_order_id: workOrderId,
+          line_id: lineId,
+          factory_id: profile.factory_id,
+        }));
+        
+        const { error: assignError } = await supabase
+          .from('work_order_line_assignments')
+          .insert(assignments);
+        
+        if (assignError) throw assignError;
       }
       
       setIsDialogOpen(false);
       fetchWorkOrders();
+      fetchLineAssignments();
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function toggleLineSelection(lineId: string) {
+    setSelectedLineIds(prev => 
+      prev.includes(lineId) 
+        ? prev.filter(id => id !== lineId)
+        : [...prev, lineId]
+    );
   }
 
   async function handleDelete(id: string) {
@@ -600,23 +669,33 @@ export default function WorkOrders() {
             </div>
             
             <div className="space-y-2">
-              <Label>Assigned Line</Label>
-              <Select
-                value={formData.line_id}
-                onValueChange={(value) => setFormData({ ...formData, line_id: value === 'none' ? '' : value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a line..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No line assigned</SelectItem>
-                  {lines.map(line => (
-                    <SelectItem key={line.id} value={line.id}>
-                      {line.line_id}{line.name ? ` - ${line.name}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Assigned Lines</Label>
+              <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                {lines.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No active lines available</p>
+                ) : (
+                  lines.map(line => (
+                    <div key={line.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`line-${line.id}`}
+                        checked={selectedLineIds.includes(line.id)}
+                        onCheckedChange={() => toggleLineSelection(line.id)}
+                      />
+                      <label
+                        htmlFor={`line-${line.id}`}
+                        className="text-sm font-medium leading-none cursor-pointer"
+                      >
+                        {line.line_id}{line.name ? ` - ${line.name}` : ''}
+                      </label>
+                    </div>
+                  ))
+                )}
+              </div>
+              {selectedLineIds.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedLineIds.length} line{selectedLineIds.length > 1 ? 's' : ''} selected
+                </p>
+              )}
             </div>
             
             <div className="grid grid-cols-2 gap-4">
