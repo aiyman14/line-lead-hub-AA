@@ -28,25 +28,35 @@ serve(async (req) => {
     const signature = req.headers.get("stripe-signature");
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
     
+    // SECURITY: Always require webhook signature verification
+    if (!webhookSecret) {
+      logStep("ERROR: STRIPE_WEBHOOK_SECRET not configured");
+      return new Response(JSON.stringify({ error: "Webhook secret not configured" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 500,
+      });
+    }
+    
+    if (!signature) {
+      logStep("ERROR: Missing stripe-signature header");
+      return new Response(JSON.stringify({ error: "Missing signature" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+    
     let event: Stripe.Event;
     
-    // Verify webhook signature if secret is configured
-    if (webhookSecret && signature) {
-      try {
-        event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-        logStep("Webhook signature verified");
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        logStep("Signature verification failed", { error: errorMessage });
-        return new Response(JSON.stringify({ error: "Invalid signature" }), {
-          headers: { "Content-Type": "application/json" },
-          status: 400,
-        });
-      }
-    } else {
-      // Fallback for development/testing without signature verification
-      event = JSON.parse(body) as Stripe.Event;
-      logStep("Processing without signature verification (dev mode)");
+    try {
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
+      logStep("Webhook signature verified");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logStep("Signature verification failed", { error: errorMessage });
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 400,
+      });
     }
     
     logStep("Webhook received", { type: event.type, id: event.id });
