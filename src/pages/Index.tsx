@@ -44,7 +44,7 @@ export default function Index() {
 
     // Check for finishing department workers
     if (profile.department === 'finishing') {
-      return <Navigate to="/finishing/my-submissions" replace />;
+      return <Navigate to="/finishing/daily-sheet" replace />;
     }
 
     const isWorker = (profile.department != null) || (hasRole('worker') && !hasRole('supervisor') && !isAdminOrHigher());

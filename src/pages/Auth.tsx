@@ -80,6 +80,12 @@ export default function Auth() {
           return;
         }
 
+        // Finishing workers land on the Finishing Daily Sheet
+        if (profile.department === "finishing") {
+          navigate("/finishing/daily-sheet", { replace: true });
+          return;
+        }
+
         const isWorker =
           profile.department != null ||
           (hasRole("worker") && !hasRole("supervisor") && !isAdminOrHigher());
