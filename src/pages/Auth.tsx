@@ -51,8 +51,9 @@ export default function Auth() {
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   const [resetPasswordErrors, setResetPasswordErrors] = useState<Record<string, string>>({});
 
-  // Check for password reset token in URL hash
+  // Check for password reset token in URL hash and via auth state change
   useEffect(() => {
+    // Check URL hash for recovery tokens
     const hashParams = new URLSearchParams(location.hash.substring(1));
     const accessToken = hashParams.get('access_token');
     const type = hashParams.get('type');
@@ -60,6 +61,17 @@ export default function Auth() {
     if (accessToken && type === 'recovery') {
       setIsPasswordResetMode(true);
     }
+
+    // Also listen for PASSWORD_RECOVERY event from Supabase auth
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordResetMode(true);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [location]);
 
   // Redirect if already logged in (but not if in password reset mode)
