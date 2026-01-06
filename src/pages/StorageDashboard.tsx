@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Package, Search, FileText, AlertTriangle, Download, Calendar, CalendarIcon, X } from "lucide-react";
-import { format, startOfDay, endOfDay, subDays } from "date-fns";
+import { format, subDays } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import {
   Table,
@@ -60,9 +60,9 @@ interface Transaction {
 }
 
 interface DashboardStats {
-  todayTransactions: number;
-  todayBinCardsUpdated: number;
-  totalBinCards: number;
+  totalCurrentBalance: number;
+  monthlyReceived: number;
+  monthlyIssued: number;
   lowBalanceCards: number;
 }
 
@@ -72,9 +72,9 @@ export default function StorageDashboard() {
   
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
-    todayTransactions: 0,
-    todayBinCardsUpdated: 0,
-    totalBinCards: 0,
+    totalCurrentBalance: 0,
+    monthlyReceived: 0,
+    monthlyIssued: 0,
     lowBalanceCards: 0,
   });
   const [binCards, setBinCards] = useState<BinCardWithWorkOrder[]>([]);
@@ -103,7 +103,9 @@ export default function StorageDashboard() {
 
   async function fetchData() {
     try {
-      const today = format(new Date(), "yyyy-MM-dd");
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfMonthStr = format(startOfMonth, "yyyy-MM-dd");
       
       // Fetch all bin cards
       const { data: cardsData, error: cardsError } = await supabase
@@ -135,49 +137,46 @@ export default function StorageDashboard() {
       if (cardsError) throw cardsError;
       setBinCards((cardsData || []) as BinCardWithWorkOrder[]);
       
-      // Fetch today's transactions count
-      const { count: todayTxnCount } = await supabase
-        .from("storage_bin_card_transactions")
-        .select("id", { count: "exact", head: true })
-        .eq("factory_id", profile!.factory_id)
-        .eq("transaction_date", today);
-      
-      // Count cards updated today
-      const todayStart = startOfDay(new Date()).toISOString();
-      const todayEnd = endOfDay(new Date()).toISOString();
-      const cardsUpdatedToday = (cardsData || []).filter(card => 
-        new Date(card.updated_at) >= new Date(todayStart) && 
-        new Date(card.updated_at) <= new Date(todayEnd)
-      ).length;
-      
-      // Get latest balance for each card to find low balance
       const cardIds = (cardsData || []).map(c => c.id);
+      let totalCurrentBalance = 0;
       let lowBalanceCount = 0;
+      let monthlyReceived = 0;
+      let monthlyIssued = 0;
       
       if (cardIds.length > 0) {
-        // Get latest transaction for each bin card
-        const { data: latestTxns } = await supabase
+        // Get all transactions for stats
+        const { data: allTxns } = await supabase
           .from("storage_bin_card_transactions")
-          .select("bin_card_id, balance_qty")
-          .in("bin_card_id", cardIds)
+          .select("bin_card_id, balance_qty, receive_qty, issue_qty, transaction_date, created_at")
+          .eq("factory_id", profile!.factory_id)
           .order("transaction_date", { ascending: false })
           .order("created_at", { ascending: false });
         
-        // Group by bin_card_id and take first (latest)
+        // Get latest balance for each card
         const latestByCard = new Map<string, number>();
-        (latestTxns || []).forEach(txn => {
+        (allTxns || []).forEach(txn => {
           if (!latestByCard.has(txn.bin_card_id)) {
             latestByCard.set(txn.bin_card_id, txn.balance_qty);
           }
         });
         
+        // Calculate totals
+        totalCurrentBalance = Array.from(latestByCard.values()).reduce((sum, bal) => sum + bal, 0);
         lowBalanceCount = Array.from(latestByCard.values()).filter(bal => bal <= 10).length;
+        
+        // Calculate monthly received and issued
+        (allTxns || []).forEach(txn => {
+          if (txn.transaction_date >= startOfMonthStr) {
+            monthlyReceived += txn.receive_qty || 0;
+            monthlyIssued += txn.issue_qty || 0;
+          }
+        });
       }
       
       setStats({
-        todayTransactions: todayTxnCount || 0,
-        todayBinCardsUpdated: cardsUpdatedToday,
-        totalBinCards: (cardsData || []).length,
+        totalCurrentBalance,
+        monthlyReceived,
+        monthlyIssued,
         lowBalanceCards: lowBalanceCount,
       });
     } catch (error) {
@@ -367,28 +366,28 @@ export default function StorageDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.todayTransactions}</div>
-                <p className="text-sm text-muted-foreground">Today's Entries</p>
+                <div className="text-2xl font-bold text-primary">{stats.totalCurrentBalance.toLocaleString()}</div>
+                <p className="text-sm text-muted-foreground">Total Stock Balance</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.todayBinCardsUpdated}</div>
-                <p className="text-sm text-muted-foreground">Cards Updated Today</p>
+                <div className="text-2xl font-bold text-green-600">{stats.monthlyReceived.toLocaleString()}</div>
+                <p className="text-sm text-muted-foreground">Received This Month</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.totalBinCards}</div>
-                <p className="text-sm text-muted-foreground">Total Bin Cards</p>
+                <div className="text-2xl font-bold text-blue-600">{stats.monthlyIssued.toLocaleString()}</div>
+                <p className="text-sm text-muted-foreground">Issued This Month</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className={`text-2xl font-bold ${stats.lowBalanceCards > 0 ? 'text-amber-500' : ''}`}>
+                <div className={`text-2xl font-bold ${stats.lowBalanceCards > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>
                   {stats.lowBalanceCards}
                 </div>
-                <p className="text-sm text-muted-foreground">Low Balance (≤10)</p>
+                <p className="text-sm text-muted-foreground">Low Stock Items (≤10)</p>
               </CardContent>
             </Card>
           </div>
