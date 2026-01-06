@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Factory, Package, Search, Download, RefreshCw, Scissors, Archive } from "lucide-react";
+import { Loader2, Factory, Package, Search, Download, RefreshCw, Scissors, Archive, CalendarDays } from "lucide-react";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { CuttingDetailModal } from "@/components/CuttingDetailModal";
 import { StorageBinCardDetailModal } from "@/components/StorageBinCardDetailModal";
@@ -388,7 +388,10 @@ export default function TodayUpdates() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Today's Updates</h1>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <CalendarDays className="h-6 w-6" />
+            Today's Updates
+          </h1>
           <p className="text-muted-foreground">
             {new Date().toLocaleDateString('en-US', { dateStyle: 'full' })}
           </p>
