@@ -29,36 +29,78 @@ export default function ResetPassword() {
     return new URLSearchParams(hash);
   }, [location.hash]);
 
-  const recoveryType = hashParams.get("type");
-  const accessToken = hashParams.get("access_token");
-  const hasRecoveryParams = recoveryType === "recovery" && !!accessToken;
+  const searchParams = useMemo(() => {
+    return new URLSearchParams(location.search);
+  }, [location.search]);
 
-  const linkError = hashParams.get("error") || hashParams.get("error_code") || hashParams.get("error_description");
+  const recoveryType = hashParams.get("type") ?? searchParams.get("type");
+  const hasRecoverySignal = recoveryType === "recovery";
+
+  const linkError =
+    hashParams.get("error") ||
+    hashParams.get("error_code") ||
+    hashParams.get("error_description") ||
+    searchParams.get("error") ||
+    searchParams.get("error_code") ||
+    searchParams.get("error_description");
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  const [checkingLink, setCheckingLink] = useState(true);
   const [isInvalidLink, setIsInvalidLink] = useState(false);
 
   useEffect(() => {
-    // Mark that we are in a forced reset flow so the rest of the app is blocked.
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("pp_force_password_reset", "1");
-    }
+    let cancelled = false;
 
-    if (linkError) {
-      setIsInvalidLink(true);
-      return;
-    }
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    // If there are no recovery params, treat as invalid/expired.
-    // (Example: user opened this page directly or the link was stripped.)
-    if (!hasRecoveryParams) {
-      setIsInvalidLink(true);
-    }
-  }, [hasRecoveryParams, linkError]);
+    const run = async () => {
+      // Mark that we are in a forced reset flow so the rest of the app is blocked.
+      if (typeof window !== "undefined" && hasRecoverySignal) {
+        sessionStorage.setItem("pp_force_password_reset", "1");
+      }
+
+      if (linkError) {
+        if (!cancelled) {
+          setIsInvalidLink(true);
+          setCheckingLink(false);
+        }
+        return;
+      }
+
+      // In some password-recovery flows, tokens may not appear in the URL hash.
+      // Give the auth client a moment to establish the recovery session.
+      if (hasRecoverySignal) {
+        await sleep(350);
+      }
+
+      const getSessionOnce = async () => {
+        const { data } = await supabase.auth.getSession();
+        return data.session;
+      };
+
+      let session = await getSessionOnce();
+      if (!session && hasRecoverySignal) {
+        await sleep(650);
+        session = await getSessionOnce();
+      }
+
+      if (!cancelled) {
+        // Valid if we have a recovery signal OR a session exists (meaning user arrived via a verified link).
+        const isValid = hasRecoverySignal || !!session;
+        setIsInvalidLink(!isValid);
+        setCheckingLink(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasRecoverySignal, linkError]);
 
   const requestNewLink = () => {
     // Allow user to request a new reset email.
@@ -131,7 +173,24 @@ export default function ResetPassword() {
 
       <div className="flex-1 flex items-start justify-center -mt-6 px-4 pb-12">
         <Card className="w-full max-w-md shadow-xl animate-fade-in">
-          {isInvalidLink ? (
+          {checkingLink ? (
+            <>
+              <CardHeader className="text-center pb-2">
+                <div className="flex justify-center mb-4">
+                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                  </div>
+                </div>
+                <CardTitle className="text-2xl">Validating link…</CardTitle>
+                <CardDescription>Hang tight while we verify your reset link.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button variant="ghost" className="w-full" onClick={requestNewLink}>
+                  Request a new link
+                </Button>
+              </CardContent>
+            </>
+          ) : isInvalidLink ? (
             <>
               <CardHeader className="text-center pb-2">
                 <div className="flex justify-center mb-4">
