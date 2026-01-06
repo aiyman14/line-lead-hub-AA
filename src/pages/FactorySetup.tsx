@@ -26,7 +26,8 @@ import {
   Check,
   X,
   Factory,
-  Package
+  Package,
+  ArrowLeft
 } from "lucide-react";
 import { BLOCKER_IMPACTS, BLOCKER_IMPACT_LABELS, DEFAULT_STAGES, DEFAULT_BLOCKER_TYPES } from "@/lib/constants";
 import { ActiveLinesMeter } from "@/components/ActiveLinesMeter";
@@ -472,6 +473,9 @@ export default function FactorySetup() {
     <div className="p-4 lg:p-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/setup')}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
         <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
           <Settings className="h-5 w-5 text-primary" />
         </div>

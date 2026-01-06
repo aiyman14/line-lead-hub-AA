@@ -21,7 +21,8 @@ import {
   Upload,
   Download,
   Search,
-  AlertTriangle
+  AlertTriangle,
+  ArrowLeft
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -453,6 +454,9 @@ export default function WorkOrders() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/setup')}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
           <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
             <ClipboardList className="h-5 w-5 text-primary" />
           </div>

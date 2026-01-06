@@ -22,7 +22,8 @@ import {
   Users,
   TrendingUp,
   Target,
-  ArrowUp
+  ArrowUp,
+  ArrowLeft
 } from "lucide-react";
 import {
   DndContext,
@@ -508,6 +509,9 @@ export default function DropdownSettings() {
     <div className="p-4 lg:p-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/setup')}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
         <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
           <ListOrdered className="h-5 w-5 text-primary" />
         </div>
