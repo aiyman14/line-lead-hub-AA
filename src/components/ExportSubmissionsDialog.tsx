@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Loader2, Download, FileSpreadsheet } from "lucide-react";
+import { Loader2, Download, FileSpreadsheet, Factory, Package, Scissors } from "lucide-react";
 import { toast } from "sonner";
 
 interface ExportData {
@@ -18,6 +18,9 @@ interface ExportData {
   finishingTargets: any[];
   sewingActuals: any[];
   finishingActuals: any[];
+  cuttingTargets: any[];
+  cuttingActuals: any[];
+  storageBinCards: any[];
 }
 
 interface ExportSubmissionsDialogProps {
@@ -38,10 +41,8 @@ export function ExportSubmissionsDialog({
   // Department selection
   const [includeSewing, setIncludeSewing] = useState(true);
   const [includeFinishing, setIncludeFinishing] = useState(true);
-  
-  // Category selection
-  const [includeTargets, setIncludeTargets] = useState(true);
-  const [includeActuals, setIncludeActuals] = useState(true);
+  const [includeCutting, setIncludeCutting] = useState(true);
+  const [includeStorage, setIncludeStorage] = useState(true);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -60,14 +61,22 @@ export function ExportSubmissionsDialog({
 
   const getExportCounts = () => {
     let total = 0;
-    if (includeSewing && includeTargets) total += data.sewingTargets.length;
-    if (includeFinishing && includeTargets) total += data.finishingTargets.length;
-    if (includeSewing && includeActuals) total += data.sewingActuals.length;
-    if (includeFinishing && includeActuals) total += data.finishingActuals.length;
+    if (includeSewing) {
+      total += data.sewingTargets.length + data.sewingActuals.length;
+    }
+    if (includeFinishing) {
+      total += data.finishingTargets.length + data.finishingActuals.length;
+    }
+    if (includeCutting) {
+      total += data.cuttingTargets.length + data.cuttingActuals.length;
+    }
+    if (includeStorage) {
+      total += data.storageBinCards.length;
+    }
     return total;
   };
 
-  const canExport = (includeSewing || includeFinishing) && (includeTargets || includeActuals) && getExportCounts() > 0;
+  const canExport = (includeSewing || includeFinishing || includeCutting || includeStorage) && getExportCounts() > 0;
 
   const handleExport = () => {
     setExporting(true);
@@ -81,18 +90,16 @@ export function ExportSubmissionsDialog({
       const deptParts: string[] = [];
       if (includeSewing) deptParts.push('Sewing');
       if (includeFinishing) deptParts.push('Finishing');
-      
-      const catParts: string[] = [];
-      if (includeTargets) catParts.push('Targets');
-      if (includeActuals) catParts.push('End of Day');
+      if (includeCutting) deptParts.push('Cutting');
+      if (includeStorage) deptParts.push('Storage');
 
-      rows.push([`Submissions Report - ${deptParts.join(' & ')} - ${catParts.join(' & ')}`]);
+      rows.push([`Submissions Report - ${deptParts.join(', ')}`]);
       rows.push([`Generated: ${exportDate}`]);
       rows.push([`Date Range: Last ${dateRange} days`]);
       rows.push(['']);
 
       // Export Sewing Targets
-      if (includeSewing && includeTargets && data.sewingTargets.length > 0) {
+      if (includeSewing && data.sewingTargets.length > 0) {
         rows.push(['=== SEWING TARGETS ===']);
         rows.push(['Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Target/hr', 'Manpower', 'OT Hours', 'Progress %', 'Next Milestone', 'Late', 'Remarks']);
         data.sewingTargets.forEach(t => {
@@ -115,31 +122,8 @@ export function ExportSubmissionsDialog({
         rows.push(['']);
       }
 
-      // Export Finishing Targets
-      if (includeFinishing && includeTargets && data.finishingTargets.length > 0) {
-        rows.push(['=== FINISHING TARGETS ===']);
-        rows.push(['Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Target/hr', 'Manpower', 'Day Hours', 'OT Hours', 'Late', 'Remarks']);
-        data.finishingTargets.forEach(t => {
-          rows.push([
-            formatDate(t.production_date),
-            formatTime(t.submitted_at),
-            t.lines?.name || t.lines?.line_id || '-',
-            t.work_orders?.po_number || '-',
-            t.work_orders?.buyer || '-',
-            t.work_orders?.style || '-',
-            t.per_hour_target?.toString() || '0',
-            t.m_power_planned?.toString() || '0',
-            t.day_hour_planned?.toString() || '0',
-            t.day_over_time_planned?.toString() || '0',
-            t.is_late ? 'Yes' : 'No',
-            t.remarks || '-',
-          ]);
-        });
-        rows.push(['']);
-      }
-
       // Export Sewing Actuals
-      if (includeSewing && includeActuals && data.sewingActuals.length > 0) {
+      if (includeSewing && data.sewingActuals.length > 0) {
         rows.push(['=== SEWING END OF DAY ===']);
         rows.push(['Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Good Today', 'Reject', 'Rework', 'Cumulative Total', 'Manpower', 'OT Hours', 'Progress %', 'Has Blocker', 'Blocker Type', 'Blocker Impact', 'Remarks']);
         data.sewingActuals.forEach(a => {
@@ -166,8 +150,31 @@ export function ExportSubmissionsDialog({
         rows.push(['']);
       }
 
+      // Export Finishing Targets
+      if (includeFinishing && data.finishingTargets.length > 0) {
+        rows.push(['=== FINISHING TARGETS ===']);
+        rows.push(['Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Target/hr', 'Manpower', 'Day Hours', 'OT Hours', 'Late', 'Remarks']);
+        data.finishingTargets.forEach(t => {
+          rows.push([
+            formatDate(t.production_date),
+            formatTime(t.submitted_at),
+            t.lines?.name || t.lines?.line_id || '-',
+            t.work_orders?.po_number || '-',
+            t.work_orders?.buyer || '-',
+            t.work_orders?.style || '-',
+            t.per_hour_target?.toString() || '0',
+            t.m_power_planned?.toString() || '0',
+            t.day_hour_planned?.toString() || '0',
+            t.day_over_time_planned?.toString() || '0',
+            t.is_late ? 'Yes' : 'No',
+            t.remarks || '-',
+          ]);
+        });
+        rows.push(['']);
+      }
+
       // Export Finishing Actuals
-      if (includeFinishing && includeActuals && data.finishingActuals.length > 0) {
+      if (includeFinishing && data.finishingActuals.length > 0) {
         rows.push(['=== FINISHING END OF DAY ===']);
         rows.push(['Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Day QC Pass', 'Total QC Pass', 'Day Poly', 'Total Poly', 'Day Carton', 'Total Carton', 'Manpower', 'Day Hours', 'OT Hours', 'Avg Production', 'Has Blocker', 'Remarks']);
         data.finishingActuals.forEach(a => {
@@ -192,6 +199,79 @@ export function ExportSubmissionsDialog({
             a.remarks || '-',
           ]);
         });
+        rows.push(['']);
+      }
+
+      // Export Cutting Targets
+      if (includeCutting && data.cuttingTargets.length > 0) {
+        rows.push(['=== CUTTING TARGETS ===']);
+        rows.push(['Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Colour', 'Order Qty', 'Marker Capacity', 'Lay Capacity', 'Cutting Capacity', 'Manpower', 'Under Qty', 'Late']);
+        data.cuttingTargets.forEach(t => {
+          rows.push([
+            formatDate(t.production_date),
+            formatTime(t.submitted_at),
+            t.lines?.name || t.lines?.line_id || '-',
+            t.work_orders?.po_number || t.po_no || '-',
+            t.work_orders?.buyer || t.buyer || '-',
+            t.work_orders?.style || t.style || '-',
+            t.colour || '-',
+            t.order_qty?.toString() || '0',
+            t.marker_capacity?.toString() || '0',
+            t.lay_capacity?.toString() || '0',
+            t.cutting_capacity?.toString() || '0',
+            t.man_power?.toString() || '0',
+            t.under_qty?.toString() || '0',
+            t.is_late ? 'Yes' : 'No',
+          ]);
+        });
+        rows.push(['']);
+      }
+
+      // Export Cutting Actuals
+      if (includeCutting && data.cuttingActuals.length > 0) {
+        rows.push(['=== CUTTING ACTUALS ===']);
+        rows.push(['Date', 'Time', 'Line', 'PO Number', 'Buyer', 'Style', 'Colour', 'Order Qty', 'Day Cutting', 'Total Cutting', 'Day Input', 'Total Input', 'Balance', 'Late', 'Acknowledged']);
+        data.cuttingActuals.forEach(a => {
+          rows.push([
+            formatDate(a.production_date),
+            formatTime(a.submitted_at),
+            a.lines?.name || a.lines?.line_id || '-',
+            a.work_orders?.po_number || a.po_no || '-',
+            a.work_orders?.buyer || a.buyer || '-',
+            a.work_orders?.style || a.style || '-',
+            a.colour || '-',
+            a.order_qty?.toString() || '0',
+            a.day_cutting?.toString() || '0',
+            a.total_cutting?.toString() || '0',
+            a.day_input?.toString() || '0',
+            a.total_input?.toString() || '0',
+            a.balance?.toString() || '0',
+            a.is_late ? 'Yes' : 'No',
+            a.acknowledged ? 'Yes' : 'No',
+          ]);
+        });
+        rows.push(['']);
+      }
+
+      // Export Storage Bin Cards
+      if (includeStorage && data.storageBinCards.length > 0) {
+        rows.push(['=== STORAGE BIN CARDS ===']);
+        rows.push(['Date', 'PO Number', 'Buyer', 'Style', 'Color', 'Supplier', 'Description', 'Total Received', 'Total Issued', 'Balance']);
+        data.storageBinCards.forEach(bc => {
+          rows.push([
+            formatDate(bc.created_at),
+            bc.work_orders?.po_number || '-',
+            bc.buyer || '-',
+            bc.style || '-',
+            bc.color || '-',
+            bc.supplier_name || '-',
+            bc.description || '-',
+            bc.totalReceived?.toString() || '0',
+            bc.totalIssued?.toString() || '0',
+            bc.balance?.toString() || '0',
+          ]);
+        });
+        rows.push(['']);
       }
 
       // Convert to CSV
@@ -202,13 +282,12 @@ export function ExportSubmissionsDialog({
       // Generate filename
       const fileDate = new Date().toISOString().split('T')[0];
       const deptSuffix = deptParts.join('_').toLowerCase();
-      const catSuffix = catParts.join('_').toLowerCase().replace(/ /g, '');
       
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `submissions_${deptSuffix}_${catSuffix}_${dateRange}days_${fileDate}.csv`);
+      link.setAttribute('download', `submissions_${deptSuffix}_${dateRange}days_${fileDate}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -227,16 +306,21 @@ export function ExportSubmissionsDialog({
   const selectAll = () => {
     setIncludeSewing(true);
     setIncludeFinishing(true);
-    setIncludeTargets(true);
-    setIncludeActuals(true);
+    setIncludeCutting(true);
+    setIncludeStorage(true);
   };
 
   const clearAll = () => {
     setIncludeSewing(false);
     setIncludeFinishing(false);
-    setIncludeTargets(false);
-    setIncludeActuals(false);
+    setIncludeCutting(false);
+    setIncludeStorage(false);
   };
+
+  const getSewingCount = () => data.sewingTargets.length + data.sewingActuals.length;
+  const getFinishingCount = () => data.finishingTargets.length + data.finishingActuals.length;
+  const getCuttingCount = () => data.cuttingTargets.length + data.cuttingActuals.length;
+  const getStorageCount = () => data.storageBinCards.length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -247,7 +331,7 @@ export function ExportSubmissionsDialog({
             Export Submissions
           </DialogTitle>
           <DialogDescription>
-            Select which categories to include in your export
+            Select which departments to include in your export
           </DialogDescription>
         </DialogHeader>
 
@@ -273,9 +357,12 @@ export function ExportSubmissionsDialog({
                   onCheckedChange={(checked) => setIncludeSewing(checked === true)}
                 />
                 <div className="flex-1">
-                  <Label htmlFor="sewing" className="cursor-pointer font-medium">Sewing</Label>
+                  <Label htmlFor="sewing" className="cursor-pointer font-medium flex items-center gap-2">
+                    <Factory className="h-4 w-4" />
+                    Sewing
+                  </Label>
                   <p className="text-xs text-muted-foreground">
-                    {data.sewingTargets.length} targets, {data.sewingActuals.length} EOD
+                    {getSewingCount()} records
                   </p>
                 </div>
               </div>
@@ -286,42 +373,44 @@ export function ExportSubmissionsDialog({
                   onCheckedChange={(checked) => setIncludeFinishing(checked === true)}
                 />
                 <div className="flex-1">
-                  <Label htmlFor="finishing" className="cursor-pointer font-medium">Finishing</Label>
+                  <Label htmlFor="finishing" className="cursor-pointer font-medium flex items-center gap-2">
+                    <Package className="h-4 w-4" />
+                    Finishing
+                  </Label>
                   <p className="text-xs text-muted-foreground">
-                    {data.finishingTargets.length} targets, {data.finishingActuals.length} EOD
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Category Selection */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Categories</Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center space-x-3 rounded-lg border p-3 hover:bg-accent/50 transition-colors">
-                <Checkbox
-                  id="targets"
-                  checked={includeTargets}
-                  onCheckedChange={(checked) => setIncludeTargets(checked === true)}
-                />
-                <div className="flex-1">
-                  <Label htmlFor="targets" className="cursor-pointer font-medium">Morning Targets</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Daily production plans
+                    {getFinishingCount()} records
                   </p>
                 </div>
               </div>
               <div className="flex items-center space-x-3 rounded-lg border p-3 hover:bg-accent/50 transition-colors">
                 <Checkbox
-                  id="actuals"
-                  checked={includeActuals}
-                  onCheckedChange={(checked) => setIncludeActuals(checked === true)}
+                  id="cutting"
+                  checked={includeCutting}
+                  onCheckedChange={(checked) => setIncludeCutting(checked === true)}
                 />
                 <div className="flex-1">
-                  <Label htmlFor="actuals" className="cursor-pointer font-medium">End of Day</Label>
+                  <Label htmlFor="cutting" className="cursor-pointer font-medium flex items-center gap-2">
+                    <Scissors className="h-4 w-4" />
+                    Cutting
+                  </Label>
                   <p className="text-xs text-muted-foreground">
-                    Actual production data
+                    {getCuttingCount()} records
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-3 rounded-lg border p-3 hover:bg-accent/50 transition-colors">
+                <Checkbox
+                  id="storage"
+                  checked={includeStorage}
+                  onCheckedChange={(checked) => setIncludeStorage(checked === true)}
+                />
+                <div className="flex-1">
+                  <Label htmlFor="storage" className="cursor-pointer font-medium flex items-center gap-2">
+                    <Package className="h-4 w-4" />
+                    Storage
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {getStorageCount()} records
                   </p>
                 </div>
               </div>

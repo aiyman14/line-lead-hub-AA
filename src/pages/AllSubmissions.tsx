@@ -121,6 +121,11 @@ export default function AllSubmissions() {
   const [sewingActuals, setSewingActuals] = useState<SewingActual[]>([]);
   const [finishingActuals, setFinishingActuals] = useState<FinishingActual[]>([]);
 
+  // Cutting and Storage data for export
+  const [cuttingTargets, setCuttingTargets] = useState<any[]>([]);
+  const [cuttingActuals, setCuttingActuals] = useState<any[]>([]);
+  const [storageBinCards, setStorageBinCards] = useState<any[]>([]);
+
   // Modal state
   const [selectedTarget, setSelectedTarget] = useState<any>(null);
   const [selectedActual, setSelectedActual] = useState<any>(null);
@@ -148,6 +153,9 @@ export default function AllSubmissions() {
         finishingTargetsRes,
         sewingActualsRes,
         finishingActualsRes,
+        cuttingTargetsRes,
+        cuttingActualsRes,
+        storageBinCardsRes,
       ] = await Promise.all([
         supabase
           .from('sewing_targets')
@@ -181,12 +189,38 @@ export default function AllSubmissions() {
           .lte('production_date', endDate.toISOString().split('T')[0])
           .order('production_date', { ascending: false })
           .order('submitted_at', { ascending: false }),
+        supabase
+          .from('cutting_targets')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style, order_qty)')
+          .eq('factory_id', profile.factory_id)
+          .gte('production_date', startDate.toISOString().split('T')[0])
+          .lte('production_date', endDate.toISOString().split('T')[0])
+          .order('production_date', { ascending: false })
+          .order('submitted_at', { ascending: false }),
+        supabase
+          .from('cutting_actuals')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style, order_qty)')
+          .eq('factory_id', profile.factory_id)
+          .gte('production_date', startDate.toISOString().split('T')[0])
+          .lte('production_date', endDate.toISOString().split('T')[0])
+          .order('production_date', { ascending: false })
+          .order('submitted_at', { ascending: false }),
+        supabase
+          .from('storage_bin_cards')
+          .select('*, work_orders(po_number, buyer, style)')
+          .eq('factory_id', profile.factory_id)
+          .gte('created_at', startDate.toISOString())
+          .lte('created_at', endDate.toISOString())
+          .order('created_at', { ascending: false }),
       ]);
 
       setSewingTargets(sewingTargetsRes.data || []);
       setFinishingTargets(finishingTargetsRes.data || []);
       setSewingActuals(sewingActualsRes.data || []);
       setFinishingActuals(finishingActualsRes.data || []);
+      setCuttingTargets(cuttingTargetsRes.data || []);
+      setCuttingActuals(cuttingActualsRes.data || []);
+      setStorageBinCards(storageBinCardsRes.data || []);
     } catch (error) {
       console.error('Error fetching submissions:', error);
       toast.error("Failed to load submissions");
@@ -294,6 +328,9 @@ export default function AllSubmissions() {
     finishingTargets: filterBySearch(finishingTargets),
     sewingActuals: filterBySearch(sewingActuals),
     finishingActuals: filterBySearch(finishingActuals),
+    cuttingTargets,
+    cuttingActuals,
+    storageBinCards,
   });
 
   if (loading) {
