@@ -19,9 +19,7 @@ import {
   Globe,
   ChevronRight,
   AlertTriangle,
-  Factory,
-  CreditCard,
-  Receipt
+  Factory
 } from "lucide-react";
 
 interface FactoryStats {
@@ -396,17 +394,6 @@ export default function SetupHome() {
         ))}
       </div>
 
-      {/* Subscription & Billing Buttons */}
-      <div className="flex gap-4 mt-6">
-        <Button variant="outline" onClick={() => navigate('/subscription')} className="flex-1">
-          <CreditCard className="h-4 w-4 mr-2" />
-          Subscription
-        </Button>
-        <Button variant="outline" onClick={() => navigate('/billing')} className="flex-1">
-          <Receipt className="h-4 w-4 mr-2" />
-          Billing
-        </Button>
-      </div>
     </div>
   );
 }
