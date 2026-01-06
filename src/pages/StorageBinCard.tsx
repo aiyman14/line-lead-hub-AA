@@ -397,13 +397,13 @@ export default function StorageBinCard() {
   }
 
   return (
-    <div className="container mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+    <div className="container mx-auto max-w-5xl space-y-4 md:space-y-6 px-3 py-4 md:p-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Package className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold">BIN CARD RECORD</h1>
-          <p className="text-sm text-muted-foreground">Daily storage entry form</p>
+        <Package className="h-7 w-7 md:h-8 md:w-8 text-primary shrink-0" />
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-bold">BIN CARD RECORD</h1>
+          <p className="text-xs md:text-sm text-muted-foreground">Daily storage entry form</p>
         </div>
       </div>
 
@@ -422,7 +422,7 @@ export default function StorageBinCard() {
                   : "Search by PO, Buyer, Style, Item..."}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[400px] p-0" align="start">
+            <PopoverContent className="w-[calc(100vw-24px)] max-w-[400px] p-0" align="start">
               <Command shouldFilter={true}>
                 <CommandInput 
                   placeholder="Search PO, buyer, style, item..." 
@@ -491,7 +491,7 @@ export default function StorageBinCard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
               <div>
                 <Label>BUYER</Label>
                 <Input value={selectedWorkOrder?.buyer || ""} disabled className="bg-muted" />
