@@ -239,14 +239,17 @@ export type Database = {
         Row: {
           created_at: string | null
           cutoff_time: string | null
+          enabled_modules: string[] | null
           evening_actual_cutoff: string | null
           id: string
           is_active: boolean | null
+          line_slot_limit: number | null
           logo_url: string | null
           max_lines: number | null
           morning_target_cutoff: string | null
           name: string
           payment_failed_at: string | null
+          reactivation_cooldown_days: number | null
           slug: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -262,14 +265,17 @@ export type Database = {
         Insert: {
           created_at?: string | null
           cutoff_time?: string | null
+          enabled_modules?: string[] | null
           evening_actual_cutoff?: string | null
           id?: string
           is_active?: boolean | null
+          line_slot_limit?: number | null
           logo_url?: string | null
           max_lines?: number | null
           morning_target_cutoff?: string | null
           name: string
           payment_failed_at?: string | null
+          reactivation_cooldown_days?: number | null
           slug: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -285,14 +291,17 @@ export type Database = {
         Update: {
           created_at?: string | null
           cutoff_time?: string | null
+          enabled_modules?: string[] | null
           evening_actual_cutoff?: string | null
           id?: string
           is_active?: boolean | null
+          line_slot_limit?: number | null
           logo_url?: string | null
           max_lines?: number | null
           morning_target_cutoff?: string | null
           name?: string
           payment_failed_at?: string | null
+          reactivation_cooldown_days?: number | null
           slug?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -592,6 +601,7 @@ export type Database = {
       lines: {
         Row: {
           created_at: string | null
+          deactivated_at: string | null
           factory_id: string
           floor_id: string | null
           id: string
@@ -606,6 +616,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          deactivated_at?: string | null
           factory_id: string
           floor_id?: string | null
           id?: string
@@ -620,6 +631,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          deactivated_at?: string | null
           factory_id?: string
           floor_id?: string | null
           id?: string
@@ -1680,10 +1692,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_activate_line: { Args: { _factory_id: string }; Returns: boolean }
+      count_active_lines: { Args: { _factory_id: string }; Returns: number }
       factory_has_active_access: {
         Args: { _factory_id: string }
         Returns: boolean
       }
+      get_plan_max_lines: { Args: { _factory_id: string }; Returns: number }
       get_user_factory_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -1703,7 +1718,13 @@ export type Database = {
       app_role: "worker" | "supervisor" | "admin" | "owner" | "superadmin"
       blocker_impact: "low" | "medium" | "high" | "critical"
       blocker_status: "open" | "in_progress" | "resolved"
-      subscription_tier: "starter" | "professional" | "enterprise" | "unlimited"
+      subscription_tier:
+        | "starter"
+        | "professional"
+        | "enterprise"
+        | "unlimited"
+        | "growth"
+        | "scale"
       update_type: "sewing" | "finishing"
       work_order_status: "not_started" | "in_progress" | "completed" | "on_hold"
     }
@@ -1836,7 +1857,14 @@ export const Constants = {
       app_role: ["worker", "supervisor", "admin", "owner", "superadmin"],
       blocker_impact: ["low", "medium", "high", "critical"],
       blocker_status: ["open", "in_progress", "resolved"],
-      subscription_tier: ["starter", "professional", "enterprise", "unlimited"],
+      subscription_tier: [
+        "starter",
+        "professional",
+        "enterprise",
+        "unlimited",
+        "growth",
+        "scale",
+      ],
       update_type: ["sewing", "finishing"],
       work_order_status: ["not_started", "in_progress", "completed", "on_hold"],
     },

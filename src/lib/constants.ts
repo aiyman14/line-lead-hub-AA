@@ -183,6 +183,7 @@ export const NAV_ITEMS = {
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
+    { path: '/billing-plan', label: 'Billing & Plan', icon: 'CreditCard' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   owner: [
@@ -196,6 +197,7 @@ export const NAV_ITEMS = {
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
+    { path: '/billing-plan', label: 'Billing & Plan', icon: 'CreditCard' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   superadmin: [

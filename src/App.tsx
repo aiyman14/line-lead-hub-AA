@@ -36,6 +36,7 @@ import MySubmissions from "./pages/MySubmissions";
 import Preferences from "./pages/Preferences";
 import Subscription from "./pages/Subscription";
 import Billing from "./pages/Billing";
+import BillingPlan from "./pages/BillingPlan";
 import NotFound from "./pages/NotFound";
 import ReportBlocker from "./pages/ReportBlocker";
 
@@ -81,6 +82,7 @@ function AppRoutes() {
         <Route path="/my-submissions" element={<SubscriptionGate><MySubmissions /></SubscriptionGate>} />
         <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
         <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />
+        <Route path="/billing-plan" element={<SubscriptionGate><BillingPlan /></SubscriptionGate>} />
       </Route>
       
       <Route path="*" element={<NotFound />} />

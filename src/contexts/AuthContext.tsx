@@ -31,6 +31,7 @@ interface Factory {
   evening_actual_cutoff: string | null;
   timezone: string;
   logo_url: string | null;
+  max_lines: number | null;
 }
 
 interface AuthContextType {

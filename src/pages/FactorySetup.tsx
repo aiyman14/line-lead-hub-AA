@@ -28,6 +28,8 @@ import {
   Factory
 } from "lucide-react";
 import { BLOCKER_IMPACTS, BLOCKER_IMPACT_LABELS, DEFAULT_STAGES, DEFAULT_BLOCKER_TYPES } from "@/lib/constants";
+import { ActiveLinesMeter } from "@/components/ActiveLinesMeter";
+import { useActiveLines } from "@/hooks/useActiveLines";
 
 // Types
 interface Unit {
@@ -79,6 +81,14 @@ export default function FactorySetup() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("units");
+
+  // Active lines hook for plan limits
+  const { 
+    status: lineStatus, 
+    canActivateMore, 
+    isAtLimit, 
+    refresh: refreshLineStatus 
+  } = useActiveLines();
 
   // Data
   const [units, setUnits] = useState<Unit[]>([]);
@@ -237,6 +247,16 @@ export default function FactorySetup() {
 
   async function toggleActive(id: string, currentValue: boolean) {
     try {
+      // For lines: check plan limits before activating
+      if (activeTab === 'lines' && !currentValue && !canActivateMore) {
+        toast({ 
+          variant: "destructive", 
+          title: "Plan limit reached", 
+          description: "Upgrade your plan to activate more production lines." 
+        });
+        return;
+      }
+
       let error: any = null;
       if (activeTab === 'units') {
         const res = await supabase.from('units').update({ is_active: !currentValue }).eq('id', id);
@@ -256,8 +276,20 @@ export default function FactorySetup() {
       }
       if (error) throw error;
       fetchAllData();
+      if (activeTab === 'lines') {
+        refreshLineStatus();
+      }
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      // Check for plan limit error from trigger
+      if (error.message?.includes('Plan limit reached')) {
+        toast({ 
+          variant: "destructive", 
+          title: "Plan limit reached", 
+          description: "Upgrade your plan to activate more production lines." 
+        });
+      } else {
+        toast({ variant: "destructive", title: "Error", description: error.message });
+      }
     }
   }
 
@@ -563,13 +595,23 @@ export default function FactorySetup() {
 
         {/* Lines Tab */}
         <TabsContent value="lines">
+          {/* Active Lines Meter */}
+          <div className="mb-4">
+            <ActiveLinesMeter />
+          </div>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Production Lines</CardTitle>
                 <CardDescription>Manage production lines (e.g., L1, L2, L3)</CardDescription>
               </div>
-              <Button onClick={openCreateDialog} size="sm">
+              <Button 
+                onClick={openCreateDialog} 
+                size="sm"
+                disabled={isAtLimit}
+                title={isAtLimit ? "Plan limit reached. Upgrade to add more lines." : "Add a new line"}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Line
               </Button>
@@ -596,7 +638,7 @@ export default function FactorySetup() {
                     </TableRow>
                   ) : (
                     lines.map((line) => (
-                      <TableRow key={line.id}>
+                      <TableRow key={line.id} className={!line.is_active ? 'opacity-60' : ''}>
                         <TableCell className="font-mono font-medium">{line.line_id}</TableCell>
                         <TableCell>{line.name || '-'}</TableCell>
                         <TableCell>{units.find(u => u.id === line.unit_id)?.name || '-'}</TableCell>
@@ -606,6 +648,8 @@ export default function FactorySetup() {
                           <Switch
                             checked={line.is_active}
                             onCheckedChange={() => toggleActive(line.id, line.is_active)}
+                            disabled={!line.is_active && !canActivateMore}
+                            title={!line.is_active && !canActivateMore ? "Plan limit reached" : ""}
                           />
                         </TableCell>
                         <TableCell className="text-right">
