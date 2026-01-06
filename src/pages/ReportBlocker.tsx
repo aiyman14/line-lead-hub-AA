@@ -210,7 +210,7 @@ export default function ReportBlocker() {
           .select("id, name, code, default_owner, default_impact")
           .eq("factory_id", profile.factory_id)
           .eq("is_active", true)
-          .order("name"),
+          .order("sort_order"),
         supabase
           .from("blocker_owner_options")
           .select("id, label, is_active")

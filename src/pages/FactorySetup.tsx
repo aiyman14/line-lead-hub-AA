@@ -139,7 +139,7 @@ export default function FactorySetup() {
         supabase.from('floors').select('*').eq('factory_id', profile.factory_id).order('code'),
         supabase.from('lines').select('*').eq('factory_id', profile.factory_id).order('line_id'),
         supabase.from('stages').select('*').eq('factory_id', profile.factory_id).order('sequence'),
-        supabase.from('blocker_types').select('*').eq('factory_id', profile.factory_id).order('name'),
+        supabase.from('blocker_types').select('*').eq('factory_id', profile.factory_id).order('sort_order'),
       ]);
 
       setUnits(unitsRes.data || []);
