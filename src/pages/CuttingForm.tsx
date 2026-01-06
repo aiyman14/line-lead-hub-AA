@@ -478,7 +478,7 @@ export default function CuttingForm() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>MARKER CAPACITY *</Label>
+                <Label className="block h-10 leading-5">MARKER CAPACITY *</Label>
                 <Input
                   type="number"
                   value={markerCapacity}
@@ -490,7 +490,7 @@ export default function CuttingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label>LAY CAPACITY *</Label>
+                <Label className="block h-10 leading-5">LAY CAPACITY *</Label>
                 <Input
                   type="number"
                   value={layCapacity}
@@ -502,7 +502,7 @@ export default function CuttingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label>CUTTING CAPACITY *</Label>
+                <Label className="block h-10 leading-5">CUTTING CAPACITY *</Label>
                 <Input
                   type="number"
                   value={cuttingCapacity}
@@ -514,7 +514,7 @@ export default function CuttingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label>UNDER QTY</Label>
+                <Label className="block h-10 leading-5">UNDER QTY</Label>
                 <Input
                   type="number"
                   value={underQty}
