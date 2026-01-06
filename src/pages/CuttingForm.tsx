@@ -45,8 +45,11 @@ export default function CuttingForm() {
 
   // Master data
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [lines, setLines] = useState<{ id: string; line_id: string; name: string | null }[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [lineSearchOpen, setLineSearchOpen] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
+  const [selectedLine, setSelectedLine] = useState<{ id: string; line_id: string; name: string | null } | null>(null);
 
   // Morning Target fields
   const [manPower, setManPower] = useState("");
@@ -70,8 +73,35 @@ export default function CuttingForm() {
   useEffect(() => {
     if (profile?.factory_id) {
       fetchWorkOrders();
+      fetchLines();
     }
   }, [profile?.factory_id]);
+
+  async function fetchLines() {
+    if (!profile?.factory_id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("lines")
+        .select("id, line_id, name")
+        .eq("factory_id", profile.factory_id)
+        .eq("is_active", true)
+        .order("line_id", { ascending: true });
+
+      if (error) throw error;
+      
+      // Sort numerically by extracting numbers from line_id
+      const sortedLines = (data || []).sort((a, b) => {
+        const numA = parseInt(a.line_id.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.line_id.replace(/\D/g, '')) || 0;
+        return numA - numB;
+      });
+      
+      setLines(sortedLines);
+    } catch (error) {
+      console.error("Error fetching lines:", error);
+    }
+  }
 
   // Calculate totals when work order or day values change
   useEffect(() => {
@@ -139,6 +169,7 @@ export default function CuttingForm() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
+    if (!selectedLine) newErrors.line = "Line is required";
     if (!selectedWorkOrder) newErrors.workOrder = "PO is required";
     if (!manPower || parseInt(manPower) < 0) newErrors.manPower = "Man Power is required";
     if (!markerCapacity || parseInt(markerCapacity) < 0) newErrors.markerCapacity = "Marker Capacity is required";
@@ -159,7 +190,7 @@ export default function CuttingForm() {
       return;
     }
 
-    if (!profile?.factory_id || !user?.id || !selectedWorkOrder) {
+    if (!profile?.factory_id || !user?.id || !selectedWorkOrder || !selectedLine) {
       toast.error("Submission failed");
       return;
     }
@@ -189,30 +220,20 @@ export default function CuttingForm() {
         isLateEvening = now > cutoffTime;
       }
 
-      // Get or create a default cutting section and line for this factory
-      // Since we removed these from the form, we need defaults
-      const [cuttingSectionRes, lineRes] = await Promise.all([
-        supabase
-          .from("cutting_sections")
-          .select("id")
-          .eq("factory_id", profile.factory_id)
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from("lines")
-          .select("id")
-          .eq("factory_id", profile.factory_id)
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle(),
-      ]);
+      // Get a default cutting section for this factory
+      const { data: cuttingSectionData } = await supabase
+        .from("cutting_sections")
+        .select("id")
+        .eq("factory_id", profile.factory_id)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
 
-      const cuttingSectionId = cuttingSectionRes.data?.id;
-      const lineId = lineRes.data?.id;
+      const cuttingSectionId = cuttingSectionData?.id;
+      const lineId = selectedLine.id;
 
-      if (!cuttingSectionId || !lineId) {
-        toast.error("No cutting section or line configured. Please contact admin.");
+      if (!cuttingSectionId) {
+        toast.error("No cutting section configured. Please contact admin.");
         return;
       }
 
@@ -325,7 +346,56 @@ export default function CuttingForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Step 1: PO Selector */}
+        {/* Step 1: Line Selector */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Select Line</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Popover open={lineSearchOpen} onOpenChange={setLineSearchOpen}>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className={`w-full justify-start ${errors.line ? 'border-destructive' : ''}`}
+                >
+                  <Search className="mr-2 h-4 w-4" />
+                  {selectedLine 
+                    ? `${selectedLine.line_id}${selectedLine.name ? ` - ${selectedLine.name}` : ''}`
+                    : "Select a line..."}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[350px] p-0" align="start">
+                <Command shouldFilter={true}>
+                  <CommandInput placeholder="Search lines..." />
+                  <CommandList>
+                    <CommandEmpty>No lines found.</CommandEmpty>
+                    <CommandGroup>
+                      {lines.map(line => (
+                        <CommandItem 
+                          key={line.id} 
+                          value={`${line.line_id} ${line.name || ''}`}
+                          onSelect={() => {
+                            setSelectedLine(line);
+                            setLineSearchOpen(false);
+                            setErrors(prev => ({ ...prev, line: "" }));
+                          }}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{line.line_id}</span>
+                            {line.name && <span className="text-xs text-muted-foreground">{line.name}</span>}
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {errors.line && <p className="text-sm text-destructive mt-1">{errors.line}</p>}
+          </CardContent>
+        </Card>
+
+        {/* Step 2: PO Selector */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Select PO / Work Order</CardTitle>
