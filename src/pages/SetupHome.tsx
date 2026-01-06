@@ -192,7 +192,7 @@ export default function SetupHome() {
 
   const setupLinks = [
     {
-      title: 'Lines, Units & Floors',
+      title: 'Lines, Units, Floors & Storage',
       description: 'Manage production lines and factory structure',
       icon: Rows3,
       href: '/setup/factory',
