@@ -332,29 +332,37 @@ export default function DropdownSettings() {
     ) return;
     
     const newIndex = direction === 'up' ? index - 1 : index + 1;
-    const currentItem = currentOptions[index];
-    const swapItem = currentOptions[newIndex];
+    
+    // Swap items in the array
+    const temp = currentOptions[index];
+    currentOptions[index] = currentOptions[newIndex];
+    currentOptions[newIndex] = temp;
+    
+    // Update local state immediately for responsive UI
+    setOptions(prev => ({
+      ...prev,
+      [activeTab]: currentOptions
+    }));
     
     try {
-      if (activeTab === 'stages') {
-        await supabase.from('stages').update({ sequence: swapItem.sort_order }).eq('id', currentItem.id);
-        await supabase.from('stages').update({ sequence: currentItem.sort_order }).eq('id', swapItem.id);
-      } else if (activeTab === 'stage_progress') {
-        await supabase.from('stage_progress_options').update({ sort_order: swapItem.sort_order }).eq('id', currentItem.id);
-        await supabase.from('stage_progress_options').update({ sort_order: currentItem.sort_order }).eq('id', swapItem.id);
-      } else if (activeTab === 'next_milestone') {
-        await supabase.from('next_milestone_options').update({ sort_order: swapItem.sort_order }).eq('id', currentItem.id);
-        await supabase.from('next_milestone_options').update({ sort_order: currentItem.sort_order }).eq('id', swapItem.id);
-      } else if (activeTab === 'blocker_owner') {
-        await supabase.from('blocker_owner_options').update({ sort_order: swapItem.sort_order }).eq('id', currentItem.id);
-        await supabase.from('blocker_owner_options').update({ sort_order: currentItem.sort_order }).eq('id', swapItem.id);
-      } else if (activeTab === 'blocker_impact') {
-        await supabase.from('blocker_impact_options').update({ sort_order: swapItem.sort_order }).eq('id', currentItem.id);
-        await supabase.from('blocker_impact_options').update({ sort_order: currentItem.sort_order }).eq('id', swapItem.id);
+      // Reassign sequential sort_order/sequence values to ALL items
+      const tableName = activeTab === 'stages' ? 'stages' : 
+                        activeTab === 'blocker_type' ? 'blocker_types' :
+                        OPTION_CONFIGS[activeTab].table;
+      const sortField = activeTab === 'stages' ? 'sequence' : 'sort_order';
+      
+      for (let i = 0; i < currentOptions.length; i++) {
+        const { error } = await supabase
+          .from(tableName as any)
+          .update({ [sortField]: i + 1 })
+          .eq('id', currentOptions[i].id);
+        if (error) throw error;
       }
-      fetchAllOptions();
+      
+      await fetchAllOptions();
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
+      await fetchAllOptions(); // Revert on error
     }
   }
 
