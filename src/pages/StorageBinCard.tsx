@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -6,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Package, Search, Plus, Save, AlertTriangle } from "lucide-react";
+import { Loader2, Package, Search, Plus, Save, AlertTriangle, Unlock } from "lucide-react";
 import { format } from "date-fns";
 import {
   Command,
@@ -78,11 +79,13 @@ interface NewTransaction {
 }
 
 export default function StorageBinCard() {
+  const navigate = useNavigate();
   const { user, profile, isStorageUser, isAdminOrHigher } = useAuth();
   const { toast } = useToast();
   
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [headerSaving, setHeaderSaving] = useState(false);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
   const [binCard, setBinCard] = useState<BinCard | null>(null);
@@ -257,7 +260,8 @@ export default function StorageBinCard() {
 
   async function saveHeaderFields() {
     if (!binCard) return;
-    
+
+    setHeaderSaving(true);
     try {
       const { error } = await supabase
         .from("storage_bin_cards")
@@ -272,14 +276,49 @@ export default function StorageBinCard() {
           is_header_locked: true, // Lock after first save
         })
         .eq("id", binCard.id);
-      
+
       if (error) throw error;
-      
+
       setBinCard({ ...binCard, is_header_locked: true });
-      toast({ title: "Header saved", description: "Bin card header has been saved and locked." });
+      toast({
+        title: "Header saved",
+        description: "Bin card header has been saved and locked.",
+      });
     } catch (error) {
       console.error("Error saving header:", error);
-      toast({ title: "Error", description: "Failed to save header", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Failed to save header",
+        variant: "destructive",
+      });
+    } finally {
+      setHeaderSaving(false);
+    }
+  }
+
+  async function unlockHeader() {
+    if (!binCard) return;
+
+    setHeaderSaving(true);
+    try {
+      const { error } = await supabase
+        .from("storage_bin_cards")
+        .update({ is_header_locked: false })
+        .eq("id", binCard.id);
+
+      if (error) throw error;
+
+      setBinCard({ ...binCard, is_header_locked: false });
+      toast({ title: "Header unlocked", description: "Header is now editable." });
+    } catch (error) {
+      console.error("Error unlocking header:", error);
+      toast({
+        title: "Error",
+        description: "Failed to unlock header",
+        variant: "destructive",
+      });
+    } finally {
+      setHeaderSaving(false);
     }
   }
 
@@ -327,11 +366,12 @@ export default function StorageBinCard() {
       
       // Reload transactions
       await loadTransactions(binCard.id);
-      
+
       // Reset form
       setNewTxn({ receive_qty: "", issue_qty: "", remarks: "" });
-      
+
       toast({ title: "Transaction saved", description: "Entry has been recorded." });
+      navigate("/storage/history");
     } catch (error) {
       console.error("Error saving transaction:", error);
       toast({ title: "Error", description: "Failed to save transaction", variant: "destructive" });
@@ -425,11 +465,29 @@ export default function StorageBinCard() {
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center justify-between">
               <span>Step 2: Bin Card Header</span>
-              {binCard.is_header_locked && (
-                <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-1 rounded">
-                  Locked
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {binCard.is_header_locked && (
+                  <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-1 rounded">
+                    Locked
+                  </span>
+                )}
+                {binCard.is_header_locked && isAdminOrHigher() && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={unlockHeader}
+                    disabled={headerSaving}
+                  >
+                    {headerSaving ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Unlock className="mr-2 h-4 w-4" />
+                    )}
+                    Unlock
+                  </Button>
+                )}
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -506,8 +564,12 @@ export default function StorageBinCard() {
               </div>
             </div>
             {!binCard.is_header_locked && (
-              <Button onClick={saveHeaderFields} className="mt-4">
-                <Save className="mr-2 h-4 w-4" />
+              <Button onClick={saveHeaderFields} className="mt-4" disabled={headerSaving}>
+                {headerSaving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
                 Save & Lock Header
               </Button>
             )}
