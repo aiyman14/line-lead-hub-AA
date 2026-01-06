@@ -193,9 +193,9 @@ export default function FinishingMySubmissions() {
     };
   }, [sheets]);
 
-  // Filtered sheets
+  // Filtered sheets (only show if at least 1 hour logged)
   const filteredSheets = useMemo(() => {
-    let result = sheets;
+    let result = sheets.filter((s) => s.hourly_logs_count > 0);
 
     // Date filter
     if (dateFilter === "today") {
