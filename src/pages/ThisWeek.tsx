@@ -273,55 +273,59 @@ export default function ThisWeek() {
               <CardTitle className="text-base">Daily Sewing Output</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-7 gap-4">
-                {weekStats.map((day) => {
-                  const isToday = day.date === today;
-                  const isFuture = new Date(day.date) > new Date();
-                  const outputBarHeight = isFuture ? 0 : Math.max((day.sewingOutput / maxSewing) * 100, day.sewingOutput > 0 ? 15 : 0);
-                  const targetBarHeight = isFuture ? 0 : Math.max((day.sewingTarget / maxSewing) * 100, day.sewingTarget > 0 ? 10 : 0);
-                  const achievement = day.sewingTarget > 0 ? Math.round((day.sewingOutput / day.sewingTarget) * 100) : 0;
-                  const achievementColor = achievement >= 100 ? 'text-success' : achievement >= 80 ? 'text-warning' : 'text-destructive';
-                  
-                  return (
-                    <div key={day.date} className={`text-center p-3 rounded-xl transition-all ${isToday ? 'bg-primary/10 ring-2 ring-primary/30' : 'bg-muted/30'}`}>
-                      <p className={`text-sm font-semibold mb-3 ${isToday ? 'text-primary' : 'text-foreground'}`}>
-                        {day.dayName}
-                      </p>
-                      <div className="h-28 flex items-end justify-center gap-1 mb-3">
-                        {!isFuture && day.sewingTarget > 0 && (
-                          <div
-                            className="w-5 rounded-t transition-all bg-muted-foreground/30"
-                            style={{ height: `${targetBarHeight}%`, minHeight: '8px' }}
-                          />
-                        )}
-                        <div
-                          className={`w-7 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : isToday ? 'bg-primary' : 'bg-primary/70'}`}
-                          style={{ height: isFuture ? '8px' : `${Math.max(outputBarHeight, 8)}%` }}
-                        />
-                      </div>
-                      <p className={`text-base font-mono font-bold ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
-                        {isFuture ? '-' : day.sewingOutput.toLocaleString()}
-                      </p>
-                      {!isFuture && day.sewingTarget > 0 && (
-                        <p className={`text-xs font-medium mt-1 ${achievementColor}`}>
-                          {achievement}% of target
-                        </p>
-                      )}
-                      {!isFuture && day.sewingTarget === 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">No target</p>
-                      )}
+              <div className="w-full overflow-x-auto">
+                <div className="min-w-[600px]">
+                  <div className="grid grid-cols-7 gap-4">
+                    {weekStats.map((day) => {
+                      const isToday = day.date === today;
+                      const isFuture = new Date(day.date) > new Date();
+                      const outputBarHeight = isFuture ? 0 : Math.max((day.sewingOutput / maxSewing) * 100, day.sewingOutput > 0 ? 15 : 0);
+                      const targetBarHeight = isFuture ? 0 : Math.max((day.sewingTarget / maxSewing) * 100, day.sewingTarget > 0 ? 10 : 0);
+                      const achievement = day.sewingTarget > 0 ? Math.round((day.sewingOutput / day.sewingTarget) * 100) : 0;
+                      const achievementColor = achievement >= 100 ? 'text-success' : achievement >= 80 ? 'text-warning' : 'text-destructive';
+                      
+                      return (
+                        <div key={day.date} className={`text-center p-3 rounded-xl transition-all ${isToday ? 'bg-primary/10 ring-2 ring-primary/30' : 'bg-muted/30'}`}>
+                          <p className={`text-sm font-semibold mb-3 ${isToday ? 'text-primary' : 'text-foreground'}`}>
+                            {day.dayName}
+                          </p>
+                          <div className="h-28 flex items-end justify-center gap-1 mb-3">
+                            {!isFuture && day.sewingTarget > 0 && (
+                              <div
+                                className="w-5 rounded-t transition-all bg-muted-foreground/30"
+                                style={{ height: `${targetBarHeight}%`, minHeight: '8px' }}
+                              />
+                            )}
+                            <div
+                              className={`w-7 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : isToday ? 'bg-primary' : 'bg-primary/70'}`}
+                              style={{ height: isFuture ? '8px' : `${Math.max(outputBarHeight, 8)}%` }}
+                            />
+                          </div>
+                          <p className={`text-base font-mono font-bold ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
+                            {isFuture ? '-' : day.sewingOutput.toLocaleString()}
+                          </p>
+                          {!isFuture && day.sewingTarget > 0 && (
+                            <p className={`text-xs font-medium mt-1 ${achievementColor}`}>
+                              {achievement}% of target
+                            </p>
+                          )}
+                          {!isFuture && day.sewingTarget === 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">No target</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-center gap-6 mt-6 pt-4 border-t">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-muted-foreground/40" />
+                      <span className="text-sm text-muted-foreground">Target</span>
                     </div>
-                  );
-                })}
-              </div>
-              <div className="flex items-center justify-center gap-6 mt-6 pt-4 border-t">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-muted-foreground/40" />
-                  <span className="text-sm text-muted-foreground">Target</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-primary/70" />
-                  <span className="text-sm text-muted-foreground">Output</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-primary/70" />
+                      <span className="text-sm text-muted-foreground">Output</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -334,48 +338,52 @@ export default function ThisWeek() {
               <CardTitle className="text-base">Daily Finishing Output</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-7 gap-4">
-                {weekStats.map((day) => {
-                  const isToday = day.date === today;
-                  const isFuture = new Date(day.date) > new Date();
-                  const polyBarHeight = isFuture ? 0 : Math.max((day.finishingPoly / maxFinishing) * 100, day.finishingPoly > 0 ? 15 : 0);
-                  const cartonBarHeight = isFuture ? 0 : Math.max((day.finishingCarton / maxFinishing) * 100, day.finishingCarton > 0 ? 10 : 0);
-                  
-                  return (
-                    <div key={day.date} className={`text-center p-3 rounded-xl transition-all ${isToday ? 'bg-info/10 ring-2 ring-info/30' : 'bg-muted/30'}`}>
-                      <p className={`text-sm font-semibold mb-3 ${isToday ? 'text-info' : 'text-foreground'}`}>
-                        {day.dayName}
-                      </p>
-                      <div className="h-28 flex items-end justify-center gap-1 mb-3">
-                        <div
-                          className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : 'bg-info/50'}`}
-                          style={{ height: isFuture ? '8px' : `${Math.max(polyBarHeight, 8)}%` }}
-                        />
-                        <div
-                          className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : isToday ? 'bg-info' : 'bg-info/70'}`}
-                          style={{ height: isFuture ? '8px' : `${Math.max(cartonBarHeight, 8)}%` }}
-                        />
-                      </div>
-                      <div className={`text-xs ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
-                        <p className="font-mono font-bold">{isFuture ? '-' : day.finishingPoly.toLocaleString()}</p>
-                        <p className="text-muted-foreground text-[10px]">Poly</p>
-                      </div>
-                      <div className={`text-xs mt-1 ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
-                        <p className="font-mono font-bold">{isFuture ? '-' : day.finishingCarton.toLocaleString()}</p>
-                        <p className="text-muted-foreground text-[10px]">Carton</p>
-                      </div>
+              <div className="w-full overflow-x-auto">
+                <div className="min-w-[600px]">
+                  <div className="grid grid-cols-7 gap-4">
+                    {weekStats.map((day) => {
+                      const isToday = day.date === today;
+                      const isFuture = new Date(day.date) > new Date();
+                      const polyBarHeight = isFuture ? 0 : Math.max((day.finishingPoly / maxFinishing) * 100, day.finishingPoly > 0 ? 15 : 0);
+                      const cartonBarHeight = isFuture ? 0 : Math.max((day.finishingCarton / maxFinishing) * 100, day.finishingCarton > 0 ? 10 : 0);
+                      
+                      return (
+                        <div key={day.date} className={`text-center p-3 rounded-xl transition-all ${isToday ? 'bg-info/10 ring-2 ring-info/30' : 'bg-muted/30'}`}>
+                          <p className={`text-sm font-semibold mb-3 ${isToday ? 'text-info' : 'text-foreground'}`}>
+                            {day.dayName}
+                          </p>
+                          <div className="h-28 flex items-end justify-center gap-1 mb-3">
+                            <div
+                              className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : 'bg-info/50'}`}
+                              style={{ height: isFuture ? '8px' : `${Math.max(polyBarHeight, 8)}%` }}
+                            />
+                            <div
+                              className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : isToday ? 'bg-info' : 'bg-info/70'}`}
+                              style={{ height: isFuture ? '8px' : `${Math.max(cartonBarHeight, 8)}%` }}
+                            />
+                          </div>
+                          <div className={`text-xs ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
+                            <p className="font-mono font-bold">{isFuture ? '-' : day.finishingPoly.toLocaleString()}</p>
+                            <p className="text-muted-foreground text-[10px]">Poly</p>
+                          </div>
+                          <div className={`text-xs mt-1 ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
+                            <p className="font-mono font-bold">{isFuture ? '-' : day.finishingCarton.toLocaleString()}</p>
+                            <p className="text-muted-foreground text-[10px]">Carton</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-center gap-6 mt-6 pt-4 border-t">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-info/50" />
+                      <span className="text-sm text-muted-foreground">Poly</span>
                     </div>
-                  );
-                })}
-              </div>
-              <div className="flex items-center justify-center gap-6 mt-6 pt-4 border-t">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-info/50" />
-                  <span className="text-sm text-muted-foreground">Poly</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-info/70" />
-                  <span className="text-sm text-muted-foreground">Carton</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-info/70" />
+                      <span className="text-sm text-muted-foreground">Carton</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>
