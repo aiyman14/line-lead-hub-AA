@@ -25,7 +25,8 @@ import {
   Trash2,
   Check,
   X,
-  Factory
+  Factory,
+  Package
 } from "lucide-react";
 import { BLOCKER_IMPACTS, BLOCKER_IMPACT_LABELS, DEFAULT_STAGES, DEFAULT_BLOCKER_TYPES } from "@/lib/constants";
 import { ActiveLinesMeter } from "@/components/ActiveLinesMeter";
@@ -76,7 +77,7 @@ interface BlockerType {
 }
 
 export default function FactorySetup() {
-  const { profile, isAdminOrHigher, user } = useAuth();
+  const { profile, isAdminOrHigher, user, factory } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -107,6 +108,17 @@ export default function FactorySetup() {
   const [isCreatingFactory, setIsCreatingFactory] = useState(false);
   const [newFactoryName, setNewFactoryName] = useState("");
   const [newFactorySlug, setNewFactorySlug] = useState("");
+
+  // Storage settings state
+  const [lowStockThreshold, setLowStockThreshold] = useState<number>(factory?.low_stock_threshold ?? 10);
+  const [isSavingStorage, setIsSavingStorage] = useState(false);
+
+  // Update lowStockThreshold when factory changes
+  useEffect(() => {
+    if (factory?.low_stock_threshold !== undefined) {
+      setLowStockThreshold(factory.low_stock_threshold);
+    }
+  }, [factory?.low_stock_threshold]);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -344,6 +356,24 @@ export default function FactorySetup() {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
       setIsCreatingFactory(false);
+    }
+  }
+
+  async function handleSaveStorageSettings() {
+    if (!profile?.factory_id) return;
+    setIsSavingStorage(true);
+    try {
+      const { error } = await supabase
+        .from('factory_accounts')
+        .update({ low_stock_threshold: lowStockThreshold })
+        .eq('id', profile.factory_id);
+      
+      if (error) throw error;
+      toast({ title: "Storage settings saved" });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setIsSavingStorage(false);
     }
   }
 
@@ -795,7 +825,43 @@ export default function FactorySetup() {
 
       </Tabs>
 
-      {/* Create/Edit Dialog */}
+      {/* Storage Settings Section */}
+      <Card className="mt-6">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Package className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg">Storage</CardTitle>
+          </div>
+          <CardDescription>Configure storage and inventory settings</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="lowStockThreshold">Low Stock Threshold</Label>
+              <Input
+                id="lowStockThreshold"
+                type="number"
+                min={0}
+                value={lowStockThreshold}
+                onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 0)}
+                placeholder="e.g., 10"
+                className="max-w-[200px]"
+              />
+              <p className="text-xs text-muted-foreground">
+                Items with balance at or below this value will be flagged as low stock
+              </p>
+            </div>
+            <Button 
+              onClick={handleSaveStorageSettings} 
+              disabled={isSavingStorage}
+            >
+              {isSavingStorage && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
