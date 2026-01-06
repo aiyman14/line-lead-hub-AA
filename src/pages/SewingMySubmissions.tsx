@@ -321,7 +321,7 @@ export default function SewingMySubmissions() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="justify-start">
+        <TabsList className="w-auto inline-flex">
           <TabsTrigger value="targets" className="gap-2">
             <Crosshair className="h-4 w-4" />
             Morning Targets
