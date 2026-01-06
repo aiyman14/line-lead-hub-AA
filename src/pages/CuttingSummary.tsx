@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays } from "date-fns";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Calendar, Download, RefreshCw, FileText, Target } from "lucide-react";
+import { ArrowLeft, Loader2, Download, RefreshCw, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,53 +25,36 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-interface CuttingTarget {
+interface CuttingSubmission {
   id: string;
   production_date: string;
   submitted_at: string;
-  cutting_section_id: string;
   line_id: string;
   work_order_id: string;
-  buyer: string;
-  style: string;
-  po_no: string;
-  colour: string;
-  order_qty: number;
+  buyer: string | null;
+  style: string | null;
+  po_no: string | null;
+  colour: string | null;
+  order_qty: number | null;
   man_power: number;
   marker_capacity: number;
   lay_capacity: number;
   cutting_capacity: number;
-  under_qty: number;
-  cutting_sections?: { cutting_no: string };
-  lines?: { line_id: string; name: string | null };
-}
-
-interface CuttingActual {
-  id: string;
-  production_date: string;
-  submitted_at: string;
-  cutting_section_id: string;
-  line_id: string;
-  work_order_id: string;
-  buyer: string;
-  style: string;
-  po_no: string;
-  colour: string;
-  order_qty: number;
+  under_qty: number | null;
   day_cutting: number;
-  total_cutting: number;
+  total_cutting: number | null;
   day_input: number;
-  total_input: number;
-  balance: number;
-  cutting_sections?: { cutting_no: string };
+  total_input: number | null;
+  balance: number | null;
   lines?: { line_id: string; name: string | null };
-}
-
-interface CuttingSection {
-  id: string;
-  cutting_no: string;
+  work_orders?: { po_number: string; buyer: string; style: string };
 }
 
 interface Line {
@@ -84,19 +67,15 @@ export default function CuttingSummary() {
   const navigate = useNavigate();
   const { profile, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("summary");
-
-  // Data
-  const [targets, setTargets] = useState<CuttingTarget[]>([]);
-  const [actuals, setActuals] = useState<CuttingActual[]>([]);
-  const [cuttingSections, setCuttingSections] = useState<CuttingSection[]>([]);
+  const [submissions, setSubmissions] = useState<CuttingSubmission[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
+  const [selectedSubmission, setSelectedSubmission] = useState<CuttingSubmission | null>(null);
 
   // Filters
-  const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 7), "yyyy-MM-dd"));
+  const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [selectedCuttingSection, setSelectedCuttingSection] = useState("all");
   const [selectedLine, setSelectedLine] = useState("all");
+  const [selectedPO, setSelectedPO] = useState("all");
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -109,27 +88,14 @@ export default function CuttingSummary() {
     setLoading(true);
 
     try {
-      const [targetsRes, actualsRes, sectionsRes, linesRes] = await Promise.all([
-        supabase
-          .from("cutting_targets")
-          .select("*, cutting_sections(cutting_no), lines(line_id, name)")
-          .eq("factory_id", profile.factory_id)
-          .gte("production_date", dateFrom)
-          .lte("production_date", dateTo)
-          .order("production_date", { ascending: false }),
+      const [actualsRes, linesRes] = await Promise.all([
         supabase
           .from("cutting_actuals")
-          .select("*, cutting_sections(cutting_no), lines(line_id, name)")
+          .select("*, lines(line_id, name), work_orders(po_number, buyer, style)")
           .eq("factory_id", profile.factory_id)
           .gte("production_date", dateFrom)
           .lte("production_date", dateTo)
           .order("production_date", { ascending: false }),
-        supabase
-          .from("cutting_sections")
-          .select("id, cutting_no")
-          .eq("factory_id", profile.factory_id)
-          .eq("is_active", true)
-          .order("cutting_no"),
         supabase
           .from("lines")
           .select("id, line_id, name")
@@ -137,9 +103,49 @@ export default function CuttingSummary() {
           .eq("is_active", true),
       ]);
 
-      setTargets(targetsRes.data || []);
-      setActuals(actualsRes.data || []);
-      setCuttingSections(sectionsRes.data || []);
+      const { data: targetsData } = await supabase
+        .from("cutting_targets")
+        .select("*, lines(line_id, name), work_orders(po_number, buyer, style)")
+        .eq("factory_id", profile.factory_id)
+        .gte("production_date", dateFrom)
+        .lte("production_date", dateTo);
+
+      const targetsMap = new Map<string, any>();
+      (targetsData || []).forEach(t => {
+        const key = `${t.production_date}-${t.line_id}-${t.work_order_id}`;
+        targetsMap.set(key, t);
+      });
+
+      const mergedSubmissions: CuttingSubmission[] = (actualsRes.data || []).map(actual => {
+        const key = `${actual.production_date}-${actual.line_id}-${actual.work_order_id}`;
+        const target = targetsMap.get(key);
+        return {
+          id: actual.id,
+          production_date: actual.production_date,
+          submitted_at: actual.submitted_at,
+          line_id: actual.line_id,
+          work_order_id: actual.work_order_id,
+          buyer: actual.buyer,
+          style: actual.style,
+          po_no: actual.po_no,
+          colour: actual.colour,
+          order_qty: actual.order_qty,
+          man_power: target?.man_power || 0,
+          marker_capacity: target?.marker_capacity || 0,
+          lay_capacity: target?.lay_capacity || 0,
+          cutting_capacity: target?.cutting_capacity || 0,
+          under_qty: target?.under_qty || null,
+          day_cutting: actual.day_cutting,
+          total_cutting: actual.total_cutting,
+          day_input: actual.day_input,
+          total_input: actual.total_input,
+          balance: actual.balance,
+          lines: actual.lines,
+          work_orders: actual.work_orders,
+        };
+      });
+
+      setSubmissions(mergedSubmissions);
       setLines(linesRes.data || []);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -149,125 +155,73 @@ export default function CuttingSummary() {
     }
   }
 
-  // Build summary view (one row per date + cutting_no + line + po)
-  const summaryData = (() => {
-    const map = new Map<string, {
-      date: string;
-      cuttingNo: string;
-      lineId: string;
-      lineName: string;
-      poNo: string;
-      buyer: string;
-      style: string;
-      colour: string;
-      orderQty: number;
-      target: CuttingTarget | null;
-      actual: CuttingActual | null;
-    }>();
-
-    targets.forEach(t => {
-      const key = `${t.production_date}-${t.cutting_section_id}-${t.line_id}-${t.work_order_id}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          date: t.production_date,
-          cuttingNo: t.cutting_sections?.cutting_no || "",
-          lineId: t.lines?.line_id || "",
-          lineName: t.lines?.name || t.lines?.line_id || "",
-          poNo: t.po_no,
-          buyer: t.buyer,
-          style: t.style,
-          colour: t.colour,
-          orderQty: t.order_qty,
-          target: t,
-          actual: null,
-        });
-      } else {
-        map.get(key)!.target = t;
-      }
+  // Get unique PO numbers for filter
+  const uniquePOs = useMemo(() => {
+    const pos = new Set<string>();
+    submissions.forEach(s => {
+      const po = s.work_orders?.po_number || s.po_no;
+      if (po) pos.add(po);
     });
+    return Array.from(pos).sort();
+  }, [submissions]);
 
-    actuals.forEach(a => {
-      const key = `${a.production_date}-${a.cutting_section_id}-${a.line_id}-${a.work_order_id}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          date: a.production_date,
-          cuttingNo: a.cutting_sections?.cutting_no || "",
-          lineId: a.lines?.line_id || "",
-          lineName: a.lines?.name || a.lines?.line_id || "",
-          poNo: a.po_no,
-          buyer: a.buyer,
-          style: a.style,
-          colour: a.colour,
-          orderQty: a.order_qty,
-          target: null,
-          actual: a,
-        });
-      } else {
-        map.get(key)!.actual = a;
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter(s => {
+      if (selectedLine !== "all" && s.line_id !== selectedLine) return false;
+      if (selectedPO !== "all") {
+        const po = s.work_orders?.po_number || s.po_no;
+        if (po !== selectedPO) return false;
       }
+      return true;
     });
+  }, [submissions, selectedLine, selectedPO]);
 
-    let data = Array.from(map.values());
-
-    // Apply filters
-    if (selectedCuttingSection !== "all") {
-      data = data.filter(d => d.cuttingNo === selectedCuttingSection);
-    }
-    if (selectedLine !== "all") {
-      data = data.filter(d => d.lineId === selectedLine);
-    }
-
-    return data.sort((a, b) => b.date.localeCompare(a.date));
-  })();
-
-  // Filtered targets for Targets tab
-  const filteredTargets = targets.filter(t => {
-    if (selectedCuttingSection !== "all" && t.cutting_sections?.cutting_no !== selectedCuttingSection) return false;
-    if (selectedLine !== "all" && t.lines?.line_id !== selectedLine) return false;
-    return true;
-  });
-
-  // Filtered actuals for Actuals tab
-  const filteredActuals = actuals.filter(a => {
-    if (selectedCuttingSection !== "all" && a.cutting_sections?.cutting_no !== selectedCuttingSection) return false;
-    if (selectedLine !== "all" && a.lines?.line_id !== selectedLine) return false;
-    return true;
-  });
+  const stats = useMemo(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const todaySubmissions = submissions.filter(s => s.production_date === today);
+    return {
+      submissionsToday: todaySubmissions.length,
+      cuttingToday: todaySubmissions.reduce((sum, s) => sum + (s.day_cutting || 0), 0),
+      inputToday: todaySubmissions.reduce((sum, s) => sum + (s.day_input || 0), 0),
+      underQtyToday: todaySubmissions.reduce((sum, s) => sum + (s.under_qty || 0), 0),
+    };
+  }, [submissions]);
 
   function exportToCSV() {
     const headers = [
-      "DATE", "CUTTING NO", "LINE NO", "BUYER", "STYLE", "PO-NO", "COLOUR", "ORDER QTY",
-      "MAN POWER", "MARKER CAPACITY", "LAY CAPACITY", "CUTTING CAPACITY", "UNDER QTY",
+      "DATE", "LINE", "BUYER", "STYLE", "PO-NO", "COLOUR", "ORDER QTY",
+      "MAN POWER", "MARKER CAP", "LAY CAP", "CUTTING CAP", "UNDER QTY",
       "DAY CUTTING", "TOTAL CUTTING", "DAY INPUT", "TOTAL INPUT", "BALANCE"
     ];
-
-    const rows = summaryData.map(d => [
-      d.date,
-      d.cuttingNo,
-      d.lineName,
-      d.buyer,
-      d.style,
-      d.poNo,
-      d.colour,
-      d.orderQty,
-      d.target?.man_power || "",
-      d.target?.marker_capacity || "",
-      d.target?.lay_capacity || "",
-      d.target?.cutting_capacity || "",
-      d.target?.under_qty || "",
-      d.actual?.day_cutting || "",
-      d.actual?.total_cutting || "",
-      d.actual?.day_input || "",
-      d.actual?.total_input || "",
-      d.actual?.balance || "",
+    const rows = filteredSubmissions.map(s => [
+      s.production_date,
+      s.lines?.name || s.lines?.line_id || "",
+      s.work_orders?.buyer || s.buyer || "",
+      s.work_orders?.style || s.style || "",
+      s.work_orders?.po_number || s.po_no || "",
+      s.colour || "",
+      s.order_qty || 0,
+      s.man_power,
+      s.marker_capacity,
+      s.lay_capacity,
+      s.cutting_capacity,
+      s.under_qty || 0,
+      s.day_cutting,
+      s.total_cutting || 0,
+      s.day_input,
+      s.total_input || 0,
+      s.balance || 0,
     ]);
-
     const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    downloadCSV(csv, `cutting-summary-${dateFrom}-to-${dateTo}.csv`);
+  }
+
+  function downloadCSV(csv: string, filename: string) {
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `cutting-report-${dateFrom}-to-${dateTo}.csv`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -289,29 +243,37 @@ export default function CuttingSummary() {
   }
 
   return (
-    <div className="container py-4 px-4 pb-8">
-      <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold">Cutting Daily Summary</h1>
-          <p className="text-sm text-muted-foreground">View cutting targets and actuals</p>
+    <div className="container py-4 px-4 pb-8 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Scissors className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold">Cutting Summary</h1>
+            <p className="text-sm text-muted-foreground">View all cutting reports</p>
+          </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => fetchData()}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
-        <Button variant="outline" size="sm" onClick={exportToCSV}>
-          <Download className="h-4 w-4 mr-2" />
-          Export
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => fetchData()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportToCSV}>
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card className="mb-6">
+      <Card>
         <CardContent className="pt-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label>From Date</Label>
               <Input
@@ -329,29 +291,29 @@ export default function CuttingSummary() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Cutting No</Label>
-              <Select value={selectedCuttingSection} onValueChange={setSelectedCuttingSection}>
+              <Label>Line</Label>
+              <Select value={selectedLine} onValueChange={setSelectedLine}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All" />
+                  <SelectValue placeholder="All Lines" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {cuttingSections.map(cs => (
-                    <SelectItem key={cs.id} value={cs.cutting_no}>{cs.cutting_no}</SelectItem>
+                  <SelectItem value="all">All Lines</SelectItem>
+                  {lines.map(l => (
+                    <SelectItem key={l.id} value={l.id}>{l.name || l.line_id}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Line</Label>
-              <Select value={selectedLine} onValueChange={setSelectedLine}>
+              <Label>PO Number</Label>
+              <Select value={selectedPO} onValueChange={setSelectedPO}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All" />
+                  <SelectValue placeholder="All POs" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {lines.map(l => (
-                    <SelectItem key={l.id} value={l.line_id}>{l.name || l.line_id}</SelectItem>
+                  <SelectItem value="all">All POs</SelectItem>
+                  {uniquePOs.map(po => (
+                    <SelectItem key={po} value={po}>{po}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -360,215 +322,194 @@ export default function CuttingSummary() {
         </CardContent>
       </Card>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="summary" className="gap-2">
-            <Calendar className="h-4 w-4" />
-            Summary
-          </TabsTrigger>
-          <TabsTrigger value="targets" className="gap-2">
-            <Target className="h-4 w-4" />
-            All Targets ({filteredTargets.length})
-          </TabsTrigger>
-          <TabsTrigger value="actuals" className="gap-2">
-            <FileText className="h-4 w-4" />
-            All Actuals ({filteredActuals.length})
-          </TabsTrigger>
-        </TabsList>
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-l-4 border-l-primary">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Submissions Today</p>
+            <p className="text-2xl font-bold">{stats.submissionsToday}</p>
+            <p className="text-xs text-muted-foreground">Today's entries</p>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-success">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Cutting Today</p>
+            <p className="text-2xl font-bold">{stats.cuttingToday.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Total pieces</p>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-info">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Input Today</p>
+            <p className="text-2xl font-bold">{stats.inputToday.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Total pieces</p>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-warning">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Under QTY Today</p>
+            <p className="text-2xl font-bold">{stats.underQtyToday.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Total pieces</p>
+          </CardContent>
+        </Card>
+      </div>
 
-        <TabsContent value="summary">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Daily Summary ({summaryData.length} records)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>DATE</TableHead>
-                      <TableHead>CUTTING NO</TableHead>
-                      <TableHead>LINE NO</TableHead>
-                      <TableHead>BUYER</TableHead>
-                      <TableHead>STYLE</TableHead>
-                      <TableHead>PO-NO</TableHead>
-                      <TableHead>ORDER QTY</TableHead>
-                      <TableHead>TARGET</TableHead>
-                      <TableHead>ACTUAL</TableHead>
-                      <TableHead>DAY CUTTING</TableHead>
-                      <TableHead>DAY INPUT</TableHead>
-                      <TableHead>BALANCE</TableHead>
+      {/* Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">All Cutting Submissions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>DATE</TableHead>
+                  <TableHead>LINE</TableHead>
+                  <TableHead>PO-NO</TableHead>
+                  <TableHead className="text-right">ORDER QTY</TableHead>
+                  <TableHead className="text-right">CUTTING CAP</TableHead>
+                  <TableHead className="text-right">TOTAL CUTTING</TableHead>
+                  <TableHead className="text-right">TOTAL INPUT</TableHead>
+                  <TableHead className="text-right">BALANCE</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredSubmissions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      No submissions found for selected filters
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredSubmissions.map((s) => (
+                    <TableRow 
+                      key={s.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setSelectedSubmission(s)}
+                    >
+                      <TableCell className="font-medium whitespace-nowrap">
+                        {format(new Date(s.production_date), "MMM d, yyyy")}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{s.lines?.name || s.lines?.line_id || "—"}</Badge>
+                      </TableCell>
+                      <TableCell>{s.work_orders?.po_number || s.po_no || "—"}</TableCell>
+                      <TableCell className="text-right">{s.order_qty?.toLocaleString() || "—"}</TableCell>
+                      <TableCell className="text-right font-medium text-primary">{s.cutting_capacity}</TableCell>
+                      <TableCell className="text-right font-medium">{s.total_cutting?.toLocaleString() || "—"}</TableCell>
+                      <TableCell className="text-right font-medium text-success">{s.total_input?.toLocaleString() || "—"}</TableCell>
+                      <TableCell className={`text-right font-medium ${s.balance && s.balance < 0 ? "text-destructive" : ""}`}>
+                        {s.balance?.toLocaleString() || "—"}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {summaryData.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
-                          No data found for selected filters
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      summaryData.map((d, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="font-medium">{d.date}</TableCell>
-                          <TableCell>{d.cuttingNo}</TableCell>
-                          <TableCell>{d.lineName}</TableCell>
-                          <TableCell>{d.buyer}</TableCell>
-                          <TableCell>{d.style}</TableCell>
-                          <TableCell>{d.poNo}</TableCell>
-                          <TableCell>{d.orderQty.toLocaleString()}</TableCell>
-                          <TableCell>
-                            {d.target ? (
-                              <Badge variant="secondary" className="text-xs">
-                                {format(new Date(d.target.submitted_at), "HH:mm")}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-xs text-muted-foreground">—</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {d.actual ? (
-                              <Badge variant="secondary" className="text-xs">
-                                {format(new Date(d.actual.submitted_at), "HH:mm")}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-xs text-muted-foreground">—</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>{d.actual?.day_cutting?.toLocaleString() || "—"}</TableCell>
-                          <TableCell>{d.actual?.day_input?.toLocaleString() || "—"}</TableCell>
-                          <TableCell className={d.actual?.balance && d.actual.balance < 0 ? "text-destructive font-medium" : ""}>
-                            {d.actual?.balance?.toLocaleString() || "—"}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
-        <TabsContent value="targets">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">All Cutting Targets</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>DATE</TableHead>
-                      <TableHead>CUTTING NO</TableHead>
-                      <TableHead>LINE NO</TableHead>
-                      <TableHead>BUYER</TableHead>
-                      <TableHead>STYLE</TableHead>
-                      <TableHead>PO-NO</TableHead>
-                      <TableHead>COLOUR</TableHead>
-                      <TableHead>ORDER QTY</TableHead>
-                      <TableHead>MAN POWER</TableHead>
-                      <TableHead>MARKER CAP.</TableHead>
-                      <TableHead>LAY CAP.</TableHead>
-                      <TableHead>CUTTING CAP.</TableHead>
-                      <TableHead>UNDER QTY</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTargets.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
-                          No targets found
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredTargets.map((t) => (
-                        <TableRow key={t.id}>
-                          <TableCell>{t.production_date}</TableCell>
-                          <TableCell>{t.cutting_sections?.cutting_no}</TableCell>
-                          <TableCell>{t.lines?.name || t.lines?.line_id}</TableCell>
-                          <TableCell>{t.buyer}</TableCell>
-                          <TableCell>{t.style}</TableCell>
-                          <TableCell>{t.po_no}</TableCell>
-                          <TableCell>{t.colour || "—"}</TableCell>
-                          <TableCell>{t.order_qty.toLocaleString()}</TableCell>
-                          <TableCell>{t.man_power}</TableCell>
-                          <TableCell>{t.marker_capacity}</TableCell>
-                          <TableCell>{t.lay_capacity}</TableCell>
-                          <TableCell>{t.cutting_capacity}</TableCell>
-                          <TableCell>{t.under_qty}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+      {/* Detail Modal */}
+      <Dialog open={!!selectedSubmission} onOpenChange={() => setSelectedSubmission(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5" />
+              Submission Details
+            </DialogTitle>
+          </DialogHeader>
+          {selectedSubmission && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Date</p>
+                  <p className="font-medium">{format(new Date(selectedSubmission.production_date), "MMM d, yyyy")}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Line</p>
+                  <p className="font-medium">{selectedSubmission.lines?.name || selectedSubmission.lines?.line_id || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Buyer</p>
+                  <p className="font-medium">{selectedSubmission.work_orders?.buyer || selectedSubmission.buyer || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Style</p>
+                  <p className="font-medium">{selectedSubmission.work_orders?.style || selectedSubmission.style || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">PO Number</p>
+                  <p className="font-medium">{selectedSubmission.work_orders?.po_number || selectedSubmission.po_no || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Colour</p>
+                  <p className="font-medium">{selectedSubmission.colour || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Order Qty</p>
+                  <p className="font-medium">{selectedSubmission.order_qty?.toLocaleString() || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Man Power</p>
+                  <p className="font-medium">{selectedSubmission.man_power}</p>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        <TabsContent value="actuals">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">All Cutting Actuals</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>DATE</TableHead>
-                      <TableHead>CUTTING NO</TableHead>
-                      <TableHead>LINE NO</TableHead>
-                      <TableHead>BUYER</TableHead>
-                      <TableHead>STYLE</TableHead>
-                      <TableHead>PO-NO</TableHead>
-                      <TableHead>COLOUR</TableHead>
-                      <TableHead>ORDER QTY</TableHead>
-                      <TableHead>DAY CUTTING</TableHead>
-                      <TableHead>TOTAL CUTTING</TableHead>
-                      <TableHead>DAY INPUT</TableHead>
-                      <TableHead>TOTAL INPUT</TableHead>
-                      <TableHead>BALANCE</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredActuals.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
-                          No actuals found
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredActuals.map((a) => (
-                        <TableRow key={a.id}>
-                          <TableCell>{a.production_date}</TableCell>
-                          <TableCell>{a.cutting_sections?.cutting_no}</TableCell>
-                          <TableCell>{a.lines?.name || a.lines?.line_id}</TableCell>
-                          <TableCell>{a.buyer}</TableCell>
-                          <TableCell>{a.style}</TableCell>
-                          <TableCell>{a.po_no}</TableCell>
-                          <TableCell>{a.colour || "—"}</TableCell>
-                          <TableCell>{a.order_qty.toLocaleString()}</TableCell>
-                          <TableCell>{a.day_cutting}</TableCell>
-                          <TableCell>{a.total_cutting}</TableCell>
-                          <TableCell>{a.day_input}</TableCell>
-                          <TableCell>{a.total_input}</TableCell>
-                          <TableCell className={a.balance < 0 ? "text-destructive font-medium" : ""}>
-                            {a.balance}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-3">Capacity Planning</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Marker Capacity</p>
+                    <p className="font-medium">{selectedSubmission.marker_capacity}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Lay Capacity</p>
+                    <p className="font-medium">{selectedSubmission.lay_capacity}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Cutting Capacity</p>
+                    <p className="font-medium text-primary">{selectedSubmission.cutting_capacity}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Under Qty</p>
+                    <p className="font-medium">{selectedSubmission.under_qty || "—"}</p>
+                  </div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-3">Actuals</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Day Cutting</p>
+                    <p className="font-medium">{selectedSubmission.day_cutting?.toLocaleString() || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Total Cutting</p>
+                    <p className="font-medium">{selectedSubmission.total_cutting?.toLocaleString() || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Day Input</p>
+                    <p className="font-medium text-success">{selectedSubmission.day_input?.toLocaleString() || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Total Input</p>
+                    <p className="font-medium">{selectedSubmission.total_input?.toLocaleString() || "—"}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground uppercase">Balance</p>
+                    <p className={`font-medium ${selectedSubmission.balance && selectedSubmission.balance < 0 ? "text-destructive" : ""}`}>
+                      {selectedSubmission.balance?.toLocaleString() || "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
