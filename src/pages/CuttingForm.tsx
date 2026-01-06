@@ -474,7 +474,7 @@ export default function CuttingForm() {
               {errors.manPower && <p className="text-sm text-destructive">{errors.manPower}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>MARKER CAPACITY *</Label>
                 <Input
@@ -498,9 +498,7 @@ export default function CuttingForm() {
                 />
                 {errors.layCapacity && <p className="text-sm text-destructive">{errors.layCapacity}</p>}
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>CUTTING CAPACITY *</Label>
                 <Input
