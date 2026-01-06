@@ -821,8 +821,8 @@ export default function Insights() {
             <CardTitle className="text-base">Detailed Line Statistics</CardTitle>
             <CardDescription>Click on a row for daily breakdown</CardDescription>
           </CardHeader>
-          <CardContent className="px-2 md:px-6">
-            <div className="overflow-x-auto -mx-2 md:mx-0">
+          <CardContent className="px-4 md:px-6">
+            <div className="w-full overflow-x-auto">
               <table className="w-full text-xs md:text-sm min-w-[500px]">
                 <thead>
                   <tr className="border-b">

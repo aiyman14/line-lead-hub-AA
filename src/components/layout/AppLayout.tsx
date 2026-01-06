@@ -25,20 +25,20 @@ export function AppLayout() {
   }
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className="flex min-h-screen w-full flex-col">
+    <SidebarProvider defaultOpen={true} className="w-full overflow-x-hidden">
+      <div className="flex min-h-screen w-full flex-col overflow-x-hidden">
         <TrialExpirationBanner />
-        <div className="flex flex-1">
+        <div className="flex flex-1 min-w-0 overflow-x-hidden">
           <AppSidebar />
-          <div className="flex flex-1 flex-col">
+          <div className="flex flex-1 min-w-0 flex-col overflow-x-hidden">
             {/* Header */}
-            <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 lg:px-6">
+            <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 md:px-6">
               <SidebarTrigger className="lg:hidden" />
-              
+
               <div className="flex-1" />
-              
+
               <NotificationBell />
-              
+
               {factory && (
                 <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-sm">
                   <span className="text-muted-foreground">Factory:</span>
@@ -46,10 +46,12 @@ export function AppLayout() {
                 </div>
               )}
             </header>
-            
+
             {/* Main content */}
             <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
-              <Outlet />
+              <div className="w-full px-4 md:px-6">
+                <Outlet />
+              </div>
             </main>
           </div>
         </div>
