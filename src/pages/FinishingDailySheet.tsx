@@ -76,10 +76,12 @@ interface HourlyLog {
   submitted_by: string;
 }
 
-const HOUR_SLOTS = [
+const REGULAR_HOUR_SLOTS = [
   "08-09", "09-10", "10-11", "11-12", "12-01",
   "02-03", "03-04", "04-05", "05-06", "06-07"
 ];
+
+const OT_SLOTS = ["OT-1", "OT-2", "OT-3", "OT-4", "OT-5"];
 
 export default function FinishingDailySheet() {
   const navigate = useNavigate();
@@ -113,6 +115,24 @@ export default function FinishingDailySheet() {
   const submittedSlots = useMemo(() => {
     return hourlyLogs.map(log => log.hour_slot);
   }, [hourlyLogs]);
+
+  // Calculate which OT slots should be visible (show next available OT slot)
+  const visibleOTSlots = useMemo(() => {
+    const submittedOTSlots = hourlyLogs
+      .filter(log => log.hour_slot.startsWith("OT-"))
+      .map(log => log.hour_slot);
+    
+    // Always show submitted OT slots + next available one
+    const nextOTIndex = submittedOTSlots.length;
+    if (nextOTIndex < OT_SLOTS.length) {
+      return [...submittedOTSlots, OT_SLOTS[nextOTIndex]];
+    }
+    return submittedOTSlots;
+  }, [hourlyLogs]);
+
+  const allVisibleSlots = useMemo(() => {
+    return [...REGULAR_HOUR_SLOTS, ...visibleOTSlots];
+  }, [visibleOTSlots]);
 
   const currentHourSlot = useMemo(() => {
     const now = new Date();
@@ -432,7 +452,7 @@ export default function FinishingDailySheet() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Order Details</CardTitle>
                 <Badge variant="outline">
-                  {submittedSlots.length} / 10 Hours Logged
+                  {submittedSlots.length} Hours Logged
                 </Badge>
               </div>
             </CardHeader>
@@ -481,7 +501,7 @@ export default function FinishingDailySheet() {
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
               <HourlyLogGrid
-                hourSlots={HOUR_SLOTS}
+                hourSlots={allVisibleSlots}
                 hourlyLogs={hourlyLogs}
                 currentHourSlot={currentHourSlot}
                 isAdmin={isAdminOrHigher()}
