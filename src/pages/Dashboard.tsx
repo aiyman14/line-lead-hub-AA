@@ -32,7 +32,8 @@ import {
 interface DashboardStats {
   updatesToday: number;
   blockersToday: number;
-  missingToday: number;
+  daySewingOutput: number;
+  dayFinishingOutput: number;
   totalLines: number;
   activeWorkOrders: number;
   avgEfficiency: number;
@@ -167,7 +168,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     updatesToday: 0,
     blockersToday: 0,
-    missingToday: 0,
+    daySewingOutput: 0,
+    dayFinishingOutput: 0,
     totalLines: 0,
     activeWorkOrders: 0,
     avgEfficiency: 0,
@@ -498,17 +500,20 @@ export default function Dashboard() {
         });
       });
 
-      // Calculate missing lines
-      const linesWithUpdates = new Set([
-        ...(sewingActualsData || []).map(u => u.line_id),
-        ...(finishingDailySheetsData || []).filter((s: any) => (s.finishing_hourly_logs || []).length > 0).map((s: any) => s.line_id),
-      ]);
-      const missingCount = (linesCount || 0) - linesWithUpdates.size;
+      // Calculate daily sewing output
+      const daySewingOutput = (sewingActualsData || []).reduce((sum: number, u: any) => sum + (u.output_qty || 0), 0);
+
+      // Calculate daily finishing output (total poly from hourly logs)
+      const dayFinishingOutput = (finishingDailySheetsData || []).reduce((sum: number, sheet: any) => {
+        const logs = sheet.finishing_hourly_logs || [];
+        return sum + logs.reduce((logSum: number, l: any) => logSum + (l.poly_actual || 0), 0);
+      }, 0);
 
       setStats({
         updatesToday: (sewingCount || 0) + (finishingCount || 0),
         blockersToday: (sewingBlockersCount || 0) + (finishingBlockersCount || 0),
-        missingToday: Math.max(0, missingCount),
+        daySewingOutput,
+        dayFinishingOutput,
         totalLines: linesCount || 0,
         activeWorkOrders: workOrdersCount || 0,
         avgEfficiency: 0,
@@ -580,20 +585,18 @@ export default function Dashboard() {
           href="/blockers"
         />
         <KPICard
-          title={t('dashboard.missingToday')}
-          value={stats.missingToday}
-          icon={Rows3}
-          variant={stats.missingToday > 0 ? "negative" : "positive"}
-          subtitle={stats.missingToday > 0 ? t('dashboard.linesPending') : t('dashboard.allSubmitted')}
-          href="/lines"
+          title={t('dashboard.daySewingOutput')}
+          value={stats.daySewingOutput.toLocaleString()}
+          icon={Factory}
+          variant="neutral"
+          subtitle={t('dashboard.pcsProduced')}
         />
         <KPICard
-          title={t('dashboard.workOrders')}
-          value={stats.activeWorkOrders}
-          icon={ClipboardList}
+          title={t('dashboard.dayFinishingOutput')}
+          value={stats.dayFinishingOutput.toLocaleString()}
+          icon={Package}
           variant="neutral"
-          subtitle={t('dashboard.activeOrders')}
-          href="/work-orders"
+          subtitle={t('dashboard.pcsFinished')}
         />
       </div>
 
