@@ -119,7 +119,8 @@ export function FinishingDashboard() {
     });
   };
 
-  // Max hours possible in a day (10 regular + 5 OT)
+  // Minimum required hours for a complete sheet
+  const minRequiredHours = 10;
   const maxHoursPerSheet = 15;
 
   if (loading) {
@@ -240,6 +241,15 @@ export function FinishingDashboard() {
                               {sheet.finishing_no}
                             </Badge>
                           )}
+                          {sheet.hours_logged < minRequiredHours ? (
+                            <Badge variant="destructive" className="text-xs">
+                              Incomplete
+                            </Badge>
+                          ) : (
+                            <Badge variant="default" className="text-xs bg-success hover:bg-success/90">
+                              Complete
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {sheet.po_number || 'No PO'} • {sheet.style || 'No Style'}
@@ -247,7 +257,7 @@ export function FinishingDashboard() {
                         <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {sheet.hours_logged} hours logged
+                            {sheet.hours_logged}/{minRequiredHours} hours
                           </span>
                           <span className="text-xs text-muted-foreground">
                             Started {formatTime(sheet.created_at)}
