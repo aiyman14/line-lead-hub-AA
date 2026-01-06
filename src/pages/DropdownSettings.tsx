@@ -412,6 +412,12 @@ export default function DropdownSettings() {
     
     if (!over || active.id === over.id) return;
     
+    // blocker_type doesn't have sort_order column - it's ordered alphabetically
+    if (activeTab === 'blocker_type') {
+      toast({ variant: "destructive", title: "Blocker Types are ordered alphabetically and cannot be reordered" });
+      return;
+    }
+    
     const currentOptions = [...options[activeTab]];
     const oldIndex = currentOptions.findIndex(o => o.id === active.id);
     const newIndex = currentOptions.findIndex(o => o.id === over.id);
@@ -428,9 +434,7 @@ export default function DropdownSettings() {
     
     try {
       // Get table name and sort field
-      const tableName = activeTab === 'stages' ? 'stages' : 
-                        activeTab === 'blocker_type' ? 'blocker_types' :
-                        OPTION_CONFIGS[activeTab].table;
+      const tableName = activeTab === 'stages' ? 'stages' : OPTION_CONFIGS[activeTab].table;
       const sortField = activeTab === 'stages' ? 'sequence' : 'sort_order';
       
       // Update all items with new sequential sort order
