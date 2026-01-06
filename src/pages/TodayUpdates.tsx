@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -122,6 +123,7 @@ type ModalSubmission = {
 
 export default function TodayUpdates() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [sewingUpdates, setSewingUpdates] = useState<SewingUpdate[]>([]);
   const [finishingSheets, setFinishingSheets] = useState<FinishingDailySheet[]>([]);
@@ -278,6 +280,18 @@ export default function TodayUpdates() {
       production_date: sheet.production_date,
     });
     setDetailModalOpen(true);
+  };
+
+  const handleCuttingClick = (cutting: CuttingActual) => {
+    navigate('/cutting/submissions');
+  };
+
+  const handleStorageClick = (txn: StorageTransaction) => {
+    if (txn.storage_bin_cards?.id) {
+      navigate(`/storage/bin-card/${txn.storage_bin_cards.id}`);
+    } else {
+      navigate('/storage/history');
+    }
   };
 
   if (loading) {
@@ -532,7 +546,11 @@ export default function TodayUpdates() {
                     </TableHeader>
                     <TableBody>
                       {filteredCutting.map((cutting) => (
-                        <TableRow key={cutting.id} className="hover:bg-muted/50">
+                        <TableRow 
+                          key={cutting.id} 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleCuttingClick(cutting)}
+                        >
                           <TableCell className="font-mono text-sm">{cutting.submitted_at ? formatTime(cutting.submitted_at) : '-'}</TableCell>
                           <TableCell className="font-medium">{cutting.lines?.name || cutting.lines?.line_id}</TableCell>
                           <TableCell>{cutting.work_orders?.po_number || '-'}</TableCell>
@@ -572,7 +590,11 @@ export default function TodayUpdates() {
                     </TableHeader>
                     <TableBody>
                       {filteredStorage.map((txn) => (
-                        <TableRow key={txn.id} className="hover:bg-muted/50">
+                        <TableRow 
+                          key={txn.id} 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleStorageClick(txn)}
+                        >
                           <TableCell className="font-mono text-sm">{txn.created_at ? formatTime(txn.created_at) : '-'}</TableCell>
                           <TableCell>{txn.storage_bin_cards?.work_orders?.po_number || '-'}</TableCell>
                           <TableCell>{txn.storage_bin_cards?.style || '-'}</TableCell>
@@ -717,7 +739,11 @@ export default function TodayUpdates() {
                   </TableHeader>
                   <TableBody>
                     {filteredCutting.map((cutting) => (
-                      <TableRow key={cutting.id} className="hover:bg-muted/50">
+                      <TableRow 
+                        key={cutting.id} 
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleCuttingClick(cutting)}
+                      >
                         <TableCell className="font-mono text-sm">{cutting.submitted_at ? formatTime(cutting.submitted_at) : '-'}</TableCell>
                         <TableCell className="font-medium">{cutting.lines?.name || cutting.lines?.line_id}</TableCell>
                         <TableCell>{cutting.work_orders?.po_number || '-'}</TableCell>
@@ -757,7 +783,11 @@ export default function TodayUpdates() {
                   </TableHeader>
                   <TableBody>
                     {filteredStorage.map((txn) => (
-                      <TableRow key={txn.id} className="hover:bg-muted/50">
+                      <TableRow 
+                        key={txn.id} 
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleStorageClick(txn)}
+                      >
                         <TableCell className="font-mono text-sm">{txn.created_at ? formatTime(txn.created_at) : '-'}</TableCell>
                         <TableCell>{txn.storage_bin_cards?.work_orders?.po_number || '-'}</TableCell>
                         <TableCell>{txn.storage_bin_cards?.style || '-'}</TableCell>
