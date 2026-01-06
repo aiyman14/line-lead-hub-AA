@@ -105,29 +105,26 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         data: { session: inviterSession },
       } = await supabase.auth.getSession();
 
-      // Create user via Auth
+      // Create user via Auth using admin invite pattern - don't auto sign in
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/auth`,
           data: {
             full_name: formData.fullName,
             invited_by_admin: "true",
-            factory_id: profile.factory_id, // Pass factory_id so trigger sets it automatically
+            factory_id: profile.factory_id,
           },
         },
       });
 
-      // Restore inviter session (if we were switched to the new user)
+      // Immediately restore inviter session to prevent any redirect
       if (inviterSession) {
-        const { error: restoreError } = await supabase.auth.setSession({
+        await supabase.auth.setSession({
           access_token: inviterSession.access_token,
           refresh_token: inviterSession.refresh_token,
         });
-        if (restoreError) {
-          console.warn("Failed to restore inviter session after invite:", restoreError.message);
-        }
       }
 
       let userId: string | null = null;
