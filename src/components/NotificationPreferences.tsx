@@ -220,17 +220,17 @@ export function NotificationPreferences() {
       <CardContent className="space-y-6">
         <div className="grid gap-4">
           {/* Header row */}
-          <div className="grid grid-cols-[1fr,80px,80px] gap-4 items-center pb-2 border-b">
+          <div className="grid grid-cols-[1fr,auto,auto] gap-2 sm:gap-4 items-center pb-2 border-b">
             <div className="text-sm font-medium text-muted-foreground">
               Notification Type
             </div>
-            <div className="flex items-center justify-center gap-1 text-sm font-medium text-muted-foreground">
-              <Bell className="h-4 w-4" />
-              In-App
+            <div className="flex items-center justify-center gap-1 text-sm font-medium text-muted-foreground w-14 sm:w-20">
+              <Bell className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">In-App</span>
             </div>
-            <div className="flex items-center justify-center gap-1 text-sm font-medium text-muted-foreground">
-              <Mail className="h-4 w-4" />
-              Email
+            <div className="flex items-center justify-center gap-1 text-sm font-medium text-muted-foreground w-14 sm:w-20">
+              <Mail className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Email</span>
             </div>
           </div>
 
@@ -242,18 +242,18 @@ export function NotificationPreferences() {
             return (
               <div
                 key={nt.type}
-                className="grid grid-cols-[1fr,80px,80px] gap-4 items-center py-2"
+                className="grid grid-cols-[1fr,auto,auto] gap-2 sm:gap-4 items-center py-2"
               >
-                <div className="flex items-start gap-3">
-                  <Icon className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
+                <div className="flex items-start gap-2 sm:gap-3 min-w-0">
+                  <Icon className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                  <div className="min-w-0">
                     <Label className="font-medium">{nt.label}</Label>
                     <p className="text-sm text-muted-foreground">
                       {nt.description}
                     </p>
                   </div>
                 </div>
-                <div className="flex justify-center">
+                <div className="flex justify-center w-14 sm:w-20">
                   <Switch
                     checked={pref?.in_app_enabled ?? true}
                     onCheckedChange={(checked) =>
@@ -261,7 +261,7 @@ export function NotificationPreferences() {
                     }
                   />
                 </div>
-                <div className="flex justify-center">
+                <div className="flex justify-center w-14 sm:w-20">
                   <Switch
                     checked={pref?.email_enabled ?? false}
                     onCheckedChange={(checked) =>
