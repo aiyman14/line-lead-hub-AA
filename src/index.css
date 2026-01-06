@@ -163,18 +163,20 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    overflow-x: clip;
   }
 
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
-  
-  /* Prevent horizontal scroll on main content */
+
+  /* Prevent horizontal scroll for the app container */
   #root {
-    overflow-x: hidden;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
   }
   
   /* Premium typography scale */

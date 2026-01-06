@@ -48,7 +48,7 @@ export function AppLayout() {
             </header>
             
             {/* Main content */}
-            <main className="flex-1 overflow-auto custom-scrollbar">
+            <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
               <Outlet />
             </main>
           </div>
