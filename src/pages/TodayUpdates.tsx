@@ -257,29 +257,7 @@ export default function TodayUpdates() {
   };
 
   const handleFinishingClick = (sheet: FinishingDailySheet) => {
-    const logs = sheet.finishing_hourly_logs || [];
-    const totalPoly = logs.reduce((sum, l) => sum + (l.poly_actual || 0), 0);
-    const totalCarton = logs.reduce((sum, l) => sum + (l.carton_actual || 0), 0);
-    
-    setSelectedSubmission({
-      id: sheet.id,
-      type: 'finishing',
-      line_name: sheet.lines?.name || sheet.lines?.line_id || 'Unknown',
-      po_number: sheet.work_orders?.po_number || sheet.po_no || null,
-      buyer: sheet.work_orders?.buyer || sheet.buyer,
-      style: sheet.work_orders?.style || sheet.style,
-      hours_logged: logs.length,
-      total_poly: totalPoly,
-      total_carton: totalCarton,
-      has_blocker: false,
-      blocker_description: null,
-      blocker_impact: null,
-      blocker_owner: null,
-      blocker_status: null,
-      submitted_at: sheet.created_at,
-      production_date: sheet.production_date,
-    });
-    setDetailModalOpen(true);
+    navigate(`/finishing/daily-sheet?sheet=${sheet.id}`);
   };
 
   const handleCuttingClick = (cutting: CuttingActual) => {
