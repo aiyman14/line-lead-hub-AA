@@ -15,11 +15,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Factory, Package, Search, Download, RefreshCw, History, Calendar, Target, ClipboardCheck } from "lucide-react";
+import { Loader2, Factory, Package, Search, Download, RefreshCw, History, Calendar, Target, ClipboardCheck, Scissors } from "lucide-react";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { TargetDetailModal } from "@/components/TargetDetailModal";
 import { ExportSubmissionsDialog } from "@/components/ExportSubmissionsDialog";
 import { FinishingDailySheetsTable } from "@/components/submissions/FinishingDailySheetsTable";
+import { CuttingSubmissionsTable } from "@/components/submissions/CuttingSubmissionsTable";
+import { StorageSubmissionsTable } from "@/components/submissions/StorageSubmissionsTable";
 import { toast } from "sonner";
 
 // Types for targets
@@ -101,7 +103,7 @@ interface FinishingActual {
 }
 
 type CategoryType = 'targets' | 'actuals';
-type DepartmentType = 'sewing' | 'finishing';
+type DepartmentType = 'sewing' | 'finishing' | 'cutting' | 'storage';
 
 export default function AllSubmissions() {
   const { profile } = useAuth();
@@ -344,22 +346,38 @@ export default function AllSubmissions() {
       </div>
 
       {/* Department Selection - Primary Tabs */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-4 gap-3">
         <Button
           variant={department === 'sewing' ? 'default' : 'outline'}
-          className="h-16 flex flex-col gap-1"
+          className="h-14 flex flex-col gap-0.5"
           onClick={() => setDepartment('sewing')}
         >
-          <Factory className="h-5 w-5" />
-          <span className="font-semibold">Sewing</span>
+          <Factory className="h-4 w-4" />
+          <span className="font-semibold text-sm">Sewing</span>
         </Button>
         <Button
           variant={department === 'finishing' ? 'default' : 'outline'}
-          className="h-16 flex flex-col gap-1"
+          className="h-14 flex flex-col gap-0.5"
           onClick={() => setDepartment('finishing')}
         >
-          <Package className="h-5 w-5" />
-          <span className="font-semibold">Finishing</span>
+          <Package className="h-4 w-4" />
+          <span className="font-semibold text-sm">Finishing</span>
+        </Button>
+        <Button
+          variant={department === 'cutting' ? 'default' : 'outline'}
+          className="h-14 flex flex-col gap-0.5"
+          onClick={() => setDepartment('cutting')}
+        >
+          <Scissors className="h-4 w-4" />
+          <span className="font-semibold text-sm">Cutting</span>
+        </Button>
+        <Button
+          variant={department === 'storage' ? 'default' : 'outline'}
+          className="h-14 flex flex-col gap-0.5"
+          onClick={() => setDepartment('storage')}
+        >
+          <Package className="h-4 w-4" />
+          <span className="font-semibold text-sm">Storage</span>
         </Button>
       </div>
 
@@ -396,6 +414,26 @@ export default function AllSubmissions() {
       {/* Finishing uses new Daily Sheets view */}
       {department === 'finishing' && profile?.factory_id && (
         <FinishingDailySheetsTable
+          factoryId={profile.factory_id}
+          dateRange={dateRange}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+        />
+      )}
+
+      {/* Cutting submissions */}
+      {department === 'cutting' && profile?.factory_id && (
+        <CuttingSubmissionsTable
+          factoryId={profile.factory_id}
+          dateRange={dateRange}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+        />
+      )}
+
+      {/* Storage bin cards */}
+      {department === 'storage' && profile?.factory_id && (
+        <StorageSubmissionsTable
           factoryId={profile.factory_id}
           dateRange={dateRange}
           searchTerm={searchTerm}
