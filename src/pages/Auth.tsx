@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +41,6 @@ export default function Auth() {
   const [activeTab, setActiveTab] = useState("login");
   const { signIn, signUp, user, profile, hasRole, isAdminOrHigher, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const { toast } = useToast();
 
   // Password reset mode state - check synchronously from URL on mount

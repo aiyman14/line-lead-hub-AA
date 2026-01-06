@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider, AuthContext } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -53,6 +53,19 @@ const queryClient = new QueryClient();
 
 function AppRoutes() {
   const { loading } = useContext(AuthContext)!;
+  const location = useLocation();
+
+  const isRecoveryLink = (() => {
+    const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+    const params = new URLSearchParams(hash);
+    return params.get("type") === "recovery" && !!params.get("access_token");
+  })();
+
+  // Some reset emails can land users on "/" (or any route). Intercept and send to /auth
+  // so the reset-password UI can render.
+  if (!loading && isRecoveryLink && location.pathname !== "/auth") {
+    return <Navigate to={`/auth${location.hash}`} replace />;
+  }
 
   if (loading) {
     return <LoadingScreen />;
@@ -63,7 +76,7 @@ function AppRoutes() {
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/subscription" element={<Subscription />} />
-      
+
       {/* Protected routes with subscription gate */}
       <Route element={<AppLayout />}>
         <Route path="/dashboard" element={<SubscriptionGate><Dashboard /></SubscriptionGate>} />
@@ -90,7 +103,7 @@ function AppRoutes() {
         <Route path="/users" element={<SubscriptionGate><UsersPage /></SubscriptionGate>} />
         <Route path="/submissions" element={<SubscriptionGate><AllSubmissions /></SubscriptionGate>} />
         <Route path="/my-submissions" element={<SubscriptionGate><LegacyMySubmissionsRedirect /></SubscriptionGate>} />
-        
+
         <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
         <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />
         <Route path="/billing-plan" element={<BillingPlan />} />
@@ -106,7 +119,7 @@ function AppRoutes() {
         <Route path="/sewing/cutting-handoffs" element={<SubscriptionGate><CuttingHandoffs /></SubscriptionGate>} />
         <Route path="/sewing/my-submissions" element={<SubscriptionGate><SewingMySubmissions /></SubscriptionGate>} />
       </Route>
-      
+
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
