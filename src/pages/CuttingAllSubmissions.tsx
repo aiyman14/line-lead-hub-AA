@@ -1,23 +1,37 @@
 import { useState, useEffect, useMemo } from "react";
-import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { format, subDays } from "date-fns";
+import { toast } from "sonner";
+import { Loader2, Download, RefreshCw, Scissors, Crosshair, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Loader2, FileText, CheckCircle2, Filter, CalendarIcon, Clock, Crosshair, ClipboardCheck, Scissors } from "lucide-react";
-import { format, subDays, startOfDay, isWithinInterval, parseISO } from "date-fns";
-import { cn } from "@/lib/utils";
 
 interface CuttingTarget {
   id: string;
   production_date: string;
   submitted_at: string;
   line_id: string;
+  work_order_id: string;
   buyer: string | null;
   style: string | null;
   po_no: string | null;
@@ -37,6 +51,7 @@ interface CuttingActual {
   production_date: string;
   submitted_at: string;
   line_id: string;
+  work_order_id: string;
   buyer: string | null;
   style: string | null;
   po_no: string | null;
@@ -51,419 +66,381 @@ interface CuttingActual {
   work_orders?: { po_number: string; buyer: string; style: string };
 }
 
-interface DateRange {
-  from: Date | undefined;
-  to: Date | undefined;
+interface Line {
+  id: string;
+  line_id: string;
+  name: string | null;
 }
 
 export default function CuttingAllSubmissions() {
-  const { t } = useTranslation();
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"targets" | "actuals">("targets");
-  
-  // Filter states
-  const [selectedLineId, setSelectedLineId] = useState<string>("all");
-  const [dateRange, setDateRange] = useState<DateRange>({
-    from: subDays(new Date(), 30),
-    to: new Date(),
-  });
-  
-  // Data states
-  const [cuttingTargets, setCuttingTargets] = useState<CuttingTarget[]>([]);
-  const [cuttingActuals, setCuttingActuals] = useState<CuttingActual[]>([]);
-  const [lines, setLines] = useState<{id: string; name: string}[]>([]);
-  
-  // Deadline times
-  const [morningTargetCutoff, setMorningTargetCutoff] = useState<string | null>(null);
-  const [eveningActualCutoff, setEveningActualCutoff] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("targets");
+
+  // Data
+  const [targets, setTargets] = useState<CuttingTarget[]>([]);
+  const [actuals, setActuals] = useState<CuttingActual[]>([]);
+  const [lines, setLines] = useState<Line[]>([]);
+
+  // Filters
+  const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [selectedLine, setSelectedLine] = useState("all");
 
   useEffect(() => {
     if (profile?.factory_id) {
       fetchData();
     }
-  }, [profile?.factory_id]);
+  }, [profile?.factory_id, dateFrom, dateTo]);
 
   async function fetchData() {
     if (!profile?.factory_id) return;
     setLoading(true);
 
     try {
-      const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-      
-      const [
-        targetsRes,
-        actualsRes,
-        linesRes,
-        factoryRes
-      ] = await Promise.all([
+      const [targetsRes, actualsRes, linesRes] = await Promise.all([
         supabase
-          .from('cutting_targets')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
-          .eq('factory_id', profile.factory_id)
-          .gte('production_date', thirtyDaysAgo)
-          .order('production_date', { ascending: false }),
+          .from("cutting_targets")
+          .select("*, lines(line_id, name), work_orders(po_number, buyer, style)")
+          .eq("factory_id", profile.factory_id)
+          .gte("production_date", dateFrom)
+          .lte("production_date", dateTo)
+          .order("production_date", { ascending: false }),
         supabase
-          .from('cutting_actuals')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
-          .eq('factory_id', profile.factory_id)
-          .gte('production_date', thirtyDaysAgo)
-          .order('production_date', { ascending: false }),
+          .from("cutting_actuals")
+          .select("*, lines(line_id, name), work_orders(po_number, buyer, style)")
+          .eq("factory_id", profile.factory_id)
+          .gte("production_date", dateFrom)
+          .lte("production_date", dateTo)
+          .order("production_date", { ascending: false }),
         supabase
-          .from('lines')
-          .select('id, line_id, name')
-          .eq('factory_id', profile.factory_id)
-          .eq('is_active', true),
-        supabase
-          .from('factory_accounts')
-          .select('morning_target_cutoff, evening_actual_cutoff')
-          .eq('id', profile.factory_id)
-          .single()
+          .from("lines")
+          .select("id, line_id, name")
+          .eq("factory_id", profile.factory_id)
+          .eq("is_active", true),
       ]);
 
-      if (factoryRes.data) {
-        setMorningTargetCutoff(factoryRes.data.morning_target_cutoff);
-        setEveningActualCutoff(factoryRes.data.evening_actual_cutoff);
-      }
-
-      setCuttingTargets(targetsRes.data || []);
-      setCuttingActuals(actualsRes.data || []);
-      setLines((linesRes.data || []).map(l => ({ id: l.id, name: l.name || l.line_id })));
+      setTargets(targetsRes.data || []);
+      setActuals(actualsRes.data || []);
+      setLines(linesRes.data || []);
     } catch (error) {
-      console.error('Error fetching submissions:', error);
+      console.error("Error fetching data:", error);
+      toast.error("Failed to load data");
     } finally {
       setLoading(false);
     }
   }
 
+  // Filtered targets
   const filteredTargets = useMemo(() => {
-    return cuttingTargets.filter(s => {
-      if (selectedLineId !== "all" && s.line_id !== selectedLineId) return false;
-      if (dateRange.from && dateRange.to) {
-        const date = parseISO(s.production_date);
-        if (!isWithinInterval(date, { start: startOfDay(dateRange.from), end: startOfDay(dateRange.to) })) {
-          return false;
-        }
-      }
+    return targets.filter(t => {
+      if (selectedLine !== "all" && t.line_id !== selectedLine) return false;
       return true;
     });
-  }, [cuttingTargets, selectedLineId, dateRange]);
+  }, [targets, selectedLine]);
 
+  // Filtered actuals
   const filteredActuals = useMemo(() => {
-    return cuttingActuals.filter(s => {
-      if (selectedLineId !== "all" && s.line_id !== selectedLineId) return false;
-      if (dateRange.from && dateRange.to) {
-        const date = parseISO(s.production_date);
-        if (!isWithinInterval(date, { start: startOfDay(dateRange.from), end: startOfDay(dateRange.to) })) {
-          return false;
-        }
-      }
+    return actuals.filter(a => {
+      if (selectedLine !== "all" && a.line_id !== selectedLine) return false;
       return true;
     });
-  }, [cuttingActuals, selectedLineId, dateRange]);
+  }, [actuals, selectedLine]);
 
-  const formatTime = (time: string | null) => {
-    if (!time) return null;
-    const [hours, minutes] = time.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const displayHours = hours % 12 || 12;
-    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
+  // Stats
+  const stats = useMemo(() => ({
+    totalTargets: filteredTargets.length,
+    totalActuals: filteredActuals.length,
+    totalDayCutting: filteredActuals.reduce((sum, a) => sum + (a.day_cutting || 0), 0),
+    totalDayInput: filteredActuals.reduce((sum, a) => sum + (a.day_input || 0), 0),
+  }), [filteredTargets, filteredActuals]);
+
+  function exportToCSV() {
+    if (activeTab === "targets") {
+      const headers = ["DATE", "LINE", "BUYER", "STYLE", "PO-NO", "COLOUR", "ORDER QTY", "MAN POWER", "MARKER CAP", "LAY CAP", "CUTTING CAP", "UNDER QTY"];
+      const rows = filteredTargets.map(t => [
+        t.production_date,
+        t.lines?.name || t.lines?.line_id || "",
+        t.work_orders?.buyer || t.buyer || "",
+        t.work_orders?.style || t.style || "",
+        t.work_orders?.po_number || t.po_no || "",
+        t.colour || "",
+        t.order_qty || 0,
+        t.man_power,
+        t.marker_capacity,
+        t.lay_capacity,
+        t.cutting_capacity,
+        t.under_qty || 0,
+      ]);
+      const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      downloadCSV(csv, `cutting-targets-${dateFrom}-to-${dateTo}.csv`);
+    } else {
+      const headers = ["DATE", "LINE", "BUYER", "STYLE", "PO-NO", "COLOUR", "ORDER QTY", "DAY CUTTING", "TOTAL CUTTING", "DAY INPUT", "TOTAL INPUT", "BALANCE"];
+      const rows = filteredActuals.map(a => [
+        a.production_date,
+        a.lines?.name || a.lines?.line_id || "",
+        a.work_orders?.buyer || a.buyer || "",
+        a.work_orders?.style || a.style || "",
+        a.work_orders?.po_number || a.po_no || "",
+        a.colour || "",
+        a.order_qty || 0,
+        a.day_cutting,
+        a.total_cutting || 0,
+        a.day_input,
+        a.total_input || 0,
+        a.balance || 0,
+      ]);
+      const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      downloadCSV(csv, `cutting-actuals-${dateFrom}-to-${dateTo}.csv`);
+    }
+  }
+
+  function downloadCSV(csv: string, filename: string) {
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   if (loading) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
+      <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="p-4 lg:p-6 space-y-6">
+    <div className="container py-4 px-4 pb-8 space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
             <Scissors className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">All Cutting Submissions</h1>
-            <p className="text-muted-foreground">
-              View all cutting targets and daily reports
-            </p>
+            <h1 className="text-xl font-bold">All Cutting Submissions</h1>
+            <p className="text-sm text-muted-foreground">View all cutting targets and daily reports</p>
           </div>
         </div>
-        
-        {/* Deadline Times */}
-        {(morningTargetCutoff || eveningActualCutoff) && (
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            {morningTargetCutoff && (
-              <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full">
-                <Clock className="h-4 w-4" />
-                <span className="font-medium">Morning Target:</span>
-                <span>{formatTime(morningTargetCutoff)}</span>
-              </div>
-            )}
-            {eveningActualCutoff && (
-              <div className="flex items-center gap-2 bg-warning/10 text-warning px-3 py-1.5 rounded-full">
-                <Clock className="h-4 w-4" />
-                <span className="font-medium">End of Day:</span>
-                <span>{formatTime(eveningActualCutoff)}</span>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => fetchData()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportToCSV}>
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
       <Card>
         <CardContent className="pt-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Filter:</span>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>From Date</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
             </div>
-            
-            <Select value={selectedLineId} onValueChange={setSelectedLineId}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All Lines" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Lines</SelectItem>
-                {lines.map((line) => (
-                  <SelectItem key={line.id} value={line.id}>
-                    {line.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-[280px] justify-start text-left font-normal",
-                    !dateRange.from && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateRange.from ? (
-                    dateRange.to ? (
-                      <>
-                        {format(dateRange.from, "MMM d, yyyy")} - {format(dateRange.to, "MMM d, yyyy")}
-                      </>
-                    ) : (
-                      format(dateRange.from, "MMM d, yyyy")
-                    )
-                  ) : (
-                    <span>Pick a date range</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  initialFocus
-                  mode="range"
-                  defaultMonth={dateRange.from}
-                  selected={{ from: dateRange.from, to: dateRange.to }}
-                  onSelect={(range) => setDateRange({ from: range?.from, to: range?.to })}
-                  numberOfMonths={2}
-                />
-              </PopoverContent>
-            </Popover>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setSelectedLineId("all");
-                setDateRange({ from: subDays(new Date(), 30), to: new Date() });
-              }}
-            >
-              Reset
-            </Button>
+            <div className="space-y-2">
+              <Label>To Date</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Line</Label>
+              <Select value={selectedLine} onValueChange={setSelectedLine}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Lines" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Lines</SelectItem>
+                  {lines.map(l => (
+                    <SelectItem key={l.id} value={l.id}>{l.name || l.line_id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Stats Cards */}
+      {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-primary">
           <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Targets</p>
-                <p className="text-2xl font-bold">{filteredTargets.length}</p>
-                <p className="text-xs text-muted-foreground">In selected range</p>
-              </div>
-              <Crosshair className="h-8 w-8 text-primary/30" />
-            </div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Targets</p>
+            <p className="text-2xl font-bold">{stats.totalTargets}</p>
+            <p className="text-xs text-muted-foreground">In date range</p>
           </CardContent>
         </Card>
-
         <Card className="border-l-4 border-l-success">
           <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Actuals</p>
-                <p className="text-2xl font-bold">{filteredActuals.length}</p>
-                <p className="text-xs text-muted-foreground">In selected range</p>
-              </div>
-              <ClipboardCheck className="h-8 w-8 text-success/30" />
-            </div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Actuals</p>
+            <p className="text-2xl font-bold">{stats.totalActuals}</p>
+            <p className="text-xs text-muted-foreground">In date range</p>
           </CardContent>
         </Card>
-
         <Card className="border-l-4 border-l-info">
           <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Day Cutting</p>
-                <p className="text-2xl font-bold">
-                  {filteredActuals.reduce((acc, s) => acc + (s.day_cutting || 0), 0).toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">Total pieces</p>
-              </div>
-              <Scissors className="h-8 w-8 text-info/30" />
-            </div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Day Cutting</p>
+            <p className="text-2xl font-bold">{stats.totalDayCutting.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
         </Card>
-
         <Card className="border-l-4 border-l-warning">
           <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Day Input</p>
-                <p className="text-2xl font-bold">
-                  {filteredActuals.reduce((acc, s) => acc + (s.day_input || 0), 0).toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">Total pieces</p>
-              </div>
-              <FileText className="h-8 w-8 text-warning/30" />
-            </div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Day Input</p>
+            <p className="text-2xl font-bold">{stats.totalDayInput.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "targets" | "actuals")}>
-        <TabsList>
-          <TabsTrigger value="targets">
-            <Crosshair className="h-4 w-4 mr-2" />
+      {/* Tabs with Tables */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="targets" className="gap-2">
+            <Crosshair className="h-4 w-4" />
             Morning Targets ({filteredTargets.length})
           </TabsTrigger>
-          <TabsTrigger value="actuals">
-            <ClipboardCheck className="h-4 w-4 mr-2" />
+          <TabsTrigger value="actuals" className="gap-2">
+            <ClipboardCheck className="h-4 w-4" />
             End of Day ({filteredActuals.length})
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="targets" className="space-y-4">
-          {filteredTargets.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Crosshair className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <p className="text-muted-foreground">No cutting targets found for the selected filters</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredTargets.map((submission) => (
-                <Card key={submission.id} className="hover:bg-muted/50 transition-colors">
-                  <CardContent className="py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                          <Crosshair className="h-5 w-5 text-warning" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">
-                              {submission.lines?.name || submission.lines?.line_id || 'Unknown Line'}
-                            </span>
-                            <Badge variant="outline" className="text-xs">
-                              {format(new Date(submission.production_date), 'MMM d, yyyy')}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {submission.work_orders?.po_number || submission.po_no} • {submission.work_orders?.buyer || submission.buyer} • {submission.work_orders?.style || submission.style}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-6 text-right">
-                        <div>
-                          <p className="font-semibold">{submission.cutting_capacity}</p>
-                          <p className="text-xs text-muted-foreground">Cutting Cap</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold">{submission.man_power}</p>
-                          <p className="text-xs text-muted-foreground">Man Power</p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+        <TabsContent value="targets">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">All Cutting Targets</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>DATE</TableHead>
+                      <TableHead>LINE</TableHead>
+                      <TableHead>BUYER</TableHead>
+                      <TableHead>STYLE</TableHead>
+                      <TableHead>PO-NO</TableHead>
+                      <TableHead>COLOUR</TableHead>
+                      <TableHead className="text-right">ORDER QTY</TableHead>
+                      <TableHead className="text-right">MAN POWER</TableHead>
+                      <TableHead className="text-right">MARKER CAP</TableHead>
+                      <TableHead className="text-right">LAY CAP</TableHead>
+                      <TableHead className="text-right">CUTTING CAP</TableHead>
+                      <TableHead className="text-right">UNDER QTY</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTargets.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                          No targets found for selected filters
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredTargets.map((t) => (
+                        <TableRow key={t.id}>
+                          <TableCell className="font-medium whitespace-nowrap">
+                            {format(new Date(t.production_date), "MMM d, yyyy")}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{t.lines?.name || t.lines?.line_id || "—"}</Badge>
+                          </TableCell>
+                          <TableCell>{t.work_orders?.buyer || t.buyer || "—"}</TableCell>
+                          <TableCell>{t.work_orders?.style || t.style || "—"}</TableCell>
+                          <TableCell>{t.work_orders?.po_number || t.po_no || "—"}</TableCell>
+                          <TableCell>{t.colour || "—"}</TableCell>
+                          <TableCell className="text-right">{t.order_qty?.toLocaleString() || "—"}</TableCell>
+                          <TableCell className="text-right font-medium">{t.man_power}</TableCell>
+                          <TableCell className="text-right">{t.marker_capacity}</TableCell>
+                          <TableCell className="text-right">{t.lay_capacity}</TableCell>
+                          <TableCell className="text-right font-medium text-primary">{t.cutting_capacity}</TableCell>
+                          <TableCell className="text-right">{t.under_qty || "—"}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="actuals" className="space-y-4">
-          {filteredActuals.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <ClipboardCheck className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <p className="text-muted-foreground">No cutting actuals found for the selected filters</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredActuals.map((submission) => (
-                <Card key={submission.id} className="hover:bg-muted/50 transition-colors">
-                  <CardContent className="py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
-                          <ClipboardCheck className="h-5 w-5 text-success" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">
-                              {submission.lines?.name || submission.lines?.line_id || 'Unknown Line'}
-                            </span>
-                            <Badge variant="outline" className="text-xs">
-                              {format(new Date(submission.production_date), 'MMM d, yyyy')}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {format(new Date(submission.production_date), 'MMM d, yyyy')}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {submission.work_orders?.po_number || submission.po_no} • {submission.work_orders?.buyer || submission.buyer} • {submission.work_orders?.style || submission.style}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-6 text-right">
-                        <div>
-                          <p className="font-semibold">{submission.day_cutting?.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground">Day Cutting</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold">{submission.day_input?.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground">Day Input</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold">{submission.balance?.toLocaleString() || 0}</p>
-                          <p className="text-xs text-muted-foreground">Balance</p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+        <TabsContent value="actuals">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">All Cutting Actuals</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>DATE</TableHead>
+                      <TableHead>LINE</TableHead>
+                      <TableHead>BUYER</TableHead>
+                      <TableHead>STYLE</TableHead>
+                      <TableHead>PO-NO</TableHead>
+                      <TableHead>COLOUR</TableHead>
+                      <TableHead className="text-right">ORDER QTY</TableHead>
+                      <TableHead className="text-right">DAY CUTTING</TableHead>
+                      <TableHead className="text-right">TOTAL CUTTING</TableHead>
+                      <TableHead className="text-right">DAY INPUT</TableHead>
+                      <TableHead className="text-right">TOTAL INPUT</TableHead>
+                      <TableHead className="text-right">BALANCE</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredActuals.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                          No actuals found for selected filters
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredActuals.map((a) => (
+                        <TableRow key={a.id}>
+                          <TableCell className="font-medium whitespace-nowrap">
+                            {format(new Date(a.production_date), "MMM d, yyyy")}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{a.lines?.name || a.lines?.line_id || "—"}</Badge>
+                          </TableCell>
+                          <TableCell>{a.work_orders?.buyer || a.buyer || "—"}</TableCell>
+                          <TableCell>{a.work_orders?.style || a.style || "—"}</TableCell>
+                          <TableCell>{a.work_orders?.po_number || a.po_no || "—"}</TableCell>
+                          <TableCell>{a.colour || "—"}</TableCell>
+                          <TableCell className="text-right">{a.order_qty?.toLocaleString() || "—"}</TableCell>
+                          <TableCell className="text-right font-medium text-primary">{a.day_cutting.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">{a.total_cutting?.toLocaleString() || "—"}</TableCell>
+                          <TableCell className="text-right font-medium text-success">{a.day_input.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">{a.total_input?.toLocaleString() || "—"}</TableCell>
+                          <TableCell className={`text-right font-medium ${a.balance && a.balance < 0 ? "text-destructive" : ""}`}>
+                            {a.balance?.toLocaleString() || "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
