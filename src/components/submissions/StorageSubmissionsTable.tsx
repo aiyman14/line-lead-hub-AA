@@ -14,13 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useNavigate } from "react-router-dom";
+import { StorageBinCardDetailModal } from "@/components/StorageBinCardDetailModal";
 
 interface BinCard {
   id: string;
@@ -58,10 +52,12 @@ export function StorageSubmissionsTable({
   onSearchChange,
   lowStockThreshold = 10,
 }: StorageSubmissionsTableProps) {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [binCards, setBinCards] = useState<BinCard[]>([]);
-  const [selectedCard, setSelectedCard] = useState<BinCard | null>(null);
+  const [selectedBinCard, setSelectedBinCard] = useState<any>(null);
+  const [binCardTransactions, setBinCardTransactions] = useState<any[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -167,6 +163,53 @@ export function StorageSubmissionsTable({
     return { total: binCards.length, totalBalance, lowStock, totalReceived, totalIssued };
   }, [binCards, lowStockThreshold]);
 
+  const handleCardClick = async (card: BinCard) => {
+    setModalLoading(true);
+    setModalOpen(true);
+
+    try {
+      // Fetch full bin card details
+      const { data: binCardData, error: binCardError } = await supabase
+        .from('storage_bin_cards')
+        .select('*, work_orders(po_number)')
+        .eq('id', card.id)
+        .single();
+
+      if (binCardError) throw binCardError;
+
+      // Fetch all transactions for this bin card
+      const { data: txnData, error: txnError } = await supabase
+        .from('storage_bin_card_transactions')
+        .select('*')
+        .eq('bin_card_id', card.id)
+        .order('transaction_date', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (txnError) throw txnError;
+
+      setSelectedBinCard({
+        id: binCardData.id,
+        buyer: binCardData.buyer,
+        style: binCardData.style,
+        po_number: binCardData.work_orders?.po_number || null,
+        supplier_name: binCardData.supplier_name,
+        description: binCardData.description,
+        construction: binCardData.construction,
+        color: binCardData.color,
+        width: binCardData.width,
+        package_qty: binCardData.package_qty,
+        prepared_by: binCardData.prepared_by,
+      });
+      setBinCardTransactions(txnData || []);
+    } catch (error) {
+      console.error('Error fetching bin card details:', error);
+      setModalOpen(false);
+      toast.error("Failed to load bin card details");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -251,7 +294,7 @@ export function StorageSubmissionsTable({
                     <TableRow
                       key={card.id}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/storage?card=${card.id}`)}
+                      onClick={() => handleCardClick(card)}
                     >
                       <TableCell className="font-mono text-sm">
                         {format(new Date(card.created_at), "MMM d")}
@@ -282,6 +325,14 @@ export function StorageSubmissionsTable({
           </div>
         </CardContent>
       </Card>
+
+      {/* Storage Bin Card Detail Modal */}
+      <StorageBinCardDetailModal
+        binCard={selectedBinCard}
+        transactions={binCardTransactions}
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+      />
     </div>
   );
 }
