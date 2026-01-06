@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays } from "date-fns";
 import { toast } from "sonner";
-import { Loader2, Download, RefreshCw, Scissors } from "lucide-react";
+import { Loader2, Download, RefreshCw, Scissors, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface CuttingSubmission {
   id: string;
@@ -61,6 +67,7 @@ export default function CuttingAllSubmissions() {
   const [loading, setLoading] = useState(true);
   const [submissions, setSubmissions] = useState<CuttingSubmission[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
+  const [selectedSubmission, setSelectedSubmission] = useState<CuttingSubmission | null>(null);
 
   // Filters
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
@@ -78,7 +85,6 @@ export default function CuttingAllSubmissions() {
     setLoading(true);
 
     try {
-      // Fetch actuals which contain both target and actual data in the unified form
       const [actualsRes, linesRes] = await Promise.all([
         supabase
           .from("cutting_actuals")
@@ -94,8 +100,6 @@ export default function CuttingAllSubmissions() {
           .eq("is_active", true),
       ]);
 
-      // Map to include target fields - in unified form these come from cutting_actuals
-      // But since the form saves to cutting_actuals, we need to also check cutting_targets
       const { data: targetsData } = await supabase
         .from("cutting_targets")
         .select("*, lines(line_id, name), work_orders(po_number, buyer, style)")
@@ -103,14 +107,12 @@ export default function CuttingAllSubmissions() {
         .gte("production_date", dateFrom)
         .lte("production_date", dateTo);
 
-      // Create a map of targets by date+line+work_order
       const targetsMap = new Map<string, any>();
       (targetsData || []).forEach(t => {
         const key = `${t.production_date}-${t.line_id}-${t.work_order_id}`;
         targetsMap.set(key, t);
       });
 
-      // Merge actuals with their corresponding targets
       const mergedSubmissions: CuttingSubmission[] = (actualsRes.data || []).map(actual => {
         const key = `${actual.production_date}-${actual.line_id}-${actual.work_order_id}`;
         const target = targetsMap.get(key);
@@ -150,7 +152,6 @@ export default function CuttingAllSubmissions() {
     }
   }
 
-  // Filtered submissions
   const filteredSubmissions = useMemo(() => {
     return submissions.filter(s => {
       if (selectedLine !== "all" && s.line_id !== selectedLine) return false;
@@ -158,7 +159,6 @@ export default function CuttingAllSubmissions() {
     });
   }, [submissions, selectedLine]);
 
-  // Stats
   const stats = useMemo(() => ({
     totalSubmissions: filteredSubmissions.length,
     totalDayCutting: filteredSubmissions.reduce((sum, s) => sum + (s.day_cutting || 0), 0),
@@ -294,14 +294,14 @@ export default function CuttingAllSubmissions() {
         </Card>
         <Card className="border-l-4 border-l-info">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Day Cutting</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Cutting</p>
             <p className="text-2xl font-bold">{stats.totalDayCutting.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-warning">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Day Input</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Input</p>
             <p className="text-2xl font-bold">{stats.totalDayInput.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
@@ -320,16 +320,10 @@ export default function CuttingAllSubmissions() {
                 <TableRow>
                   <TableHead>DATE</TableHead>
                   <TableHead>LINE</TableHead>
-                  <TableHead>BUYER</TableHead>
-                  <TableHead>STYLE</TableHead>
                   <TableHead>PO-NO</TableHead>
-                  <TableHead>COLOUR</TableHead>
                   <TableHead className="text-right">ORDER QTY</TableHead>
-                  <TableHead className="text-right">MAN POWER</TableHead>
                   <TableHead className="text-right">CUTTING CAP</TableHead>
-                  <TableHead className="text-right">DAY CUTTING</TableHead>
                   <TableHead className="text-right">TOTAL CUTTING</TableHead>
-                  <TableHead className="text-right">DAY INPUT</TableHead>
                   <TableHead className="text-right">TOTAL INPUT</TableHead>
                   <TableHead className="text-right">BALANCE</TableHead>
                 </TableRow>
@@ -337,30 +331,28 @@ export default function CuttingAllSubmissions() {
               <TableBody>
                 {filteredSubmissions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No submissions found for selected filters
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredSubmissions.map((s) => (
-                    <TableRow key={s.id}>
+                    <TableRow 
+                      key={s.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setSelectedSubmission(s)}
+                    >
                       <TableCell className="font-medium whitespace-nowrap">
                         {format(new Date(s.production_date), "MMM d, yyyy")}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{s.lines?.name || s.lines?.line_id || "—"}</Badge>
                       </TableCell>
-                      <TableCell>{s.work_orders?.buyer || s.buyer || "—"}</TableCell>
-                      <TableCell>{s.work_orders?.style || s.style || "—"}</TableCell>
                       <TableCell>{s.work_orders?.po_number || s.po_no || "—"}</TableCell>
-                      <TableCell>{s.colour || "—"}</TableCell>
                       <TableCell className="text-right">{s.order_qty?.toLocaleString() || "—"}</TableCell>
-                      <TableCell className="text-right">{s.man_power}</TableCell>
                       <TableCell className="text-right font-medium text-primary">{s.cutting_capacity}</TableCell>
-                      <TableCell className="text-right font-medium">{s.day_cutting.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">{s.total_cutting?.toLocaleString() || "—"}</TableCell>
-                      <TableCell className="text-right font-medium text-success">{s.day_input.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">{s.total_input?.toLocaleString() || "—"}</TableCell>
+                      <TableCell className="text-right font-medium">{s.total_cutting?.toLocaleString() || "—"}</TableCell>
+                      <TableCell className="text-right font-medium text-success">{s.total_input?.toLocaleString() || "—"}</TableCell>
                       <TableCell className={`text-right font-medium ${s.balance && s.balance < 0 ? "text-destructive" : ""}`}>
                         {s.balance?.toLocaleString() || "—"}
                       </TableCell>
@@ -372,6 +364,110 @@ export default function CuttingAllSubmissions() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Detail Modal */}
+      <Dialog open={!!selectedSubmission} onOpenChange={() => setSelectedSubmission(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5" />
+              Submission Details
+            </DialogTitle>
+          </DialogHeader>
+          {selectedSubmission && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Date</p>
+                  <p className="font-medium">{format(new Date(selectedSubmission.production_date), "MMM d, yyyy")}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Line</p>
+                  <p className="font-medium">{selectedSubmission.lines?.name || selectedSubmission.lines?.line_id || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Buyer</p>
+                  <p className="font-medium">{selectedSubmission.work_orders?.buyer || selectedSubmission.buyer || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Style</p>
+                  <p className="font-medium">{selectedSubmission.work_orders?.style || selectedSubmission.style || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">PO Number</p>
+                  <p className="font-medium">{selectedSubmission.work_orders?.po_number || selectedSubmission.po_no || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Colour</p>
+                  <p className="font-medium">{selectedSubmission.colour || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Order Qty</p>
+                  <p className="font-medium">{selectedSubmission.order_qty?.toLocaleString() || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Man Power</p>
+                  <p className="font-medium">{selectedSubmission.man_power}</p>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-3">Capacity Planning</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Marker Capacity</p>
+                    <p className="font-medium">{selectedSubmission.marker_capacity}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Lay Capacity</p>
+                    <p className="font-medium">{selectedSubmission.lay_capacity}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Cutting Capacity</p>
+                    <p className="font-medium text-primary">{selectedSubmission.cutting_capacity}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Under Qty</p>
+                    <p className="font-medium">{selectedSubmission.under_qty || "—"}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-3">Actuals</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Day Cutting</p>
+                    <p className="font-medium">{selectedSubmission.day_cutting.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Total Cutting</p>
+                    <p className="font-medium">{selectedSubmission.total_cutting?.toLocaleString() || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Day Input</p>
+                    <p className="font-medium text-success">{selectedSubmission.day_input.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Total Input</p>
+                    <p className="font-medium">{selectedSubmission.total_input?.toLocaleString() || "—"}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground uppercase">Balance</p>
+                    <p className={`font-medium text-lg ${selectedSubmission.balance && selectedSubmission.balance < 0 ? "text-destructive" : ""}`}>
+                      {selectedSubmission.balance?.toLocaleString() || "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-4 text-xs text-muted-foreground">
+                Submitted: {selectedSubmission.submitted_at ? format(new Date(selectedSubmission.submitted_at), "MMM d, yyyy 'at' h:mm a") : "—"}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
