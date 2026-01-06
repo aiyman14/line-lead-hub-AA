@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +41,11 @@ export default function Auth() {
   const [activeTab, setActiveTab] = useState("login");
   const { signIn, signUp, user, profile, hasRole, isAdminOrHigher, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+
+  const isForcedPasswordReset =
+    typeof window !== "undefined" && sessionStorage.getItem("pp_force_password_reset") === "1";
 
   // Password reset mode state - check synchronously from URL on mount
   const getIsRecoveryMode = () => {
@@ -75,6 +79,9 @@ export default function Auth() {
     // Important: wait until roles are loaded, otherwise cutting users can be mis-routed.
     if (authLoading) return;
 
+    // If we are forcing a password reset, never auto-route away from /auth.
+    if (isForcedPasswordReset) return;
+
     if (user && !isPasswordResetMode) {
       if (profile?.factory_id) {
         // Check for cutting role first
@@ -103,7 +110,7 @@ export default function Auth() {
         navigate("/subscription", { replace: true });
       }
     }
-  }, [authLoading, user, profile, navigate, isPasswordResetMode, hasRole, isAdminOrHigher]);
+  }, [authLoading, user, profile, navigate, isPasswordResetMode, hasRole, isAdminOrHigher, isForcedPasswordReset]);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -122,6 +129,31 @@ export default function Auth() {
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
 
+  // Deep-links:
+  // - /auth?forgot=1 => open reset dialog
+  // - /auth?reset=success => show success toast after password update + sign out
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const shouldOpenForgot = params.get("forgot") === "1";
+    const resetSuccess = params.get("reset") === "success";
+
+    if (resetSuccess) {
+      toast({
+        title: "Password updated",
+        description: "Please sign in with your new password.",
+      });
+    }
+
+    if (shouldOpenForgot) {
+      setActiveTab("login");
+      setForgotPasswordOpen(true);
+    }
+
+    if (resetSuccess || shouldOpenForgot) {
+      navigate("/auth", { replace: true });
+    }
+  }, [location.search, navigate, toast]);
+
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -136,7 +168,7 @@ export default function Auth() {
 
     setForgotPasswordLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(forgotPasswordEmail, {
-      redirectTo: `${window.location.origin}/auth`,
+      redirectTo: `${window.location.origin}/reset-password`,
     });
     setForgotPasswordLoading(false);
 

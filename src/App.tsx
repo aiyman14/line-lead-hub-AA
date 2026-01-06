@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +11,7 @@ import { SubscriptionGate } from "@/components/SubscriptionGate";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import SewingUpdate from "./pages/SewingUpdate";
 import FinishingUpdate from "./pages/FinishingUpdate";
@@ -55,16 +56,26 @@ function AppRoutes() {
   const { loading } = useContext(AuthContext)!;
   const location = useLocation();
 
-  const isRecoveryLink = (() => {
-    const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
-    const params = new URLSearchParams(hash);
-    return params.get("type") === "recovery" && !!params.get("access_token");
-  })();
+  const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+  const hashParams = new URLSearchParams(hash);
+  const isRecoveryLink = hashParams.get("type") === "recovery" && !!hashParams.get("access_token");
+  const isForcedPasswordReset =
+    typeof window !== "undefined" && sessionStorage.getItem("pp_force_password_reset") === "1";
 
-  // Some reset emails can land users on "/" (or any route). Intercept and send to /auth
-  // so the reset-password UI can render.
-  if (!loading && isRecoveryLink && location.pathname !== "/auth") {
-    return <Navigate to={`/auth${location.hash}`} replace />;
+  useEffect(() => {
+    if (isRecoveryLink && typeof window !== "undefined") {
+      sessionStorage.setItem("pp_force_password_reset", "1");
+    }
+  }, [isRecoveryLink]);
+
+  // Guard: during password recovery, always force /reset-password first.
+  if (!loading && isRecoveryLink && location.pathname !== "/reset-password") {
+    return <Navigate to={`/reset-password${location.hash}`} replace />;
+  }
+
+  // Guard: if we previously detected a recovery flow, block app navigation until it is completed.
+  if (!loading && isForcedPasswordReset && location.pathname !== "/reset-password" && location.pathname !== "/auth") {
+    return <Navigate to={`/reset-password${location.hash}`} replace />;
   }
 
   if (loading) {
@@ -75,6 +86,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/subscription" element={<Subscription />} />
 
       {/* Protected routes with subscription gate */}
