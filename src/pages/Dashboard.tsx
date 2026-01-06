@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { TargetDetailModal } from "@/components/TargetDetailModal";
+import { CuttingDetailModal } from "@/components/CuttingDetailModal";
+import { StorageBinCardDetailModal } from "@/components/StorageBinCardDetailModal";
 import { TargetVsActualComparison } from "@/components/insights/TargetVsActualComparison";
 import { FinishingDashboard } from "@/components/dashboard/FinishingDashboard";
 import {
@@ -23,6 +25,8 @@ import {
   Plus,
   Crosshair,
   ClipboardCheck,
+  Scissors,
+  Archive,
 } from "lucide-react";
 
 interface DashboardStats {
@@ -106,6 +110,56 @@ interface ActiveBlocker {
   created_at: string;
 }
 
+interface CuttingSubmission {
+  id: string;
+  production_date: string;
+  line_name: string;
+  buyer: string | null;
+  style: string | null;
+  po_number: string | null;
+  colour: string | null;
+  order_qty: number | null;
+  man_power: number | null;
+  marker_capacity: number | null;
+  lay_capacity: number | null;
+  cutting_capacity: number | null;
+  under_qty: number | null;
+  day_cutting: number;
+  total_cutting: number | null;
+  day_input: number;
+  total_input: number | null;
+  balance: number | null;
+  submitted_at: string | null;
+}
+
+interface StorageBinCard {
+  id: string;
+  buyer: string | null;
+  style: string | null;
+  po_number: string | null;
+  supplier_name: string | null;
+  description: string | null;
+  construction: string | null;
+  color: string | null;
+  width: string | null;
+  package_qty: string | null;
+  prepared_by: string | null;
+  transactions: StorageTransaction[];
+  transaction_count: number;
+  latest_balance: number;
+}
+
+interface StorageTransaction {
+  id: string;
+  transaction_date: string;
+  receive_qty: number;
+  issue_qty: number;
+  ttl_receive: number;
+  balance_qty: number;
+  remarks: string | null;
+  created_at: string | null;
+}
+
 export default function Dashboard() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -118,18 +172,24 @@ export default function Dashboard() {
     activeWorkOrders: 0,
     avgEfficiency: 0,
   });
-  const [departmentTab, setDepartmentTab] = useState<'sewing' | 'finishing'>('sewing');
+  const [departmentTab, setDepartmentTab] = useState<'sewing' | 'finishing' | 'cutting' | 'storage'>('sewing');
   const [sewingTargets, setSewingTargets] = useState<TargetSubmission[]>([]);
   const [finishingTargets, setFinishingTargets] = useState<TargetSubmission[]>([]);
   const [sewingEndOfDay, setSewingEndOfDay] = useState<EndOfDaySubmission[]>([]);
   const [finishingEndOfDay, setFinishingEndOfDay] = useState<EndOfDaySubmission[]>([]);
+  const [cuttingSubmissions, setCuttingSubmissions] = useState<CuttingSubmission[]>([]);
+  const [storageBinCards, setStorageBinCards] = useState<StorageBinCard[]>([]);
   const [allLines, setAllLines] = useState<LineInfo[]>([]);
   const [activeBlockers, setActiveBlockers] = useState<ActiveBlocker[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
   const [selectedTarget, setSelectedTarget] = useState<TargetSubmission | null>(null);
+  const [selectedCutting, setSelectedCutting] = useState<CuttingSubmission | null>(null);
+  const [selectedBinCard, setSelectedBinCard] = useState<StorageBinCard | null>(null);
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [targetModalOpen, setTargetModalOpen] = useState(false);
+  const [cuttingModalOpen, setCuttingModalOpen] = useState(false);
+  const [storageModalOpen, setStorageModalOpen] = useState(false);
 
   const canViewDashboard = hasRole("supervisor") || isAdminOrHigher();
 
@@ -211,6 +271,22 @@ export default function Dashboard() {
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('created_at', { ascending: false });
+
+      // Fetch cutting actuals for today
+      const { data: cuttingActualsData } = await supabase
+        .from('cutting_actuals')
+        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style, color)')
+        .eq('factory_id', profile.factory_id)
+        .eq('production_date', today)
+        .order('submitted_at', { ascending: false });
+
+      // Fetch storage bin cards with transactions from today
+      const { data: binCardsData } = await supabase
+        .from('storage_bin_cards')
+        .select('*, work_orders(po_number, buyer, style), storage_bin_card_transactions(*)')
+        .eq('factory_id', profile.factory_id)
+        .order('updated_at', { ascending: false })
+        .limit(20);
 
       // Blocker counts
       const { count: sewingBlockersCount } = await supabase
@@ -340,6 +416,63 @@ export default function Dashboard() {
           };
         });
 
+      // Format cutting submissions
+      const formattedCutting: CuttingSubmission[] = (cuttingActualsData || []).map((c: any) => ({
+        id: c.id,
+        production_date: c.production_date,
+        line_name: c.lines?.name || c.lines?.line_id || 'Unknown',
+        buyer: c.work_orders?.buyer || c.buyer || null,
+        style: c.work_orders?.style || c.style || null,
+        po_number: c.work_orders?.po_number || c.po_no || null,
+        colour: c.work_orders?.color || c.colour || null,
+        order_qty: c.order_qty,
+        man_power: c.man_power || null,
+        marker_capacity: c.marker_capacity || null,
+        lay_capacity: c.lay_capacity || null,
+        cutting_capacity: c.cutting_capacity || null,
+        under_qty: c.under_qty || null,
+        day_cutting: c.day_cutting,
+        total_cutting: c.total_cutting,
+        day_input: c.day_input,
+        total_input: c.total_input,
+        balance: c.balance,
+        submitted_at: c.submitted_at,
+      }));
+
+      // Format storage bin cards
+      const formattedBinCards: StorageBinCard[] = (binCardsData || []).map((b: any) => {
+        const transactions = (b.storage_bin_card_transactions || []).sort(
+          (a: any, b: any) => new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
+        );
+        const latestBalance = transactions.length > 0 ? transactions[transactions.length - 1].balance_qty : 0;
+        
+        return {
+          id: b.id,
+          buyer: b.work_orders?.buyer || b.buyer || null,
+          style: b.work_orders?.style || b.style || null,
+          po_number: b.work_orders?.po_number || null,
+          supplier_name: b.supplier_name,
+          description: b.description,
+          construction: b.construction,
+          color: b.color,
+          width: b.width,
+          package_qty: b.package_qty,
+          prepared_by: b.prepared_by,
+          transactions: transactions.map((t: any) => ({
+            id: t.id,
+            transaction_date: t.transaction_date,
+            receive_qty: t.receive_qty,
+            issue_qty: t.issue_qty,
+            ttl_receive: t.ttl_receive,
+            balance_qty: t.balance_qty,
+            remarks: t.remarks,
+            created_at: t.created_at,
+          })),
+          transaction_count: transactions.length,
+          latest_balance: latestBalance,
+        };
+      });
+
       // Fetch active blockers
       const { data: sewingBlockers } = await supabase
         .from('production_updates_sewing')
@@ -386,6 +519,8 @@ export default function Dashboard() {
       setFinishingTargets(formattedFinishingTargets);
       setSewingEndOfDay(formattedSewingEOD);
       setFinishingEndOfDay(formattedFinishingEOD);
+      setCuttingSubmissions(formattedCutting);
+      setStorageBinCards(formattedBinCards);
       setAllLines(linesData || []);
       setActiveBlockers(blockers.slice(0, 5));
     } catch (error) {
@@ -463,8 +598,8 @@ export default function Dashboard() {
       </div>
 
       {/* Department Tabs */}
-      <Tabs value={departmentTab} onValueChange={(v) => setDepartmentTab(v as 'sewing' | 'finishing')} className="space-y-4">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+      <Tabs value={departmentTab} onValueChange={(v) => setDepartmentTab(v as 'sewing' | 'finishing' | 'cutting' | 'storage')} className="space-y-4">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="sewing" className="flex items-center gap-2">
             <Factory className="h-4 w-4" />
             Sewing
@@ -472,6 +607,14 @@ export default function Dashboard() {
           <TabsTrigger value="finishing" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
             Finishing
+          </TabsTrigger>
+          <TabsTrigger value="cutting" className="flex items-center gap-2">
+            <Scissors className="h-4 w-4" />
+            Cutting
+          </TabsTrigger>
+          <TabsTrigger value="storage" className="flex items-center gap-2">
+            <Archive className="h-4 w-4" />
+            Storage
           </TabsTrigger>
         </TabsList>
 
@@ -664,6 +807,147 @@ export default function Dashboard() {
         <TabsContent value="finishing" className="space-y-6">
           <FinishingDashboard />
         </TabsContent>
+
+        {/* Cutting Tab Content */}
+        <TabsContent value="cutting" className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Scissors className="h-5 w-5 text-warning" />
+                Today's Cutting Submissions
+              </CardTitle>
+              <Link to="/cutting/submissions">
+                <Button variant="ghost" size="sm">
+                  View All
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
+                  ))}
+                </div>
+              ) : cuttingSubmissions.length > 0 ? (
+                <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                  {cuttingSubmissions.map((cutting) => (
+                    <div
+                      key={cutting.id}
+                      onClick={() => {
+                        setSelectedCutting(cutting);
+                        setCuttingModalOpen(true);
+                      }}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-warning/10">
+                          <Scissors className="h-5 w-5 text-warning" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{cutting.line_name}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {cutting.po_number || 'No PO'} • {cutting.style || 'No style'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-lg">{cutting.day_cutting.toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">cut today</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Scissors className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No cutting submissions today</p>
+                  <Link to="/cutting/form">
+                    <Button variant="link" size="sm" className="mt-2">
+                      Add cutting submission
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Storage Tab Content */}
+        <TabsContent value="storage" className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Archive className="h-5 w-5 text-primary" />
+                Bin Cards
+              </CardTitle>
+              <Link to="/storage">
+                <Button variant="ghost" size="sm">
+                  View All
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
+                  ))}
+                </div>
+              ) : storageBinCards.length > 0 ? (
+                <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                  {storageBinCards.map((binCard) => (
+                    <div
+                      key={binCard.id}
+                      onClick={() => {
+                        setSelectedBinCard(binCard);
+                        setStorageModalOpen(true);
+                      }}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-primary/10">
+                          <Archive className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{binCard.po_number || 'No PO'}</span>
+                            {binCard.transaction_count > 0 && (
+                              <StatusBadge variant="info" size="sm">
+                                {binCard.transaction_count} txns
+                              </StatusBadge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {binCard.buyer || 'No buyer'} • {binCard.style || 'No style'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-lg">{binCard.latest_balance.toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">balance</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Archive className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No bin cards found</p>
+                  <Link to="/storage/bin-card">
+                    <Button variant="link" size="sm" className="mt-2">
+                      Create bin card
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Active Blockers */}
@@ -740,6 +1024,19 @@ export default function Dashboard() {
         target={selectedTarget}
         open={targetModalOpen}
         onOpenChange={setTargetModalOpen}
+      />
+
+      <CuttingDetailModal
+        cutting={selectedCutting}
+        open={cuttingModalOpen}
+        onOpenChange={setCuttingModalOpen}
+      />
+
+      <StorageBinCardDetailModal
+        binCard={selectedBinCard}
+        transactions={selectedBinCard?.transactions || []}
+        open={storageModalOpen}
+        onOpenChange={setStorageModalOpen}
       />
     </div>
   );
