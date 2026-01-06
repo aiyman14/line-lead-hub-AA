@@ -914,8 +914,8 @@ export default function Dashboard() {
                   ))}
                 </div>
               ) : storageBinCards.length > 0 ? (
-                <div className="w-full overflow-x-auto pb-2">
-                  <div className="flex gap-3 md:flex-col md:gap-3 min-w-max md:min-w-0 md:max-h-[500px] md:overflow-y-auto">
+                <div className="w-full overflow-x-auto">
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto min-w-[320px]">
                     {storageBinCards.map((binCard) => (
                       <div
                         key={binCard.id}
@@ -923,22 +923,22 @@ export default function Dashboard() {
                           setSelectedBinCard(binCard);
                           setStorageModalOpen(true);
                         }}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer min-w-[280px] md:min-w-0 md:w-full"
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-primary/10 shrink-0">
                             <Archive className="h-5 w-5 text-primary" />
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium truncate">{binCard.po_number || 'No PO'}</span>
+                            <div className="flex items-center gap-2 flex-nowrap">
+                              <span className="font-medium whitespace-nowrap">{binCard.po_number || 'No PO'}</span>
                               {binCard.transaction_count > 0 && (
                                 <StatusBadge variant="info" size="sm">
                                   {binCard.transaction_count} txns
                                 </StatusBadge>
                               )}
                             </div>
-                            <p className="text-sm text-muted-foreground truncate">
+                            <p className="text-sm text-muted-foreground whitespace-nowrap">
                               {binCard.buyer || 'No buyer'} • {binCard.style || 'No style'}
                             </p>
                           </div>
