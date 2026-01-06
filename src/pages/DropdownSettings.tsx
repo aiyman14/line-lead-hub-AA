@@ -22,16 +22,32 @@ import {
   Users,
   TrendingUp,
   Target,
-  ArrowUp,
-  ArrowDown,
-  Filter
+  ArrowUp
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface DropdownOption {
   id: string;
   label: string;
   sort_order: number;
   is_active: boolean;
+  code?: string;
 }
 
 type OptionType = 'stages' | 'stage_progress' | 'next_milestone' | 'blocker_type' | 'blocker_owner' | 'blocker_impact';
@@ -87,6 +103,67 @@ const OPTION_CONFIGS = {
   },
 };
 
+interface SortableRowProps {
+  opt: DropdownOption;
+  hasCode: boolean;
+  onEdit: (opt: DropdownOption) => void;
+  onDelete: (id: string) => void;
+  onToggleActive: (id: string, currentValue: boolean) => void;
+}
+
+function SortableRow({ opt, hasCode, onEdit, onDelete, onToggleActive }: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: opt.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className={`${!opt.is_active ? 'opacity-60' : ''} ${isDragging ? 'bg-muted' : ''}`}
+    >
+      <TableCell>
+        <div
+          className="flex items-center justify-center cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
+      </TableCell>
+      {hasCode && (
+        <TableCell className="font-mono text-sm">{opt.code || '-'}</TableCell>
+      )}
+      <TableCell>{opt.label}</TableCell>
+      <TableCell>
+        <Switch
+          checked={opt.is_active}
+          onCheckedChange={() => onToggleActive(opt.id, opt.is_active)}
+        />
+      </TableCell>
+      <TableCell className="text-right">
+        <Button variant="ghost" size="icon" onClick={() => onEdit(opt)}>
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => onDelete(opt.id)}>
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export default function DropdownSettings() {
   const { profile, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
@@ -117,6 +194,13 @@ export default function DropdownSettings() {
   const [formCode, setFormCode] = useState('');
   const [formSortOrder, setFormSortOrder] = useState('0');
   const [formActive, setFormActive] = useState(true);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Filtered options based on status filter
   const getFilteredOptions = (optionsList: DropdownOption[]) => {
@@ -154,10 +238,10 @@ export default function DropdownSettings() {
       ]);
       
       setOptions({
-        stages: (stagesRes.data || []).map(s => ({ id: s.id, label: s.name, sort_order: s.sequence || 0, is_active: s.is_active, code: s.code })) as any[],
+        stages: (stagesRes.data || []).map(s => ({ id: s.id, label: s.name, sort_order: s.sequence || 0, is_active: s.is_active, code: s.code })),
         stage_progress: (stageProgressRes.data || []).map(s => ({ id: s.id, label: s.label, sort_order: s.sort_order || 0, is_active: s.is_active })),
         next_milestone: (nextMilestoneRes.data || []).map(s => ({ id: s.id, label: s.label, sort_order: s.sort_order || 0, is_active: s.is_active })),
-        blocker_type: (blockerTypeRes.data || []).map(s => ({ id: s.id, label: s.name, sort_order: 0, is_active: s.is_active, code: s.code })) as any[],
+        blocker_type: (blockerTypeRes.data || []).map(s => ({ id: s.id, label: s.name, sort_order: 0, is_active: s.is_active, code: s.code })),
         blocker_owner: (blockerOwnerRes.data || []).map(s => ({ id: s.id, label: s.label, sort_order: s.sort_order || 0, is_active: s.is_active })),
         blocker_impact: (blockerImpactRes.data || []).map(s => ({ id: s.id, label: s.label, sort_order: s.sort_order || 0, is_active: s.is_active })),
       });
@@ -323,43 +407,42 @@ export default function DropdownSettings() {
     }
   }
 
-  async function moveItem(id: string, direction: 'up' | 'down') {
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    
+    if (!over || active.id === over.id) return;
+    
     const currentOptions = [...options[activeTab]];
-    const index = currentOptions.findIndex(o => o.id === id);
-    if (
-      (direction === 'up' && index === 0) ||
-      (direction === 'down' && index === currentOptions.length - 1)
-    ) return;
+    const oldIndex = currentOptions.findIndex(o => o.id === active.id);
+    const newIndex = currentOptions.findIndex(o => o.id === over.id);
     
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (oldIndex === -1 || newIndex === -1) return;
     
-    // Swap items in the array
-    const temp = currentOptions[index];
-    currentOptions[index] = currentOptions[newIndex];
-    currentOptions[newIndex] = temp;
+    const reorderedOptions = arrayMove(currentOptions, oldIndex, newIndex);
     
     // Update local state immediately for responsive UI
     setOptions(prev => ({
       ...prev,
-      [activeTab]: currentOptions
+      [activeTab]: reorderedOptions
     }));
     
     try {
-      // Reassign sequential sort_order/sequence values to ALL items
+      // Get table name and sort field
       const tableName = activeTab === 'stages' ? 'stages' : 
                         activeTab === 'blocker_type' ? 'blocker_types' :
                         OPTION_CONFIGS[activeTab].table;
       const sortField = activeTab === 'stages' ? 'sequence' : 'sort_order';
       
-      for (let i = 0; i < currentOptions.length; i++) {
+      // Update all items with new sequential sort order
+      for (let i = 0; i < reorderedOptions.length; i++) {
         const { error } = await supabase
           .from(tableName as any)
           .update({ [sortField]: i + 1 })
-          .eq('id', currentOptions[i].id);
+          .eq('id', reorderedOptions[i].id);
         if (error) throw error;
       }
       
-      await fetchAllOptions();
+      toast({ title: "Order updated" });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
       await fetchAllOptions(); // Revert on error
@@ -367,7 +450,6 @@ export default function DropdownSettings() {
   }
 
   const config = OPTION_CONFIGS[activeTab];
-  const Icon = config.icon;
 
   if (loading) {
     return (
@@ -485,88 +567,67 @@ export default function DropdownSettings() {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">Order</TableHead>
-                      {cfg.hasCode && <TableHead>Code</TableHead>}
-                      <TableHead>Label</TableHead>
-                      <TableHead>Active</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(() => {
-                      const filteredOpts = getFilteredOptions(options[key as OptionType]);
-                      const allOpts = options[key as OptionType];
-                      
-                      if (allOpts.length === 0) {
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12"></TableHead>
+                        {cfg.hasCode && <TableHead>Code</TableHead>}
+                        <TableHead>Label</TableHead>
+                        <TableHead>Active</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(() => {
+                        const filteredOpts = getFilteredOptions(options[key as OptionType]);
+                        const allOpts = options[key as OptionType];
+                        
+                        if (allOpts.length === 0) {
+                          return (
+                            <TableRow>
+                              <TableCell colSpan={cfg.hasCode ? 5 : 4} className="text-center text-muted-foreground">
+                                No options found. Add your first option.
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                        
+                        if (filteredOpts.length === 0) {
+                          return (
+                            <TableRow>
+                              <TableCell colSpan={cfg.hasCode ? 5 : 4} className="text-center text-muted-foreground">
+                                No {statusFilter} options found.
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                        
                         return (
-                          <TableRow>
-                            <TableCell colSpan={cfg.hasCode ? 5 : 4} className="text-center text-muted-foreground">
-                              No options found. Add your first option.
-                            </TableCell>
-                          </TableRow>
+                          <SortableContext
+                            items={filteredOpts.map(o => o.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {filteredOpts.map((opt) => (
+                              <SortableRow
+                                key={opt.id}
+                                opt={opt}
+                                hasCode={cfg.hasCode}
+                                onEdit={openEditDialog}
+                                onDelete={handleDelete}
+                                onToggleActive={toggleActive}
+                              />
+                            ))}
+                          </SortableContext>
                         );
-                      }
-                      
-                      if (filteredOpts.length === 0) {
-                        return (
-                          <TableRow>
-                            <TableCell colSpan={cfg.hasCode ? 5 : 4} className="text-center text-muted-foreground">
-                              No {statusFilter} options found.
-                            </TableCell>
-                          </TableRow>
-                        );
-                      }
-                      
-                      return filteredOpts.map((opt, idx) => (
-                        <TableRow key={opt.id} className={!opt.is_active ? 'opacity-60' : ''}>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => moveItem(opt.id, 'up')}
-                                disabled={idx === 0}
-                              >
-                                <ArrowUp className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => moveItem(opt.id, 'down')}
-                                disabled={idx === filteredOpts.length - 1}
-                              >
-                                <ArrowDown className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                          {cfg.hasCode && (
-                            <TableCell className="font-mono text-sm">{(opt as any).code || '-'}</TableCell>
-                          )}
-                          <TableCell>{opt.label}</TableCell>
-                          <TableCell>
-                            <Switch
-                              checked={opt.is_active}
-                              onCheckedChange={() => toggleActive(opt.id, opt.is_active)}
-                            />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="icon" onClick={() => openEditDialog(opt)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(opt.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ));
-                    })()}
-                  </TableBody>
-                </Table>
+                      })()}
+                    </TableBody>
+                  </Table>
+                </DndContext>
               </CardContent>
             </Card>
           </TabsContent>
