@@ -397,16 +397,16 @@ export default function ThisWeek() {
           <CardTitle className="text-base">Daily Breakdown</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full text-sm min-w-[500px]">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left py-2 font-medium">Day</th>
-                  <th className="text-right py-2 font-medium">Sewing Output</th>
-                  <th className="text-right py-2 font-medium">Poly</th>
-                  <th className="text-right py-2 font-medium">Carton</th>
-                  <th className="text-right py-2 font-medium">Updates</th>
-                  <th className="text-right py-2 font-medium">Blockers</th>
+                  <th className="text-left py-2 font-medium whitespace-nowrap">Day</th>
+                  <th className="text-right py-2 font-medium whitespace-nowrap">Sewing Output</th>
+                  <th className="text-right py-2 font-medium whitespace-nowrap">Poly</th>
+                  <th className="text-right py-2 font-medium whitespace-nowrap">Carton</th>
+                  <th className="text-right py-2 font-medium whitespace-nowrap">Updates</th>
+                  <th className="text-right py-2 font-medium whitespace-nowrap">Blockers</th>
                 </tr>
               </thead>
               <tbody>
@@ -415,15 +415,15 @@ export default function ThisWeek() {
                   const isFuture = new Date(day.date) > new Date();
                   return (
                     <tr key={day.date} className={`border-b ${isToday ? 'bg-primary/5' : ''} ${isFuture ? 'text-muted-foreground' : ''}`}>
-                      <td className="py-3">
+                      <td className="py-3 whitespace-nowrap">
                         <span className="font-medium">{day.dayName}</span>
                         {isToday && <span className="ml-2 text-xs text-primary">(Today)</span>}
                       </td>
-                      <td className="text-right font-mono">{isFuture ? '-' : day.sewingOutput.toLocaleString()}</td>
-                      <td className="text-right font-mono">{isFuture ? '-' : day.finishingPoly.toLocaleString()}</td>
-                      <td className="text-right font-mono">{isFuture ? '-' : day.finishingCarton.toLocaleString()}</td>
-                      <td className="text-right">{isFuture ? '-' : day.sewingUpdates + day.finishingUpdates}</td>
-                      <td className={`text-right ${day.blockers > 0 ? 'text-warning font-medium' : ''}`}>
+                      <td className="text-right font-mono whitespace-nowrap">{isFuture ? '-' : day.sewingOutput.toLocaleString()}</td>
+                      <td className="text-right font-mono whitespace-nowrap">{isFuture ? '-' : day.finishingPoly.toLocaleString()}</td>
+                      <td className="text-right font-mono whitespace-nowrap">{isFuture ? '-' : day.finishingCarton.toLocaleString()}</td>
+                      <td className="text-right whitespace-nowrap">{isFuture ? '-' : day.sewingUpdates + day.finishingUpdates}</td>
+                      <td className={`text-right whitespace-nowrap ${day.blockers > 0 ? 'text-warning font-medium' : ''}`}>
                         {isFuture ? '-' : day.blockers}
                       </td>
                     </tr>
