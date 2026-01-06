@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Package, Search, FileText, AlertTriangle, Download, Calendar, CalendarIcon, X } from "lucide-react";
+import { Loader2, Package, Search, FileText, AlertTriangle, Download, Calendar, CalendarIcon, X, XCircle } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import {
@@ -46,6 +46,7 @@ interface BinCardWithWorkOrder {
     style: string;
     item: string | null;
   };
+  latestBalance?: number;
 }
 
 interface Transaction {
@@ -91,6 +92,12 @@ export default function StorageDashboard() {
   // List date filters
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  
+  // Track dismissed low stock warnings (persisted in localStorage)
+  const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(() => {
+    const stored = localStorage.getItem(`dismissed_low_stock_${profile?.factory_id}`);
+    return stored ? new Set(JSON.parse(stored)) : new Set();
+  });
 
   const canAccess = isAdminOrHigher();
 
@@ -136,13 +143,15 @@ export default function StorageDashboard() {
         .order("updated_at", { ascending: false });
       
       if (cardsError) throw cardsError;
-      setBinCards((cardsData || []) as BinCardWithWorkOrder[]);
       
       const cardIds = (cardsData || []).map(c => c.id);
       let totalCurrentBalance = 0;
       let lowBalanceCount = 0;
       let monthlyReceived = 0;
       let monthlyIssued = 0;
+      
+      // Get latest balance for each card
+      const latestByCard = new Map<string, number>();
       
       if (cardIds.length > 0) {
         // Get all transactions for stats
@@ -153,8 +162,6 @@ export default function StorageDashboard() {
           .order("transaction_date", { ascending: false })
           .order("created_at", { ascending: false });
         
-        // Get latest balance for each card
-        const latestByCard = new Map<string, number>();
         (allTxns || []).forEach(txn => {
           if (!latestByCard.has(txn.bin_card_id)) {
             latestByCard.set(txn.bin_card_id, txn.balance_qty);
@@ -173,6 +180,14 @@ export default function StorageDashboard() {
           }
         });
       }
+      
+      // Attach latest balance to each card
+      const cardsWithBalance = (cardsData || []).map(card => ({
+        ...card,
+        latestBalance: latestByCard.get(card.id),
+      })) as BinCardWithWorkOrder[];
+      
+      setBinCards(cardsWithBalance);
       
       setStats({
         totalCurrentBalance,
@@ -226,6 +241,18 @@ export default function StorageDashboard() {
     setDateFrom(undefined);
     setDateTo(undefined);
     setSearchTerm("");
+  }
+
+  function dismissLowStockWarning(cardId: string) {
+    const updated = new Set(dismissedWarnings);
+    updated.add(cardId);
+    setDismissedWarnings(updated);
+    localStorage.setItem(`dismissed_low_stock_${profile?.factory_id}`, JSON.stringify(Array.from(updated)));
+  }
+
+  function isLowStock(card: BinCardWithWorkOrder): boolean {
+    if (card.latestBalance === undefined) return false;
+    return card.latestBalance <= lowStockThreshold && !dismissedWarnings.has(card.id);
   }
 
   const hasActiveFilters = dateFrom || dateTo || searchTerm;
@@ -492,33 +519,63 @@ export default function StorageDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Status</TableHead>
                         <TableHead>PO Number</TableHead>
                         <TableHead>Buyer</TableHead>
                         <TableHead>Style</TableHead>
+                        <TableHead>Balance</TableHead>
                         <TableHead>Description</TableHead>
-                        <TableHead>Prepared By</TableHead>
                         <TableHead>Last Updated</TableHead>
                         <TableHead></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredCards.map(card => (
-                        <TableRow key={card.id}>
-                          <TableCell className="font-medium">{card.work_orders.po_number}</TableCell>
-                          <TableCell>{card.work_orders.buyer}</TableCell>
-                          <TableCell>{card.work_orders.style}</TableCell>
-                          <TableCell className="max-w-[200px] truncate">
-                            {card.description || card.work_orders.item || "-"}
-                          </TableCell>
-                          <TableCell>{card.prepared_by || "-"}</TableCell>
-                          <TableCell>{format(new Date(card.updated_at), "dd/MM/yyyy")}</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" onClick={() => openCardDetail(card)}>
-                              View Ledger
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {filteredCards.map(card => {
+                        const lowStock = isLowStock(card);
+                        return (
+                          <TableRow key={card.id} className={lowStock ? "bg-amber-500/10" : ""}>
+                            <TableCell>
+                              {lowStock ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-600">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Low
+                                  </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      dismissLowStockWarning(card.id);
+                                    }}
+                                    title="Dismiss warning"
+                                  >
+                                    <XCircle className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-medium">{card.work_orders.po_number}</TableCell>
+                            <TableCell>{card.work_orders.buyer}</TableCell>
+                            <TableCell>{card.work_orders.style}</TableCell>
+                            <TableCell className={card.latestBalance !== undefined && card.latestBalance <= lowStockThreshold ? "font-medium text-amber-600" : ""}>
+                              {card.latestBalance !== undefined ? card.latestBalance.toLocaleString() : "-"}
+                            </TableCell>
+                            <TableCell className="max-w-[200px] truncate">
+                              {card.description || card.work_orders.item || "-"}
+                            </TableCell>
+                            <TableCell>{format(new Date(card.updated_at), "dd/MM/yyyy")}</TableCell>
+                            <TableCell>
+                              <Button variant="ghost" size="sm" onClick={() => openCardDetail(card)}>
+                                View Ledger
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
