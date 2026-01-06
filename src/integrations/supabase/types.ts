@@ -1500,6 +1500,135 @@ export type Database = {
           },
         ]
       }
+      storage_bin_card_transactions: {
+        Row: {
+          balance_qty: number
+          bin_card_id: string
+          created_at: string | null
+          factory_id: string
+          id: string
+          issue_qty: number
+          receive_qty: number
+          remarks: string | null
+          submitted_by: string | null
+          transaction_date: string
+          ttl_receive: number
+        }
+        Insert: {
+          balance_qty?: number
+          bin_card_id: string
+          created_at?: string | null
+          factory_id: string
+          id?: string
+          issue_qty?: number
+          receive_qty?: number
+          remarks?: string | null
+          submitted_by?: string | null
+          transaction_date?: string
+          ttl_receive?: number
+        }
+        Update: {
+          balance_qty?: number
+          bin_card_id?: string
+          created_at?: string | null
+          factory_id?: string
+          id?: string
+          issue_qty?: number
+          receive_qty?: number
+          remarks?: string | null
+          submitted_by?: string | null
+          transaction_date?: string
+          ttl_receive?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storage_bin_card_transactions_bin_card_id_fkey"
+            columns: ["bin_card_id"]
+            isOneToOne: false
+            referencedRelation: "storage_bin_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storage_bin_card_transactions_factory_id_fkey"
+            columns: ["factory_id"]
+            isOneToOne: false
+            referencedRelation: "factory_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      storage_bin_cards: {
+        Row: {
+          buyer: string | null
+          color: string | null
+          construction: string | null
+          created_at: string | null
+          description: string | null
+          factory_id: string
+          id: string
+          is_header_locked: boolean | null
+          package_qty: string | null
+          prepared_by: string | null
+          prepared_by_user_id: string | null
+          style: string | null
+          supplier_name: string | null
+          updated_at: string | null
+          width: string | null
+          work_order_id: string
+        }
+        Insert: {
+          buyer?: string | null
+          color?: string | null
+          construction?: string | null
+          created_at?: string | null
+          description?: string | null
+          factory_id: string
+          id?: string
+          is_header_locked?: boolean | null
+          package_qty?: string | null
+          prepared_by?: string | null
+          prepared_by_user_id?: string | null
+          style?: string | null
+          supplier_name?: string | null
+          updated_at?: string | null
+          width?: string | null
+          work_order_id: string
+        }
+        Update: {
+          buyer?: string | null
+          color?: string | null
+          construction?: string | null
+          created_at?: string | null
+          description?: string | null
+          factory_id?: string
+          id?: string
+          is_header_locked?: boolean | null
+          package_qty?: string | null
+          prepared_by?: string | null
+          prepared_by_user_id?: string | null
+          style?: string | null
+          supplier_name?: string | null
+          updated_at?: string | null
+          width?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storage_bin_cards_factory_id_fkey"
+            columns: ["factory_id"]
+            isOneToOne: false
+            referencedRelation: "factory_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storage_bin_cards_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       units: {
         Row: {
           code: string
@@ -1660,61 +1789,76 @@ export type Database = {
           actual_ex_factory: string | null
           buyer: string
           color: string | null
+          construction: string | null
           created_at: string | null
+          description: string | null
           factory_id: string
           id: string
           is_active: boolean | null
           item: string | null
           line_id: string | null
           order_qty: number
+          package_qty: number | null
           planned_ex_factory: string | null
           po_number: string
           smv: number | null
           status: string | null
           style: string
+          supplier_name: string | null
           target_per_day: number | null
           target_per_hour: number | null
           updated_at: string | null
+          width: string | null
         }
         Insert: {
           actual_ex_factory?: string | null
           buyer: string
           color?: string | null
+          construction?: string | null
           created_at?: string | null
+          description?: string | null
           factory_id: string
           id?: string
           is_active?: boolean | null
           item?: string | null
           line_id?: string | null
           order_qty?: number
+          package_qty?: number | null
           planned_ex_factory?: string | null
           po_number: string
           smv?: number | null
           status?: string | null
           style: string
+          supplier_name?: string | null
           target_per_day?: number | null
           target_per_hour?: number | null
           updated_at?: string | null
+          width?: string | null
         }
         Update: {
           actual_ex_factory?: string | null
           buyer?: string
           color?: string | null
+          construction?: string | null
           created_at?: string | null
+          description?: string | null
           factory_id?: string
           id?: string
           is_active?: boolean | null
           item?: string | null
           line_id?: string | null
           order_qty?: number
+          package_qty?: number | null
           planned_ex_factory?: string | null
           po_number?: string
           smv?: number | null
           status?: string | null
           style?: string
+          supplier_name?: string | null
           target_per_day?: number | null
           target_per_hour?: number | null
           updated_at?: string | null
+          width?: string | null
         }
         Relationships: [
           {
@@ -1753,6 +1897,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      has_storage_role: { Args: { _user_id: string }; Returns: boolean }
       is_admin_or_higher: { Args: { _user_id: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
       user_belongs_to_factory: {
@@ -1761,7 +1906,13 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "worker" | "supervisor" | "admin" | "owner" | "superadmin"
+      app_role:
+        | "worker"
+        | "supervisor"
+        | "admin"
+        | "owner"
+        | "superadmin"
+        | "storage"
       blocker_impact: "low" | "medium" | "high" | "critical"
       blocker_status: "open" | "in_progress" | "resolved"
       subscription_tier:
@@ -1900,7 +2051,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["worker", "supervisor", "admin", "owner", "superadmin"],
+      app_role: [
+        "worker",
+        "supervisor",
+        "admin",
+        "owner",
+        "superadmin",
+        "storage",
+      ],
       blocker_impact: ["low", "medium", "high", "critical"],
       blocker_status: ["open", "in_progress", "resolved"],
       subscription_tier: [

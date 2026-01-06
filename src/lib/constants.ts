@@ -10,6 +10,7 @@ export const ROLES = {
   ADMIN: 'admin',
   OWNER: 'owner',
   SUPERADMIN: 'superadmin',
+  STORAGE: 'storage',
 } as const;
 
 export type AppRole = typeof ROLES[keyof typeof ROLES];
@@ -21,6 +22,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   admin: 'Admin',
   owner: 'Owner',
   superadmin: 'Super Admin',
+  storage: 'Storage',
 };
 
 // Blocker impact levels
@@ -167,6 +169,7 @@ export const NAV_ITEMS = {
     { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
     { path: '/lines', label: 'Lines', icon: 'Rows3' },
     { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
+    { path: '/storage/dashboard', label: 'Storage', icon: 'Package' },
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
@@ -180,6 +183,7 @@ export const NAV_ITEMS = {
     { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
     { path: '/lines', label: 'Lines', icon: 'Rows3' },
     { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
+    { path: '/storage/dashboard', label: 'Storage', icon: 'Package' },
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
@@ -194,6 +198,7 @@ export const NAV_ITEMS = {
     { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
     { path: '/lines', label: 'Lines', icon: 'Rows3' },
     { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
+    { path: '/storage/dashboard', label: 'Storage', icon: 'Package' },
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
     { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
     { path: '/users', label: 'Users', icon: 'Users' },
@@ -204,5 +209,10 @@ export const NAV_ITEMS = {
     { path: '/admin/tenants', label: 'Tenants', icon: 'Building2' },
     { path: '/admin/plans', label: 'Plans', icon: 'CreditCard' },
     { path: '/admin/support', label: 'Support', icon: 'HeadphonesIcon' },
+  ],
+  storage: [
+    { path: '/storage', label: 'Bin Card Entry', icon: 'Package' },
+    { path: '/storage/history', label: 'My Bin Cards', icon: 'FileText' },
+    { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
 };

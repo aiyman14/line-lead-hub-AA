@@ -100,6 +100,9 @@ const navLabelKeys: Record<string, string> = {
   'Tenants': 'nav.tenants',
   'Plans': 'nav.plans',
   'Support': 'nav.support',
+  'Storage': 'nav.storage',
+  'Bin Card Entry': 'nav.binCardEntry',
+  'My Bin Cards': 'nav.myBinCards',
 };
 
 interface NavItem {
@@ -123,10 +126,12 @@ export function AppSidebar() {
   };
 
   // Get highest role for navigation
+  // Note: storage is a separate role, not in hierarchy - check it first
+  const isStorageRole = roles.some(ur => ur.role === 'storage');
   const roleHierarchy = ['superadmin', 'owner', 'admin', 'supervisor', 'worker'];
   const highestRole = roleHierarchy.find(r => 
     roles.some(ur => ur.role === r)
-  ) || 'worker';
+  ) || (isStorageRole ? 'storage' : 'worker');
 
   // Get nav items based on role and department
   let navItems = NAV_ITEMS[highestRole as keyof typeof NAV_ITEMS] || NAV_ITEMS.worker;

@@ -47,6 +47,7 @@ interface AuthContextType {
   hasRole: (role: AppRole) => boolean;
   isAdminOrHigher: () => boolean;
   isSuperAdmin: () => boolean;
+  isStorageUser: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -197,6 +198,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return roles.some(r => r.role === 'superadmin');
   }
 
+  function isStorageUser(): boolean {
+    return roles.some(r => r.role === 'storage');
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -212,6 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hasRole,
         isAdminOrHigher,
         isSuperAdmin,
+        isStorageUser,
       }}
     >
       {children}

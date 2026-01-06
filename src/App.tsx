@@ -39,6 +39,9 @@ import Billing from "./pages/Billing";
 import BillingPlan from "./pages/BillingPlan";
 import NotFound from "./pages/NotFound";
 import ReportBlocker from "./pages/ReportBlocker";
+import StorageBinCard from "./pages/StorageBinCard";
+import StorageHistory from "./pages/StorageHistory";
+import StorageDashboard from "./pages/StorageDashboard";
 
 const queryClient = new QueryClient();
 
@@ -83,6 +86,10 @@ function AppRoutes() {
         <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
         <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />
         <Route path="/billing-plan" element={<BillingPlan />} />
+        {/* Storage module routes */}
+        <Route path="/storage" element={<SubscriptionGate><StorageBinCard /></SubscriptionGate>} />
+        <Route path="/storage/history" element={<SubscriptionGate><StorageHistory /></SubscriptionGate>} />
+        <Route path="/storage/dashboard" element={<SubscriptionGate><StorageDashboard /></SubscriptionGate>} />
       </Route>
       
       <Route path="*" element={<NotFound />} />

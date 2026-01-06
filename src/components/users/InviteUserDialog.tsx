@@ -37,7 +37,7 @@ interface Line {
   name: string | null;
 }
 
-const ASSIGNABLE_ROLES: AppRole[] = ['worker', 'supervisor', 'admin'];
+const ASSIGNABLE_ROLES: AppRole[] = ['worker', 'supervisor', 'admin', 'storage'];
 const DEPARTMENTS = ['sewing', 'finishing', 'both'] as const;
 type Department = typeof DEPARTMENTS[number];
 
