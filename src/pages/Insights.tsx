@@ -596,42 +596,44 @@ export default function Insights() {
         </h2>
 
         {/* Output Trend Chart */}
-        <Card>
+        <Card className="w-full overflow-hidden">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               Daily Output & Efficiency Trend
             </CardTitle>
             <CardDescription>Sewing output vs target over time</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-2 sm:p-6">
             {dailyData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={dailyData}>
-                  <defs>
-                    <linearGradient id="colorOutput" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorTarget" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="displayDate" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                  <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'hsl(var(--card))', 
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px'
-                    }} 
-                  />
-                  <Legend />
-                  <Area type="monotone" dataKey="sewingOutput" name="Output" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorOutput)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="sewingTarget" name="Target" stroke="hsl(var(--muted-foreground))" fillOpacity={1} fill="url(#colorTarget)" strokeWidth={2} strokeDasharray="5 5" />
-                </AreaChart>
-              </ResponsiveContainer>
+              <div className="w-full overflow-hidden">
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={dailyData}>
+                    <defs>
+                      <linearGradient id="colorOutput" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorTarget" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="displayDate" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                    <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} width={35} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--card))', 
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }} 
+                    />
+                    <Legend wrapperStyle={{ paddingTop: '8px' }} />
+                    <Area type="monotone" dataKey="sewingOutput" name="Output" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorOutput)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="sewingTarget" name="Target" stroke="hsl(var(--muted-foreground))" fillOpacity={1} fill="url(#colorTarget)" strokeWidth={2} strokeDasharray="5 5" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                 No data available for this period
@@ -642,7 +644,7 @@ export default function Insights() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Efficiency Trend */}
-          <Card>
+          <Card className="w-full overflow-hidden">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Zap className="h-5 w-5 text-warning" />
@@ -650,28 +652,30 @@ export default function Insights() {
               </CardTitle>
               <CardDescription>Target achievement rate by day</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-2 sm:p-6">
               {dailyData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={dailyData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="displayDate" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis domain={[0, 150]} className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))', 
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px'
-                      }} 
-                    />
-                    <Bar 
-                      dataKey="efficiency" 
-                      name="Efficiency %" 
-                      radius={[4, 4, 0, 0]}
-                      fill="hsl(var(--primary))"
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="w-full overflow-hidden">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={dailyData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="displayDate" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                      <YAxis domain={[0, 150]} className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} width={30} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--card))', 
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px'
+                        }} 
+                      />
+                      <Bar 
+                        dataKey="efficiency" 
+                        name="Efficiency %" 
+                        radius={[4, 4, 0, 0]}
+                        fill="hsl(var(--primary))"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               ) : (
                 <div className="h-[250px] flex items-center justify-center text-muted-foreground">
                   No data available for this period
@@ -681,7 +685,7 @@ export default function Insights() {
           </Card>
 
           {/* Finishing vs Sewing Comparison */}
-          <Card>
+          <Card className="w-full overflow-hidden">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-info" />
@@ -689,25 +693,27 @@ export default function Insights() {
               </CardTitle>
               <CardDescription>Daily comparison of production stages</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-2 sm:p-6">
               {dailyData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={dailyData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="displayDate" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))', 
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px'
-                      }} 
-                    />
-                    <Legend />
-                    <Bar dataKey="sewingOutput" name="Sewing" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="finishingQcPass" name="Finishing QC" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="w-full overflow-hidden">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={dailyData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="displayDate" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                      <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} width={35} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--card))', 
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px'
+                        }} 
+                      />
+                      <Legend wrapperStyle={{ paddingTop: '8px' }} />
+                      <Bar dataKey="sewingOutput" name="Sewing" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="finishingQcPass" name="Finishing QC" fill="hsl(var(--info))" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               ) : (
                 <div className="h-[250px] flex items-center justify-center text-muted-foreground">
                   No data available for this period
@@ -774,7 +780,7 @@ export default function Insights() {
           </Card>
 
           {/* Line Output Chart */}
-          <Card>
+          <Card className="w-full overflow-hidden">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-primary" />
@@ -782,30 +788,32 @@ export default function Insights() {
               </CardTitle>
               <CardDescription>Total output comparison</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-2 sm:p-6">
               {linePerformance.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={linePerformance} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis type="number" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis dataKey="lineName" type="category" width={50} className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))', 
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px'
-                      }} 
-                    />
-                    <Bar 
-                      dataKey="totalOutput" 
-                      name="Output" 
-                      fill="hsl(var(--primary))" 
-                      radius={[0, 4, 4, 0]}
-                      cursor="pointer"
-                      onClick={(data) => handleLineDrillDown(data.lineId, data.lineName)}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="w-full overflow-hidden">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={linePerformance} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis type="number" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                      <YAxis dataKey="lineName" type="category" width={40} className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--card))', 
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px'
+                        }} 
+                      />
+                      <Bar 
+                        dataKey="totalOutput" 
+                        name="Output" 
+                        fill="hsl(var(--primary))" 
+                        radius={[0, 4, 4, 0]}
+                        cursor="pointer"
+                        onClick={(data) => handleLineDrillDown(data.lineId, data.lineName)}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               ) : (
                 <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                   No line data available
@@ -879,34 +887,52 @@ export default function Insights() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Blocker Type Distribution */}
-          <Card>
+          <Card className="w-full overflow-hidden">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 Blocker Type Distribution
               </CardTitle>
               <CardDescription>Most common blocker categories</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-2 sm:p-6">
               {blockerBreakdown.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={blockerBreakdown}
-                      dataKey="count"
-                      nameKey="type"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      label={({ type, count }) => `${type}: ${count}`}
-                      labelLine={false}
-                    >
-                      {blockerBreakdown.map((_, idx) => (
-                        <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="w-full">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <PieChart>
+                      <Pie
+                        data={blockerBreakdown}
+                        dataKey="count"
+                        nameKey="type"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={60}
+                        innerRadius={25}
+                        label={false}
+                        labelLine={false}
+                      >
+                        {blockerBreakdown.map((_, idx) => (
+                          <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--card))', 
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px'
+                        }} 
+                      />
+                      <Legend 
+                        layout="horizontal" 
+                        verticalAlign="bottom" 
+                        align="center"
+                        wrapperStyle={{ paddingTop: '16px' }}
+                        formatter={(value, entry: any) => (
+                          <span className="text-xs">{value} ({entry.payload?.count})</span>
+                        )}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               ) : (
                 <div className="h-[250px] flex flex-col items-center justify-center text-muted-foreground">
                   <CheckCircle2 className="h-12 w-12 mb-2 text-success" />

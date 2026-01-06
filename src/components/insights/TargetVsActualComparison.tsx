@@ -185,19 +185,19 @@ export function TargetVsActualComparison({ allLines, targets, actuals, type, loa
   const overallPerformance = calculatePerformance(totals.actualOutput, totals.targetOutput);
 
   return (
-    <Card>
+    <Card className="w-full overflow-hidden">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            Target vs Actual Comparison
-            <Badge variant="outline" className="ml-2 gap-1 capitalize">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <CardTitle className="text-sm sm:text-base flex items-center gap-2 flex-wrap">
+            <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+            <span className="whitespace-nowrap">Target vs Actual</span>
+            <Badge variant="outline" className="gap-1 capitalize text-xs">
               {type === 'sewing' ? <Factory className="h-3 w-3" /> : <Package className="h-3 w-3" />}
               {type}
             </Badge>
           </CardTitle>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Overall:</span>
+            <span className="text-xs sm:text-sm text-muted-foreground hidden sm:inline">Overall:</span>
             {totals.targetOutput > 0 ? (
               <PerformanceBadge percent={overallPerformance.percent} trend={overallPerformance.trend} />
             ) : (
@@ -206,123 +206,171 @@ export function TargetVsActualComparison({ allLines, targets, actuals, type, loa
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-2 max-h-[400px] overflow-y-auto">
-          {/* Header Row */}
-          <div className="grid grid-cols-12 gap-2 text-xs text-muted-foreground font-medium px-3 py-2 bg-card border-b rounded-lg sticky top-0 z-10">
-            <div className="col-span-3">Line</div>
-            <div className="col-span-2 text-right">Target/hr</div>
-            <div className="col-span-2 text-right">Actual</div>
-            <div className="col-span-2 text-right">Manpower</div>
-            <div className="col-span-3 text-right">Performance</div>
-          </div>
-
-          {/* Data Rows */}
-          {comparisonData.map((row) => {
-            // Estimate expected output (target per hour * 8 hours)
-            const expectedDayOutput = row.targetPerHour * 8;
-            const performance = calculatePerformance(row.actualOutput, expectedDayOutput);
-
-            return (
-              <div
-                key={row.line_uuid}
-                className={`grid grid-cols-12 gap-2 items-center px-3 py-3 rounded-lg border transition-colors ${
-                  row.hasBlocker 
-                    ? 'border-destructive/30 bg-destructive/5' 
-                    : 'border-border/50 bg-muted/20 hover:bg-muted/40'
-                }`}
-              >
-                {/* Line Info */}
-                <div className="col-span-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{row.line_name}</span>
-                    {row.hasBlocker && (
-                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                        Blocker
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-
-                {/* Target */}
-                <div className="col-span-2 text-right">
-                  {row.hasTarget ? (
-                    <div>
-                      <p className="font-mono font-medium">{row.targetPerHour}</p>
-                      <p className="text-[10px] text-muted-foreground">~{expectedDayOutput}/day</p>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">No target</span>
-                  )}
-                </div>
-
-                {/* Actual Output */}
-                <div className="col-span-2 text-right">
-                  {row.hasActual ? (
-                    <p className="font-mono font-bold text-lg">{row.actualOutput.toLocaleString()}</p>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Pending</span>
-                  )}
-                </div>
-
-                {/* Manpower */}
-                <div className="col-span-2 text-right">
-                  <div className="flex items-center justify-end gap-1 text-sm">
-                    {row.hasActual ? (
-                      <span className="font-mono">{row.actualManpower}</span>
-                    ) : row.hasTarget ? (
-                      <span className="text-muted-foreground">{row.plannedManpower}</span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                    {row.hasTarget && row.hasActual && row.plannedManpower > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        / {row.plannedManpower}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Performance */}
-                <div className="col-span-3 text-right">
-                  {row.hasTarget && row.hasActual ? (
-                    <PerformanceBadge percent={performance.percent} trend={performance.trend} />
-                  ) : !row.hasTarget && row.hasActual ? (
-                    <Badge variant="outline" className="text-xs">No target set</Badge>
-                  ) : row.hasTarget && !row.hasActual ? (
-                    <Badge variant="secondary" className="text-xs">Awaiting EOD</Badge>
-                  ) : (
-                    <Badge variant="secondary" className="text-xs">No data</Badge>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Summary Row */}
-          {(totals.targetOutput > 0 || totals.actualOutput > 0) && (
-            <div className="grid grid-cols-12 gap-2 items-center px-3 py-3 rounded-lg bg-primary/5 border border-primary/20 mt-2">
-              <div className="col-span-3 font-medium">Total</div>
-              <div className="col-span-2 text-right font-mono font-medium">
-                {totals.targetOutput > 0 ? totals.targetOutput.toLocaleString() : '-'}
-              </div>
-              <div className="col-span-2 text-right font-mono font-bold text-lg">
-                {totals.actualOutput > 0 ? totals.actualOutput.toLocaleString() : '-'}
-              </div>
-              <div className="col-span-2 text-right font-mono">
-                {totals.actualManpower > 0 || totals.plannedManpower > 0 
-                  ? `${totals.actualManpower} / ${totals.plannedManpower}`
-                  : '-'}
-              </div>
-              <div className="col-span-3 text-right">
-                {totals.targetOutput > 0 ? (
-                  <PerformanceBadge percent={overallPerformance.percent} trend={overallPerformance.trend} />
-                ) : (
-                  <Badge variant="secondary" className="text-xs">-</Badge>
-                )}
-              </div>
+      <CardContent className="p-2 sm:p-6">
+        <div className="w-full overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+          <div className="space-y-2 max-h-[400px] overflow-y-auto min-w-0">
+            {/* Header Row - hidden on mobile */}
+            <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-muted-foreground font-medium px-3 py-2 bg-card border-b rounded-lg sticky top-0 z-10">
+              <div className="col-span-3">Line</div>
+              <div className="col-span-2 text-right">Target/hr</div>
+              <div className="col-span-2 text-right">Actual</div>
+              <div className="col-span-2 text-right">Manpower</div>
+              <div className="col-span-3 text-right">Performance</div>
             </div>
-          )}
+
+            {/* Data Rows - Mobile card layout, Desktop grid layout */}
+            {comparisonData.map((row) => {
+              const expectedDayOutput = row.targetPerHour * 8;
+              const performance = calculatePerformance(row.actualOutput, expectedDayOutput);
+
+              return (
+                <div
+                  key={row.line_uuid}
+                  className={`rounded-lg border transition-colors ${
+                    row.hasBlocker 
+                      ? 'border-destructive/30 bg-destructive/5' 
+                      : 'border-border/50 bg-muted/20 hover:bg-muted/40'
+                  }`}
+                >
+                  {/* Mobile Layout */}
+                  <div className="sm:hidden p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{row.line_name}</span>
+                        {row.hasBlocker && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                            Blocker
+                          </Badge>
+                        )}
+                      </div>
+                      {row.hasTarget && row.hasActual ? (
+                        <PerformanceBadge percent={performance.percent} trend={performance.trend} />
+                      ) : !row.hasTarget && row.hasActual ? (
+                        <Badge variant="outline" className="text-xs">No target</Badge>
+                      ) : row.hasTarget && !row.hasActual ? (
+                        <Badge variant="secondary" className="text-xs">Pending</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">No data</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="text-muted-foreground">
+                        Target: {row.hasTarget ? `${row.targetPerHour}/hr` : '-'}
+                      </div>
+                      <div className="font-mono font-bold">
+                        {row.hasActual ? row.actualOutput.toLocaleString() : 'Pending'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Desktop Layout */}
+                  <div className="hidden sm:grid grid-cols-12 gap-2 items-center px-3 py-3">
+                    <div className="col-span-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{row.line_name}</span>
+                        {row.hasBlocker && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                            Blocker
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="col-span-2 text-right">
+                      {row.hasTarget ? (
+                        <div>
+                          <p className="font-mono font-medium">{row.targetPerHour}</p>
+                          <p className="text-[10px] text-muted-foreground">~{expectedDayOutput}/day</p>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No target</span>
+                      )}
+                    </div>
+                    <div className="col-span-2 text-right">
+                      {row.hasActual ? (
+                        <p className="font-mono font-bold text-lg">{row.actualOutput.toLocaleString()}</p>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Pending</span>
+                      )}
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <div className="flex items-center justify-end gap-1 text-sm">
+                        {row.hasActual ? (
+                          <span className="font-mono">{row.actualManpower}</span>
+                        ) : row.hasTarget ? (
+                          <span className="text-muted-foreground">{row.plannedManpower}</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                        {row.hasTarget && row.hasActual && row.plannedManpower > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            / {row.plannedManpower}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="col-span-3 text-right">
+                      {row.hasTarget && row.hasActual ? (
+                        <PerformanceBadge percent={performance.percent} trend={performance.trend} />
+                      ) : !row.hasTarget && row.hasActual ? (
+                        <Badge variant="outline" className="text-xs">No target set</Badge>
+                      ) : row.hasTarget && !row.hasActual ? (
+                        <Badge variant="secondary" className="text-xs">Awaiting EOD</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">No data</Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Summary Row */}
+            {(totals.targetOutput > 0 || totals.actualOutput > 0) && (
+              <div className="rounded-lg bg-primary/5 border border-primary/20 mt-2">
+                {/* Mobile Summary */}
+                <div className="sm:hidden p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">Total</span>
+                    {totals.targetOutput > 0 ? (
+                      <PerformanceBadge percent={overallPerformance.percent} trend={overallPerformance.trend} />
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">-</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Target: {totals.targetOutput > 0 ? totals.targetOutput.toLocaleString() : '-'}
+                    </span>
+                    <span className="font-mono font-bold">
+                      {totals.actualOutput > 0 ? totals.actualOutput.toLocaleString() : '-'}
+                    </span>
+                  </div>
+                </div>
+                {/* Desktop Summary */}
+                <div className="hidden sm:grid grid-cols-12 gap-2 items-center px-3 py-3">
+                  <div className="col-span-3 font-medium">Total</div>
+                  <div className="col-span-2 text-right font-mono font-medium">
+                    {totals.targetOutput > 0 ? totals.targetOutput.toLocaleString() : '-'}
+                  </div>
+                  <div className="col-span-2 text-right font-mono font-bold text-lg">
+                    {totals.actualOutput > 0 ? totals.actualOutput.toLocaleString() : '-'}
+                  </div>
+                  <div className="col-span-2 text-right font-mono">
+                    {totals.actualManpower > 0 || totals.plannedManpower > 0 
+                      ? `${totals.actualManpower} / ${totals.plannedManpower}`
+                      : '-'}
+                  </div>
+                  <div className="col-span-3 text-right">
+                    {totals.targetOutput > 0 ? (
+                      <PerformanceBadge percent={overallPerformance.percent} trend={overallPerformance.trend} />
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">-</Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>
