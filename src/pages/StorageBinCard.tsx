@@ -471,7 +471,7 @@ export default function StorageBinCard() {
                     Locked
                   </span>
                 )}
-                {binCard.is_header_locked && isAdminOrHigher() && (
+                {binCard.is_header_locked && (isAdminOrHigher() || isStorageUser()) && (
                   <Button
                     type="button"
                     variant="outline"
