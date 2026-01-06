@@ -474,7 +474,7 @@ export default function FactorySetup() {
           <Settings className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-bold">Lines, Units & Floors</h1>
+          <h1 className="text-xl font-bold">Lines, Units, Floors & Storage</h1>
           <p className="text-sm text-muted-foreground">
             Manage production lines and factory structure
           </p>
