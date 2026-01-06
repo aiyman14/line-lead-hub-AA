@@ -88,7 +88,6 @@ export default function StorageBinCard() {
   const [binCard, setBinCard] = useState<BinCard | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
   
   // Header fields (editable if not locked)
   const [headerFields, setHeaderFields] = useState({
@@ -133,18 +132,16 @@ export default function StorageBinCard() {
     }
   }
 
-  // Filter work orders based on search
-  const filteredWorkOrders = useMemo(() => {
-    if (!searchTerm) return workOrders;
-    const term = searchTerm.toLowerCase();
-    return workOrders.filter(wo => 
-      wo.po_number.toLowerCase().includes(term) ||
-      wo.buyer.toLowerCase().includes(term) ||
-      wo.style.toLowerCase().includes(term) ||
-      (wo.item?.toLowerCase().includes(term)) ||
-      (wo.description?.toLowerCase().includes(term))
-    );
-  }, [workOrders, searchTerm]);
+  // Create searchable value for each work order
+  const getSearchableValue = (wo: WorkOrder) => {
+    return [
+      wo.po_number,
+      wo.buyer,
+      wo.style,
+      wo.item,
+      wo.description,
+    ].filter(Boolean).join(" ").toLowerCase();
+  };
 
   // When a work order is selected, load or create bin card
   async function handleSelectWorkOrder(wo: WorkOrder) {
@@ -386,19 +383,17 @@ export default function StorageBinCard() {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[400px] p-0" align="start">
-              <Command>
+              <Command shouldFilter={true}>
                 <CommandInput 
                   placeholder="Search PO, buyer, style, item..." 
-                  value={searchTerm}
-                  onValueChange={setSearchTerm}
                 />
                 <CommandList>
                   <CommandEmpty>No work orders found.</CommandEmpty>
                   <CommandGroup>
-                    {filteredWorkOrders.map(wo => (
+                    {workOrders.map(wo => (
                       <CommandItem 
                         key={wo.id} 
-                        value={wo.id}
+                        value={getSearchableValue(wo)}
                         onSelect={() => handleSelectWorkOrder(wo)}
                       >
                         <div className="flex flex-col">
