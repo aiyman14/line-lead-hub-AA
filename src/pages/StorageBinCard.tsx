@@ -587,7 +587,7 @@ export default function StorageBinCard() {
           </CardHeader>
           <CardContent className="space-y-4 px-3 sm:px-6">
             {/* Existing transactions table */}
-            <div className="rounded-md border overflow-x-auto -mx-3 sm:mx-0">
+            <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
