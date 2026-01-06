@@ -58,24 +58,29 @@ function AppRoutes() {
 
   const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
   const hashParams = new URLSearchParams(hash);
-  const isRecoveryLink = hashParams.get("type") === "recovery" && !!hashParams.get("access_token");
+  const searchParams = new URLSearchParams(location.search);
+
+  const recoveryType = hashParams.get("type") ?? searchParams.get("type");
+  const hasRecoverySignal = recoveryType === "recovery";
+
   const isForcedPasswordReset =
     typeof window !== "undefined" && sessionStorage.getItem("pp_force_password_reset") === "1";
 
   useEffect(() => {
-    if (isRecoveryLink && typeof window !== "undefined") {
+    if (hasRecoverySignal && typeof window !== "undefined") {
       sessionStorage.setItem("pp_force_password_reset", "1");
     }
-  }, [isRecoveryLink]);
+  }, [hasRecoverySignal]);
 
   // Guard: during password recovery, always force /reset-password first.
-  if (!loading && isRecoveryLink && location.pathname !== "/reset-password") {
-    return <Navigate to={`/reset-password${location.hash}`} replace />;
+  // Note: some flows don't include access_token in the hash; we still must route to reset UI.
+  if (!loading && hasRecoverySignal && location.pathname !== "/reset-password") {
+    return <Navigate to={`/reset-password${location.search}${location.hash}`} replace />;
   }
 
   // Guard: if we previously detected a recovery flow, block app navigation until it is completed.
   if (!loading && isForcedPasswordReset && location.pathname !== "/reset-password" && location.pathname !== "/auth") {
-    return <Navigate to={`/reset-password${location.hash}`} replace />;
+    return <Navigate to={`/reset-password${location.search}${location.hash}`} replace />;
   }
 
   if (loading) {
