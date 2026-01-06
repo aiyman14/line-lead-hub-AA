@@ -1,14 +1,19 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type RemoveUserAccessRequest = {
-  userId: string;
-};
+// UUID validation regex
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Input validation schema
+const removeUserSchema = z.object({
+  userId: z.string().regex(uuidRegex, "Invalid user ID format"),
+});
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -17,7 +22,7 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Missing authorization header" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -42,13 +47,20 @@ serve(async (req) => {
 
     const requesterId = userData.user.id;
 
-    const { userId: targetUserId }: RemoveUserAccessRequest = await req.json();
-    if (!targetUserId) {
-      return new Response(JSON.stringify({ error: "Missing userId" }), {
+    // Parse and validate request body
+    const rawBody = await req.json();
+    const validation = removeUserSchema.safeParse(rawBody);
+    
+    if (!validation.success) {
+      const errors = validation.error.errors.map(e => e.message).join(", ");
+      console.error("[remove-user-access] Validation failed:", errors);
+      return new Response(JSON.stringify({ error: `Invalid input: ${errors}` }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const { userId: targetUserId } = validation.data;
 
     // Fetch requester profile/factory
     const { data: requesterProfile, error: requesterProfileError } = await supabaseAdmin
@@ -57,7 +69,13 @@ serve(async (req) => {
       .eq("id", requesterId)
       .single();
 
-    if (requesterProfileError) throw requesterProfileError;
+    if (requesterProfileError) {
+      console.error("[remove-user-access] Error fetching requester profile:", requesterProfileError);
+      return new Response(JSON.stringify({ error: "Failed to verify permissions" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const requesterFactoryId = requesterProfile?.factory_id as string | null;
     if (!requesterFactoryId) {
@@ -73,7 +91,13 @@ serve(async (req) => {
       { _user_id: requesterId }
     );
 
-    if (isAdminError) throw isAdminError;
+    if (isAdminError) {
+      console.error("[remove-user-access] Error checking admin status:", isAdminError);
+      return new Response(JSON.stringify({ error: "Failed to verify permissions" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!isAdmin) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
@@ -87,7 +111,13 @@ serve(async (req) => {
       { _user_id: requesterId }
     );
 
-    if (isSuperadminError) throw isSuperadminError;
+    if (isSuperadminError) {
+      console.error("[remove-user-access] Error checking superadmin status:", isSuperadminError);
+      return new Response(JSON.stringify({ error: "Failed to verify permissions" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Ensure target belongs to same factory (unless superadmin)
     if (!isSuperadmin) {
@@ -97,7 +127,13 @@ serve(async (req) => {
         .eq("id", targetUserId)
         .single();
 
-      if (targetProfileError) throw targetProfileError;
+      if (targetProfileError) {
+        console.error("[remove-user-access] Error fetching target profile:", targetProfileError);
+        return new Response(JSON.stringify({ error: "Target user not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       if (targetProfile?.factory_id !== requesterFactoryId) {
         return new Response(JSON.stringify({ error: "Target user not in your factory" }), {
@@ -141,10 +177,8 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("[remove-user-access]", message);
-
-    return new Response(JSON.stringify({ error: message }), {
+    console.error("[remove-user-access] Unexpected error:", error);
+    return new Response(JSON.stringify({ error: "An unexpected error occurred" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

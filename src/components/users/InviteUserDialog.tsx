@@ -50,7 +50,6 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     email: "",
     fullName: "",
     role: "worker" as AppRole,
-    password: "",
     department: "both" as Department,
   });
 
@@ -100,6 +99,10 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     setLoading(true);
 
     try {
+      // Generate a secure random password for initial account creation
+      // User will set their own password via the reset link
+      const randomPassword = crypto.randomUUID() + crypto.randomUUID();
+
       // Preserve current session (inviter). supabase.auth.signUp will otherwise switch session to the new user.
       const {
         data: { session: inviterSession },
@@ -108,7 +111,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       // Create user via Auth using admin invite pattern - don't auto sign in
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
-        password: formData.password,
+        password: randomPassword,
         options: {
           emailRedirectTo: `${window.location.origin}/auth`,
           data: {
@@ -131,21 +134,22 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
       if (authError) {
         if (authError.message.includes('already registered')) {
-          // User exists - reset their password via admin function
-          console.log("User already exists, resetting password...");
-          const { data: resetData, error: resetError } = await supabase.functions.invoke('admin-reset-password', {
-            body: {
-              email: formData.email,
-              newPassword: formData.password,
-            },
-          });
-
-          if (resetError || !resetData?.success) {
-            toast.error("Failed to reset password for existing user");
+          // User exists - we'll send them a password reset link
+          console.log("User already exists, will send password reset link...");
+          
+          // Look up the existing user to get their ID
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', formData.email)
+            .single();
+          
+          if (!existingProfile) {
+            toast.error("User exists but profile not found");
             return;
           }
-
-          userId = resetData.userId;
+          
+          userId = existingProfile.id;
           
           // Update the profile with factory_id, name, and department
           const { error: profileError } = await supabase
@@ -241,7 +245,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         }
       }
 
-      // Send welcome email with credentials
+      // Send welcome email with password reset link (no plain text password)
       try {
         // Get factory name for the email
         const { data: factoryData } = await supabase
@@ -250,19 +254,31 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           .eq('id', profile.factory_id)
           .single();
 
-        const { error: emailError } = await supabase.functions.invoke('send-welcome-email', {
-          body: {
-            email: formData.email,
-            fullName: formData.fullName,
-            password: formData.password,
-            factoryName: factoryData?.name,
-            loginUrl: 'https://line-lead-hub.lovable.app/auth',
-          },
-        });
+        // Generate a password reset link for the user to set their own password
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+          formData.email,
+          { redirectTo: `${window.location.origin}/reset-password` }
+        );
 
-        if (emailError) {
-          console.error("Email sending error:", emailError);
-          toast.warning("User created but welcome email failed to send");
+        if (resetError) {
+          console.error("Failed to generate reset link:", resetError);
+          toast.warning("User created but password setup email failed to send");
+        } else {
+          // Send a custom welcome email with the reset link context
+          // The reset email is sent by Supabase, but we can send a supplementary welcome
+          const { error: emailError } = await supabase.functions.invoke('send-welcome-email', {
+            body: {
+              email: formData.email,
+              fullName: formData.fullName,
+              resetLink: `${window.location.origin}/reset-password`,
+              factoryName: factoryData?.name,
+            },
+          });
+
+          if (emailError) {
+            console.error("Welcome email error:", emailError);
+            // Reset link email was sent by Supabase, so user can still set password
+          }
         }
       } catch (emailErr) {
         console.error("Email sending error:", emailErr);
@@ -272,7 +288,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       toast.success(`User ${formData.fullName} invited successfully`);
       onSuccess();
       onOpenChange(false);
-      setFormData({ email: "", fullName: "", role: "worker", password: "", department: "both" });
+      setFormData({ email: "", fullName: "", role: "worker", department: "both" });
       setSelectedLineIds([]);
     } catch (error) {
       console.error("Error inviting user:", error);
@@ -291,7 +307,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             Invite New User
           </DialogTitle>
           <DialogDescription>
-            Add a new user to your factory. They will receive login credentials.
+            Add a new user to your factory. They will receive an email to set their password.
           </DialogDescription>
         </DialogHeader>
 
@@ -325,21 +341,6 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password">Temporary Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="Min 6 characters"
-              minLength={6}
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              Share this password with the user. They can change it after logging in.
-            </p>
-          </div>
 
           <div className="space-y-2">
             <Label htmlFor="role" className="flex items-center gap-2">

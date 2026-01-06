@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,10 +7,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-interface ResetPasswordRequest {
-  email: string;
-  newPassword: string;
-}
+// Input validation schema
+const resetPasswordSchema = z.object({
+  email: z.string().email("Invalid email format").max(255, "Email too long"),
+  newPassword: z.string().min(6, "Password must be at least 6 characters").max(128, "Password too long"),
+});
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
@@ -90,8 +92,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 4. Parse request body
-    const { email, newPassword }: ResetPasswordRequest = await req.json();
+    // 4. Parse and validate request body
+    const rawBody = await req.json();
+    const validation = resetPasswordSchema.safeParse(rawBody);
+    
+    if (!validation.success) {
+      const errors = validation.error.errors.map(e => e.message).join(", ");
+      console.error("Validation failed:", errors);
+      return new Response(
+        JSON.stringify({ success: false, error: `Invalid input: ${errors}` }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const { email, newPassword } = validation.data;
     console.log(`Admin ${callerId} requesting password reset for ${email}`);
 
     // 5. Get caller's factory_id
@@ -114,7 +128,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     
     if (listError) {
       console.error("Error listing users:", listError);
-      throw listError;
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to lookup user" }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
     const targetUser = userData.users.find(u => u.email === email);
@@ -147,7 +164,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (targetProfile.factory_id !== callerProfile.factory_id) {
         console.error(`User ${callerId} attempted to reset password for user in different factory`);
         return new Response(
-          JSON.stringify({ success: false, error: "Forbidden: Cannot reset password for users outside your factory" }),
+          JSON.stringify({ success: false, error: "Cannot reset password for users outside your factory" }),
           { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
@@ -161,7 +178,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     if (updateError) {
       console.error("Error updating password:", updateError);
-      throw updateError;
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to update password" }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
     console.log(`Password updated successfully for ${email} by admin ${callerId}`);
@@ -170,10 +190,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       JSON.stringify({ success: true, userId: targetUser.id }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in admin-reset-password:", error);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: "An unexpected error occurred" }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }

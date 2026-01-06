@@ -1,4 +1,5 @@
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const resendClient = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -8,13 +9,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-interface WelcomeEmailRequest {
-  email: string;
-  fullName: string;
-  password: string;
-  factoryName?: string;
-  loginUrl: string;
-}
+// Input validation schema
+const welcomeEmailSchema = z.object({
+  email: z.string().email("Invalid email format").max(255, "Email too long"),
+  fullName: z.string().min(1, "Name is required").max(100, "Name too long"),
+  resetLink: z.string().url("Invalid reset link URL").max(2000, "URL too long"),
+  factoryName: z.string().max(100, "Factory name too long").optional(),
+});
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
@@ -23,7 +24,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { email, fullName, password, factoryName, loginUrl }: WelcomeEmailRequest = await req.json();
+    const rawBody = await req.json();
+    
+    // Validate input
+    const validation = welcomeEmailSchema.safeParse(rawBody);
+    
+    if (!validation.success) {
+      const errors = validation.error.errors.map(e => e.message).join(", ");
+      console.error("Validation failed:", errors);
+      return new Response(
+        JSON.stringify({ success: false, error: `Invalid input: ${errors}` }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    const { email, fullName, resetLink, factoryName } = validation.data;
 
     console.log(`Sending welcome email to ${email}`);
 
@@ -47,23 +65,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
             <p style="font-size: 16px; margin-bottom: 20px;">Hello <strong>${fullName}</strong>,</p>
             
             <p style="font-size: 16px; margin-bottom: 20px;">
-              You've been invited to join the production tracking system. Here are your login credentials:
-            </p>
-            
-            <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
-              <p style="margin: 0 0 10px 0;"><strong>Email:</strong> ${email}</p>
-              <p style="margin: 0;"><strong>Temporary Password:</strong> <code style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${password}</code></p>
-            </div>
-            
-            <p style="font-size: 14px; color: #6b7280; margin-bottom: 20px;">
-              Please change your password after your first login for security purposes.
+              You've been invited to join the production tracking system. To get started, please set up your password by clicking the button below:
             </p>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${loginUrl}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
-                Login Now
+              <a href="${resetLink}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
+                Set Your Password
               </a>
             </div>
+            
+            <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0 0 10px 0;"><strong>Your Email:</strong> ${email}</p>
+              <p style="margin: 0; font-size: 14px; color: #6b7280;">Use this email address to log in after setting your password.</p>
+            </div>
+            
+            <p style="font-size: 14px; color: #6b7280; margin-bottom: 20px;">
+              This link will expire in 24 hours. If you didn't request this invitation, you can safely ignore this email.
+            </p>
             
             <p style="font-size: 14px; color: #6b7280; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
               If you have any questions, please contact your administrator.
@@ -83,10 +101,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         ...corsHeaders,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error sending welcome email:", error);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: "Failed to send email" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
