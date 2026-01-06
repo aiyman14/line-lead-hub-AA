@@ -18,6 +18,7 @@ import SewingMorningTargets from "./pages/SewingMorningTargets";
 import SewingEndOfDay from "./pages/SewingEndOfDay";
 import FinishingDailySheet from "./pages/FinishingDailySheet";
 import FinishingMySubmissions from "./pages/FinishingMySubmissions";
+import SewingMySubmissions from "./pages/SewingMySubmissions";
 import FinishingOverview from "./pages/FinishingOverview";
 import MorningTargets from "./pages/MorningTargets";
 import EndOfDay from "./pages/EndOfDay";
@@ -103,6 +104,7 @@ function AppRoutes() {
         <Route path="/cutting/submissions" element={<SubscriptionGate><CuttingAllSubmissions /></SubscriptionGate>} />
         {/* Sewing module routes */}
         <Route path="/sewing/cutting-handoffs" element={<SubscriptionGate><CuttingHandoffs /></SubscriptionGate>} />
+        <Route path="/sewing/my-submissions" element={<SubscriptionGate><SewingMySubmissions /></SubscriptionGate>} />
       </Route>
       
       <Route path="*" element={<NotFound />} />
