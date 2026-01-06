@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,9 +108,15 @@ type DepartmentType = 'sewing' | 'finishing' | 'cutting' | 'storage';
 
 export default function AllSubmissions() {
   const { profile } = useAuth();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<CategoryType>('targets');
-  const [department, setDepartment] = useState<DepartmentType>('sewing');
+  
+  // Initialize state from URL params or defaults
+  const initialDepartment = (searchParams.get('department') as DepartmentType) || 'sewing';
+  const initialCategory = (searchParams.get('category') as CategoryType) || 'targets';
+  
+  const [category, setCategory] = useState<CategoryType>(initialCategory);
+  const [department, setDepartment] = useState<DepartmentType>(initialDepartment);
   const [searchTerm, setSearchTerm] = useState("");
   const [dateRange, setDateRange] = useState("7");
 

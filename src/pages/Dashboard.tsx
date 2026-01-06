@@ -628,12 +628,20 @@ export default function Dashboard() {
                   <Crosshair className="h-5 w-5 text-primary" />
                   Morning Targets
                 </CardTitle>
-                <Link to="/sewing/morning-targets">
-                  <Button variant="ghost" size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add
-                  </Button>
-                </Link>
+                <div className="flex gap-2">
+                  <Link to="/submissions?department=sewing&category=targets">
+                    <Button variant="ghost" size="sm">
+                      View All
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </Link>
+                  <Link to="/sewing/morning-targets">
+                    <Button variant="ghost" size="sm">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
+                  </Link>
+                </div>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -694,12 +702,20 @@ export default function Dashboard() {
                   <ClipboardCheck className="h-5 w-5 text-info" />
                   End of Day
                 </CardTitle>
-                <Link to="/sewing/end-of-day">
-                  <Button variant="ghost" size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add
-                  </Button>
-                </Link>
+                <div className="flex gap-2">
+                  <Link to="/submissions?department=sewing&category=actuals">
+                    <Button variant="ghost" size="sm">
+                      View All
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </Link>
+                  <Link to="/sewing/end-of-day">
+                    <Button variant="ghost" size="sm">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
+                  </Link>
+                </div>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -816,7 +832,7 @@ export default function Dashboard() {
                 <Scissors className="h-5 w-5 text-warning" />
                 Today's Cutting Submissions
               </CardTitle>
-              <Link to="/cutting/submissions">
+              <Link to="/submissions?department=cutting">
                 <Button variant="ghost" size="sm">
                   View All
                   <ChevronRight className="h-4 w-4 ml-1" />
@@ -884,7 +900,7 @@ export default function Dashboard() {
                 <Archive className="h-5 w-5 text-primary" />
                 Bin Cards
               </CardTitle>
-              <Link to="/storage">
+              <Link to="/submissions?department=storage">
                 <Button variant="ghost" size="sm">
                   View All
                   <ChevronRight className="h-4 w-4 ml-1" />
