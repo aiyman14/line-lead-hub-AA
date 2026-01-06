@@ -360,7 +360,7 @@ export default function CuttingForm() {
                 >
                   <Search className="mr-2 h-4 w-4" />
                   {selectedLine 
-                    ? `${selectedLine.line_id}${selectedLine.name ? ` - ${selectedLine.name}` : ''}`
+                    ? (selectedLine.name || selectedLine.line_id)
                     : "Select a line..."}
                 </Button>
               </PopoverTrigger>
@@ -373,17 +373,14 @@ export default function CuttingForm() {
                       {lines.map(line => (
                         <CommandItem 
                           key={line.id} 
-                          value={`${line.line_id} ${line.name || ''}`}
+                          value={line.name || line.line_id}
                           onSelect={() => {
                             setSelectedLine(line);
                             setLineSearchOpen(false);
                             setErrors(prev => ({ ...prev, line: "" }));
                           }}
                         >
-                          <div className="flex flex-col">
-                            <span className="font-medium">{line.line_id}</span>
-                            {line.name && <span className="text-xs text-muted-foreground">{line.name}</span>}
-                          </div>
+                          <span className="font-medium">{line.name || line.line_id}</span>
                         </CommandItem>
                       ))}
                     </CommandGroup>
