@@ -38,6 +38,14 @@ interface WorkOrder {
   target_per_day: number | null;
   status: string;
   is_active: boolean;
+  line_id: string | null;
+}
+
+interface Line {
+  id: string;
+  line_id: string;
+  name: string | null;
+  is_active: boolean;
 }
 
 const WORK_ORDER_STATUSES = [
@@ -65,6 +73,7 @@ export default function WorkOrders() {
   
   const [loading, setLoading] = useState(true);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [lines, setLines] = useState<Line[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   
   // Dialog state
@@ -87,15 +96,35 @@ export default function WorkOrders() {
     target_per_day: '',
     status: 'not_started',
     is_active: true,
+    line_id: '',
   });
 
   useEffect(() => {
     if (profile?.factory_id) {
       fetchWorkOrders();
+      fetchLines();
     } else if (profile !== undefined) {
       setLoading(false);
     }
   }, [profile?.factory_id, profile]);
+
+  async function fetchLines() {
+    if (!profile?.factory_id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('lines')
+        .select('id, line_id, name, is_active')
+        .eq('factory_id', profile.factory_id)
+        .eq('is_active', true)
+        .order('line_id', { ascending: true });
+      
+      if (error) throw error;
+      setLines(data || []);
+    } catch (error) {
+      console.error('Error fetching lines:', error);
+    }
+  }
 
   async function fetchWorkOrders() {
     if (!profile?.factory_id) return;
@@ -132,6 +161,7 @@ export default function WorkOrders() {
       target_per_day: '',
       status: 'not_started',
       is_active: true,
+      line_id: '',
     });
     setIsDialogOpen(true);
   }
@@ -152,6 +182,7 @@ export default function WorkOrders() {
       target_per_day: wo.target_per_day?.toString() || '',
       status: wo.status || 'not_started',
       is_active: wo.is_active,
+      line_id: wo.line_id || '',
     });
     setIsDialogOpen(true);
   }
@@ -180,6 +211,7 @@ export default function WorkOrders() {
         target_per_day: formData.target_per_day ? parseInt(formData.target_per_day) : null,
         status: formData.status,
         is_active: formData.is_active,
+        line_id: formData.line_id || null,
       };
       
       if (dialogMode === 'create') {
@@ -565,6 +597,26 @@ export default function WorkOrders() {
                   placeholder="800"
                 />
               </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Assigned Line</Label>
+              <Select
+                value={formData.line_id}
+                onValueChange={(value) => setFormData({ ...formData, line_id: value === 'none' ? '' : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a line..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No line assigned</SelectItem>
+                  {lines.map(line => (
+                    <SelectItem key={line.id} value={line.id}>
+                      {line.line_id}{line.name ? ` - ${line.name}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
