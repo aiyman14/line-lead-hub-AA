@@ -102,7 +102,8 @@
     "admin": "Admin",
     "owner": "Owner",
     "superadmin": "Super Admin",
-    "storage": "Storage"
+    "storage": "Storage",
+    "cutting": "Cutting"
   },
   "dashboard": {
     "title": "Daily Control Dashboard",
