@@ -148,7 +148,14 @@ export default function WorkOrders() {
         .order('line_id', { ascending: true });
       
       if (error) throw error;
-      setLines(data || []);
+      
+      // Sort lines numerically by extracting numbers from line_id
+      const sortedLines = (data || []).sort((a, b) => {
+        const numA = parseInt(a.line_id.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.line_id.replace(/\D/g, '')) || 0;
+        return numA - numB;
+      });
+      setLines(sortedLines);
     } catch (error) {
       console.error('Error fetching lines:', error);
     }
@@ -685,7 +692,7 @@ export default function WorkOrders() {
                         htmlFor={`line-${line.id}`}
                         className="text-sm font-medium leading-none cursor-pointer"
                       >
-                        {line.line_id}{line.name ? ` - ${line.name}` : ''}
+                        {line.name || line.line_id}
                       </label>
                     </div>
                   ))
