@@ -97,6 +97,43 @@ export default function BillingPlan() {
     }
   };
 
+  const handleChangePlan = async (tier: PlanTier) => {
+    if (tier === 'enterprise') {
+      handleContactSales();
+      return;
+    }
+
+    setCheckoutLoading(tier);
+    try {
+      const { data, error } = await supabase.functions.invoke('change-subscription', {
+        body: { newTier: tier }
+      });
+      
+      if (error) throw error;
+      
+      if (data.success) {
+        toast({
+          title: "Plan Changed!",
+          description: `You've switched to the ${PLAN_TIERS[tier].name} plan. Changes are effective immediately.`,
+        });
+        refetchLines();
+        // Force reload to update factory data
+        window.location.reload();
+      } else if (data.error) {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      console.error('Error changing plan:', err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message || "Failed to change plan. Please try again.",
+      });
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
   const handleStartTrial = async (tier: PlanTier = 'starter') => {
     setCheckoutLoading(tier);
     try {
@@ -413,12 +450,12 @@ export default function BillingPlan() {
                   </Button>
                 ) : (
                   <Button 
-                    onClick={handleManageBilling}
+                    onClick={() => handleChangePlan(plan.id)}
                     variant={isUpgrade ? "default" : "outline"}
                     className="w-full"
-                    disabled={portalLoading}
+                    disabled={isLoading}
                   >
-                    {portalLoading ? (
+                    {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : isUpgrade ? (
                       <>
