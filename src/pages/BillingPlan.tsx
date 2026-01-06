@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -26,14 +26,108 @@ export default function BillingPlan() {
   const { user, factory, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { status: lineStatus, loading: linesLoading } = useActiveLines();
+  const [searchParams] = useSearchParams();
+  const { status: lineStatus, loading: linesLoading, refresh: refetchLines } = useActiveLines();
   
   const [loading, setLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
 
   const currentTier = mapLegacyTier(factory?.subscription_tier || 'starter');
   const currentPlan = PLAN_TIERS[currentTier];
   const subscriptionStatus = factory?.subscription_status || 'inactive';
+
+  // Handle payment success/cancel from URL params
+  useEffect(() => {
+    const payment = searchParams.get('payment');
+    const tier = searchParams.get('tier');
+    
+    if (payment === 'success') {
+      toast({
+        title: "Payment Successful!",
+        description: tier 
+          ? `You've been upgraded to the ${PLAN_TIERS[tier as PlanTier]?.name || tier} plan.`
+          : "Your subscription is now active.",
+      });
+      // Clear the params
+      navigate('/billing-plan', { replace: true });
+      // Refetch subscription status
+      refetchLines();
+    } else if (payment === 'cancelled') {
+      toast({
+        variant: "destructive",
+        title: "Payment Cancelled",
+        description: "You can try again whenever you're ready.",
+      });
+      navigate('/billing-plan', { replace: true });
+    }
+  }, [searchParams, toast, navigate, refetchLines]);
+
+  const handleSubscribe = async (tier: PlanTier) => {
+    if (tier === 'enterprise') {
+      handleContactSales();
+      return;
+    }
+
+    setCheckoutLoading(tier);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-checkout', {
+        body: { tier }
+      });
+      
+      if (error) throw error;
+      
+      if (data.url) {
+        window.open(data.url, '_blank');
+      } else if (data.error) {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      console.error('Error creating checkout:', err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message || "Failed to start checkout. Please try again.",
+      });
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
+  const handleStartTrial = async (tier: PlanTier = 'starter') => {
+    setCheckoutLoading(tier);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-checkout', {
+        body: { tier, startTrial: true }
+      });
+      
+      if (error) throw error;
+      
+      if (data.success && data.trial) {
+        toast({
+          title: "Trial Started!",
+          description: `Your 14-day trial of the ${PLAN_TIERS[tier].name} plan has begun.`,
+        });
+        refetchLines();
+        if (data.redirectUrl) {
+          navigate(data.redirectUrl);
+        }
+      } else if (data.url) {
+        window.open(data.url, '_blank');
+      } else if (data.error) {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      console.error('Error starting trial:', err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message || "Failed to start trial. Please try again.",
+      });
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
 
   const handleManageBilling = async () => {
     setPortalLoading(true);
@@ -44,13 +138,15 @@ export default function BillingPlan() {
       
       if (data.url) {
         window.open(data.url, '_blank');
+      } else if (data.error) {
+        throw new Error(data.error);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error opening portal:', err);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to open billing portal. Please try again.",
+        description: err.message || "Failed to open billing portal. Please try again.",
       });
     } finally {
       setPortalLoading(false);
@@ -74,9 +170,11 @@ export default function BillingPlan() {
       case 'trial':
         return <Badge variant="secondary">Trial</Badge>;
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Badge variant="outline">{status || 'Inactive'}</Badge>;
     }
   };
+
+  const hasActiveSubscription = ['active', 'trialing', 'trial'].includes(subscriptionStatus);
 
   if (!user) {
     navigate('/auth');
@@ -134,19 +232,21 @@ export default function BillingPlan() {
                   : 'Custom pricing'}
               </p>
             </div>
-            <Button 
-              onClick={handleManageBilling} 
-              disabled={portalLoading}
-              variant="outline"
-              className="w-full mt-4"
-            >
-              {portalLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <ExternalLink className="h-4 w-4 mr-2" />
-              )}
-              Manage Billing
-            </Button>
+            {hasActiveSubscription && (
+              <Button 
+                onClick={handleManageBilling} 
+                disabled={portalLoading}
+                variant="outline"
+                className="w-full mt-4"
+              >
+                {portalLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                )}
+                Manage Billing
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -170,6 +270,7 @@ export default function BillingPlan() {
             (currentTier === 'scale' && plan.id === 'enterprise')
           );
           const isDowngrade = !isCurrent && !isUpgrade && plan.id !== 'enterprise';
+          const isLoading = checkoutLoading === plan.id;
 
           return (
             <Card 
@@ -236,13 +337,30 @@ export default function BillingPlan() {
                   <Button variant="outline" className="w-full" disabled>
                     Current Plan
                   </Button>
+                ) : !hasActiveSubscription ? (
+                  <Button 
+                    onClick={() => handleSubscribe(plan.id)}
+                    variant="default"
+                    className="w-full"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <CreditCard className="h-4 w-4 mr-2" />
+                    )}
+                    Subscribe
+                  </Button>
                 ) : (
                   <Button 
                     onClick={handleManageBilling}
                     variant={isUpgrade ? "default" : "outline"}
                     className="w-full"
+                    disabled={portalLoading}
                   >
-                    {isUpgrade ? (
+                    {portalLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : isUpgrade ? (
                       <>
                         <TrendingUp className="h-4 w-4 mr-2" />
                         Upgrade
@@ -278,12 +396,63 @@ export default function BillingPlan() {
                 <Mail className="h-4 w-4 mr-2" />
                 Contact Sales
               </Button>
-            ) : (
-              <Button onClick={handleManageBilling}>
-                <TrendingUp className="h-4 w-4 mr-2" />
+            ) : hasActiveSubscription ? (
+              <Button onClick={handleManageBilling} disabled={portalLoading}>
+                {portalLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                )}
                 Upgrade Plan
               </Button>
+            ) : (
+              <Button onClick={() => handleSubscribe(getNextTier(currentTier) || 'growth')}>
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Subscribe Now
+              </Button>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No Subscription CTA */}
+      {!hasActiveSubscription && (
+        <Card className="mt-8 border-primary bg-primary/5">
+          <CardContent className="p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center">
+                <CreditCard className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold">Get Started Today</p>
+                <p className="text-sm text-muted-foreground">
+                  Start your 14-day free trial or subscribe to a plan.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => handleStartTrial('starter')}
+                disabled={checkoutLoading === 'starter'}
+              >
+                {checkoutLoading === 'starter' ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
+                Start Free Trial
+              </Button>
+              <Button 
+                onClick={() => handleSubscribe('growth')}
+                disabled={checkoutLoading === 'growth'}
+              >
+                {checkoutLoading === 'growth' ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <CreditCard className="h-4 w-4 mr-2" />
+                )}
+                Subscribe
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

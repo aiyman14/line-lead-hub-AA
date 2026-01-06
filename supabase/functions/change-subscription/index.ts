@@ -7,6 +7,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Plan tier configuration - matches frontend plan-tiers.ts
+const PLAN_TIERS = {
+  starter: {
+    priceId: 'price_starter_monthly', // TODO: Replace with actual Stripe price ID
+    productId: 'prod_Tk0Z6QU3HYNqmx',
+    maxLines: 30,
+  },
+  growth: {
+    priceId: 'price_growth_monthly', // TODO: Replace with actual Stripe price ID
+    productId: 'prod_Tk0Zyl3J739mGp',
+    maxLines: 60,
+  },
+  scale: {
+    priceId: 'price_scale_monthly', // TODO: Replace with actual Stripe price ID
+    productId: 'prod_Tk0ZNeXFFFP9jz',
+    maxLines: 100,
+  },
+};
+
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[CHANGE-SUBSCRIPTION] ${step}${detailsStr}`);
@@ -36,9 +55,13 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    const { newPriceId } = await req.json();
-    if (!newPriceId) throw new Error("New price ID is required");
-    logStep("Request body", { newPriceId });
+    const { newTier } = await req.json();
+    if (!newTier) throw new Error("New tier is required");
+    
+    const tierConfig = PLAN_TIERS[newTier as keyof typeof PLAN_TIERS];
+    if (!tierConfig) throw new Error(`Invalid tier: ${newTier}`);
+    
+    logStep("Request body", { newTier, priceId: tierConfig.priceId });
 
     // Get user's factory
     const { data: profile } = await supabaseClient
@@ -59,7 +82,7 @@ serve(async (req) => {
       .single();
 
     if (!factory?.stripe_subscription_id) {
-      throw new Error("No active subscription found");
+      throw new Error("No active subscription found. Please subscribe first.");
     }
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
@@ -77,37 +100,37 @@ serve(async (req) => {
       items: [
         {
           id: subscription.items.data[0].id,
-          price: newPriceId,
+          price: tierConfig.priceId,
         },
       ],
       proration_behavior: 'create_prorations',
+      metadata: {
+        ...subscription.metadata,
+        tier: newTier,
+      },
     });
 
     logStep("Subscription updated", { 
       id: updatedSubscription.id, 
-      newPriceId,
+      newTier,
       status: updatedSubscription.status 
     });
 
     // Update factory record
-    const newPrice = await stripe.prices.retrieve(newPriceId);
-    const productId = typeof newPrice.product === 'string' ? newPrice.product : newPrice.product.id;
-    
-    // Map product to tier
-    let tierName = 'professional';
-    if (productId.includes('starter') || newPrice.unit_amount === 15000) {
-      tierName = 'starter';
-    } else if (productId.includes('enterprise') || newPrice.unit_amount === 75000) {
-      tierName = 'enterprise';
-    }
-
     await supabaseClient
       .from('factory_accounts')
-      .update({ subscription_tier: tierName })
+      .update({ 
+        subscription_tier: newTier,
+        max_lines: tierConfig.maxLines,
+      })
       .eq('id', profile.factory_id);
+
+    logStep("Factory updated", { tier: newTier, maxLines: tierConfig.maxLines });
 
     return new Response(JSON.stringify({ 
       success: true,
+      newTier,
+      maxLines: tierConfig.maxLines,
       subscription: {
         id: updatedSubscription.id,
         status: updatedSubscription.status,
