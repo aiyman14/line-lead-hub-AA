@@ -324,15 +324,17 @@ export default function Auth() {
       {/* Hero section */}
       <div className="gradient-industrial text-sidebar-foreground py-12 px-4">
         <div className="container mx-auto max-w-6xl flex flex-col items-center text-center">
-          <div className="flex items-center gap-4 mb-2">
+          <div className="flex items-center gap-4 mb-4">
             <img 
               src={logoSvg} 
               alt="Production Portal" 
               className="h-16 w-16 rounded-xl"
             />
-            <h1 className="text-2xl font-bold">Production Portal</h1>
+            <div className="text-left">
+              <h1 className="text-2xl font-bold">Production Portal</h1>
+              <p className="text-sm text-sidebar-foreground/60">Powered by WovenTex</p>
+            </div>
           </div>
-          <p className="text-sm text-sidebar-foreground/60 mb-4">Powered by WovenTex</p>
           <p className="text-lg text-sidebar-foreground/80 max-w-xl">
             Streamline your garment factory operations with real-time production tracking,
             intelligent insights, and seamless team collaboration.
