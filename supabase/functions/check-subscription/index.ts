@@ -230,11 +230,43 @@ serve(async (req) => {
       }
     }
 
-    // Check for trial status in database (fallback)
-    if (factory.subscription_status === 'trialing' && factory.trial_end_date) {
+    const now = new Date();
+
+    // Database-backed access (authoritative when webhook/checkout updates factory_accounts).
+    // This also protects against missing Stripe permissions on restricted keys.
+    if (factory.subscription_status === 'active') {
+      logStep("Access granted from DB status", { status: factory.subscription_status });
+      return new Response(JSON.stringify({
+        subscribed: true,
+        hasAccess: true,
+        isTrial: false,
+        currentTier: factory.subscription_tier || 'starter',
+        maxLines: factory.max_lines || 30,
+        factoryName: factory.name,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (factory.subscription_status === 'trialing') {
+      logStep("Access granted from DB status", { status: factory.subscription_status });
+      return new Response(JSON.stringify({
+        subscribed: true,
+        hasAccess: true,
+        isTrial: true,
+        currentTier: factory.subscription_tier || 'starter',
+        maxLines: factory.max_lines || 30,
+        factoryName: factory.name,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (factory.subscription_status === 'trial' && factory.trial_end_date) {
       const trialEnd = new Date(factory.trial_end_date);
-      const now = new Date();
-      
+
       if (trialEnd > now) {
         const daysRemaining = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         logStep("Active trial (from DB)", { trialEndDate: factory.trial_end_date, daysRemaining });
@@ -251,14 +283,14 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 200,
         });
-      } else {
-        // Trial expired
-        await supabaseClient
-          .from('factory_accounts')
-          .update({ subscription_status: 'expired' })
-          .eq('id', profile.factory_id);
-        logStep("Trial expired");
       }
+
+      // Trial expired
+      await supabaseClient
+        .from('factory_accounts')
+        .update({ subscription_status: 'expired' })
+        .eq('id', profile.factory_id);
+      logStep("Trial expired");
     }
 
     // No active subscription or trial
