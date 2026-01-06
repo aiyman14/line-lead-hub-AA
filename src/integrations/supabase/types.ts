@@ -1609,6 +1609,52 @@ export type Database = {
           },
         ]
       }
+      work_order_line_assignments: {
+        Row: {
+          created_at: string
+          factory_id: string
+          id: string
+          line_id: string
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          factory_id: string
+          id?: string
+          line_id: string
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          factory_id?: string
+          id?: string
+          line_id?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_line_assignments_factory_id_fkey"
+            columns: ["factory_id"]
+            isOneToOne: false
+            referencedRelation: "factory_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_assignments_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_assignments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_orders: {
         Row: {
           actual_ex_factory: string | null
