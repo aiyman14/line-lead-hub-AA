@@ -48,10 +48,8 @@ export default function CuttingForm() {
   const [lines, setLines] = useState<{ id: string; line_id: string; name: string | null }[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [lineSearchOpen, setLineSearchOpen] = useState(false);
-  const [transferLineSearchOpen, setTransferLineSearchOpen] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
   const [selectedLine, setSelectedLine] = useState<{ id: string; line_id: string; name: string | null } | null>(null);
-  const [selectedTransferLine, setSelectedTransferLine] = useState<{ id: string; line_id: string; name: string | null } | null>(null);
 
   // Morning Target fields
   const [manPower, setManPower] = useState("");
@@ -171,9 +169,8 @@ export default function CuttingForm() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedLine) newErrors.line = "Line is required";
+    if (!selectedLine) newErrors.line = "Transfer To Line is required";
     if (!selectedWorkOrder) newErrors.workOrder = "PO is required";
-    if (!selectedTransferLine) newErrors.transferLine = "Transfer To Line is required";
     if (!manPower || parseInt(manPower) < 0) newErrors.manPower = "Man Power is required";
     if (!markerCapacity || parseInt(markerCapacity) < 0) newErrors.markerCapacity = "Marker Capacity is required";
     if (!layCapacity || parseInt(layCapacity) < 0) newErrors.layCapacity = "Lay Capacity is required";
@@ -274,7 +271,7 @@ export default function CuttingForm() {
         total_input: totalInput,
         balance: balance,
         is_late: isLateEvening,
-        transfer_to_line_id: selectedTransferLine?.id,
+        transfer_to_line_id: selectedLine.id,
       };
 
       const { error: actualError } = await supabase.from("cutting_actuals").insert(actualData as any);
@@ -333,10 +330,10 @@ export default function CuttingForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Step 1: Line Selector */}
+        {/* Step 1: Transfer To Line Selector */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Select Line</CardTitle>
+            <CardTitle className="text-base">Transfer To (Sewing Line)</CardTitle>
           </CardHeader>
           <CardContent>
             <Popover open={lineSearchOpen} onOpenChange={setLineSearchOpen}>
@@ -587,54 +584,6 @@ export default function CuttingForm() {
           </CardContent>
         </Card>
 
-        {/* Transfer To Sewing Line */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Transfer To (Sewing Line)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Popover open={transferLineSearchOpen} onOpenChange={setTransferLineSearchOpen}>
-              <PopoverTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  className={`w-full justify-start ${errors.transferLine ? 'border-destructive' : ''}`}
-                >
-                  <Search className="mr-2 h-4 w-4" />
-                  {selectedTransferLine 
-                    ? (selectedTransferLine.name || selectedTransferLine.line_id)
-                    : "Select sewing line to transfer to..."}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[350px] p-0" align="start">
-                <Command shouldFilter={true}>
-                  <CommandInput placeholder="Search sewing lines..." />
-                  <CommandList>
-                    <CommandEmpty>No lines found.</CommandEmpty>
-                    <CommandGroup>
-                      {lines.map(line => (
-                        <CommandItem 
-                          key={line.id} 
-                          value={line.name || line.line_id}
-                          onSelect={() => {
-                            setSelectedTransferLine(line);
-                            setTransferLineSearchOpen(false);
-                            setErrors(prev => ({ ...prev, transferLine: "" }));
-                          }}
-                        >
-                          <span className="font-medium">{line.name || line.line_id}</span>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            {errors.transferLine && <p className="text-sm text-destructive mt-1">{errors.transferLine}</p>}
-            <p className="text-xs text-muted-foreground mt-2">
-              Select the sewing line that will receive these cut bundles/panels
-            </p>
-          </CardContent>
-        </Card>
 
         {/* Submit Button */}
         <div className="sticky bottom-4 pt-4">
