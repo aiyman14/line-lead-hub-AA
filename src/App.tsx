@@ -82,7 +82,7 @@ function AppRoutes() {
         <Route path="/my-submissions" element={<SubscriptionGate><MySubmissions /></SubscriptionGate>} />
         <Route path="/preferences" element={<SubscriptionGate><Preferences /></SubscriptionGate>} />
         <Route path="/billing" element={<SubscriptionGate><Billing /></SubscriptionGate>} />
-        <Route path="/billing-plan" element={<SubscriptionGate><BillingPlan /></SubscriptionGate>} />
+        <Route path="/billing-plan" element={<BillingPlan />} />
       </Route>
       
       <Route path="*" element={<NotFound />} />
