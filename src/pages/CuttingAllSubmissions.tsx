@@ -159,12 +159,16 @@ export default function CuttingAllSubmissions() {
     });
   }, [submissions, selectedLine]);
 
-  const stats = useMemo(() => ({
-    totalSubmissions: filteredSubmissions.length,
-    totalDayCutting: filteredSubmissions.reduce((sum, s) => sum + (s.day_cutting || 0), 0),
-    totalDayInput: filteredSubmissions.reduce((sum, s) => sum + (s.day_input || 0), 0),
-    totalCuttingCapacity: filteredSubmissions.reduce((sum, s) => sum + (s.cutting_capacity || 0), 0),
-  }), [filteredSubmissions]);
+  const stats = useMemo(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const todaySubmissions = submissions.filter(s => s.production_date === today);
+    return {
+      submissionsToday: todaySubmissions.length,
+      cuttingToday: todaySubmissions.reduce((sum, s) => sum + (s.day_cutting || 0), 0),
+      inputToday: todaySubmissions.reduce((sum, s) => sum + (s.day_input || 0), 0),
+      underQtyToday: todaySubmissions.reduce((sum, s) => sum + (s.under_qty || 0), 0),
+    };
+  }, [submissions]);
 
   function exportToCSV() {
     const headers = [
@@ -280,29 +284,29 @@ export default function CuttingAllSubmissions() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-primary">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Submissions</p>
-            <p className="text-2xl font-bold">{stats.totalSubmissions}</p>
-            <p className="text-xs text-muted-foreground">In date range</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Submissions Today</p>
+            <p className="text-2xl font-bold">{stats.submissionsToday}</p>
+            <p className="text-xs text-muted-foreground">Today's entries</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-success">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Cutting Capacity</p>
-            <p className="text-2xl font-bold">{stats.totalCuttingCapacity.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">Total planned</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Cutting Today</p>
+            <p className="text-2xl font-bold">{stats.cuttingToday.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-info">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Cutting</p>
-            <p className="text-2xl font-bold">{stats.totalDayCutting.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Input Today</p>
+            <p className="text-2xl font-bold">{stats.inputToday.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-warning">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Input</p>
-            <p className="text-2xl font-bold">{stats.totalDayInput.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Under QTY Today</p>
+            <p className="text-2xl font-bold">{stats.underQtyToday.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
         </Card>
