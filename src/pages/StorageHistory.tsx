@@ -305,7 +305,7 @@ export default function StorageHistory() {
                 <p>No bin cards found</p>
               </div>
             ) : (
-              <div className="rounded-md border">
+              <div className="w-full overflow-x-auto rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -348,7 +348,7 @@ export default function StorageHistory() {
       <Dialog open={!!selectedCard} onOpenChange={() => setSelectedCard(null)}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="pr-8 break-words">
               Bin Card Ledger - {selectedCard?.work_orders.po_number}
             </DialogTitle>
           </DialogHeader>
@@ -381,7 +381,7 @@ export default function StorageHistory() {
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : (
-                <div className="rounded-md border">
+                <div className="w-full overflow-x-auto rounded-md border">
                   <Table>
                     <TableHeader>
                       <TableRow>
