@@ -3,24 +3,24 @@ import { cn } from "@/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 
 const statusBadgeVariants = cva(
-  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
+  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all duration-200",
   {
     variants: {
       variant: {
-        default: "bg-secondary text-secondary-foreground",
-        success: "bg-success/10 text-success",
-        warning: "bg-warning/10 text-warning",
-        danger: "bg-destructive/10 text-destructive",
-        info: "bg-primary/10 text-primary",
-        sewing: "bg-primary/10 text-primary",
-        finishing: "bg-info/10 text-info",
-        open: "bg-destructive/10 text-destructive",
-        in_progress: "bg-warning/10 text-warning",
-        resolved: "bg-success/10 text-success",
-        critical: "bg-destructive/10 text-destructive",
-        high: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-        medium: "bg-warning/10 text-warning",
-        low: "bg-success/10 text-success",
+        default: "bg-secondary text-secondary-foreground shadow-sm",
+        success: "bg-success/10 text-success border border-success/20",
+        warning: "bg-warning/10 text-warning border border-warning/20",
+        danger: "bg-destructive/10 text-destructive border border-destructive/20",
+        info: "bg-primary/10 text-primary border border-primary/20",
+        sewing: "bg-primary/10 text-primary border border-primary/20",
+        finishing: "bg-info/10 text-info border border-info/20",
+        open: "bg-destructive/10 text-destructive border border-destructive/20",
+        in_progress: "bg-warning/10 text-warning border border-warning/20",
+        resolved: "bg-success/10 text-success border border-success/20",
+        critical: "bg-destructive/10 text-destructive border border-destructive/20",
+        high: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20",
+        medium: "bg-warning/10 text-warning border border-warning/20",
+        low: "bg-success/10 text-success border border-success/20",
       },
       size: {
         default: "px-2.5 py-0.5 text-xs",
