@@ -143,7 +143,7 @@ export const NAV_ITEMS = {
   worker_sewing: [
     { path: '/sewing/morning-targets', label: 'Sewing Morning Targets', icon: 'Crosshair' },
     { path: '/sewing/end-of-day', label: 'Sewing End of Day', icon: 'ClipboardCheck' },
-    { path: '/submissions', label: 'My Submissions', icon: 'FileText' },
+    { path: '/sewing/my-submissions', label: 'My Submissions', icon: 'FileText' },
     { path: '/sewing/cutting-handoffs', label: 'Cutting Handoffs', icon: 'Scissors' },
     { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
