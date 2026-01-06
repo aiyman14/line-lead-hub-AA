@@ -18,6 +18,7 @@ import {
 import { Loader2, Factory, Package, Search, Download, RefreshCw, Scissors, Archive } from "lucide-react";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { CuttingDetailModal } from "@/components/CuttingDetailModal";
+import { StorageBinCardDetailModal } from "@/components/StorageBinCardDetailModal";
 
 interface SewingUpdate {
   id: string;
@@ -154,6 +155,10 @@ export default function TodayUpdates() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedCutting, setSelectedCutting] = useState<any>(null);
   const [cuttingModalOpen, setCuttingModalOpen] = useState(false);
+  const [selectedBinCard, setSelectedBinCard] = useState<any>(null);
+  const [binCardTransactions, setBinCardTransactions] = useState<any[]>([]);
+  const [storageModalOpen, setStorageModalOpen] = useState(false);
+  const [storageLoading, setStorageLoading] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -317,11 +322,54 @@ export default function TodayUpdates() {
     setCuttingModalOpen(true);
   };
 
-  const handleStorageClick = (txn: StorageTransaction) => {
-    if (txn.storage_bin_cards?.id) {
-      navigate(`/storage/bin-card/${txn.storage_bin_cards.id}`);
-    } else {
+  const handleStorageClick = async (txn: StorageTransaction) => {
+    if (!txn.storage_bin_cards?.id) {
       navigate('/storage/history');
+      return;
+    }
+
+    setStorageLoading(true);
+    setStorageModalOpen(true);
+
+    try {
+      // Fetch full bin card details
+      const { data: binCardData, error: binCardError } = await supabase
+        .from('storage_bin_cards')
+        .select('*, work_orders(po_number)')
+        .eq('id', txn.storage_bin_cards.id)
+        .single();
+
+      if (binCardError) throw binCardError;
+
+      // Fetch all transactions for this bin card
+      const { data: txnData, error: txnError } = await supabase
+        .from('storage_bin_card_transactions')
+        .select('*')
+        .eq('bin_card_id', txn.storage_bin_cards.id)
+        .order('transaction_date', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (txnError) throw txnError;
+
+      setSelectedBinCard({
+        id: binCardData.id,
+        buyer: binCardData.buyer,
+        style: binCardData.style,
+        po_number: binCardData.work_orders?.po_number || null,
+        supplier_name: binCardData.supplier_name,
+        description: binCardData.description,
+        construction: binCardData.construction,
+        color: binCardData.color,
+        width: binCardData.width,
+        package_qty: binCardData.package_qty,
+        prepared_by: binCardData.prepared_by,
+      });
+      setBinCardTransactions(txnData || []);
+    } catch (error) {
+      console.error('Error fetching bin card details:', error);
+      setStorageModalOpen(false);
+    } finally {
+      setStorageLoading(false);
     }
   };
 
@@ -856,6 +904,14 @@ export default function TodayUpdates() {
         cutting={selectedCutting}
         open={cuttingModalOpen}
         onOpenChange={setCuttingModalOpen}
+      />
+
+      {/* Storage Bin Card Detail Modal */}
+      <StorageBinCardDetailModal
+        binCard={selectedBinCard}
+        transactions={binCardTransactions}
+        open={storageModalOpen}
+        onOpenChange={setStorageModalOpen}
       />
     </div>
   );
