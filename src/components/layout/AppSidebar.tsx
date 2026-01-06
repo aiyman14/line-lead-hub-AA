@@ -210,11 +210,9 @@ export function AppSidebar() {
               <span className="font-semibold text-sidebar-foreground">
                 {t('app.name')}
               </span>
-              {factory && (
-                <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
-                  {factory.name}
-                </span>
-              )}
+              <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
+                Operated by WovenTex
+              </span>
             </div>
           )}
         </div>
