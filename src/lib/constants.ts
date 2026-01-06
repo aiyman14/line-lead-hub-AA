@@ -150,6 +150,7 @@ export const NAV_ITEMS = {
   ],
   worker_finishing: [
     { path: '/finishing/daily-sheet', label: 'Finishing Daily Sheet', icon: 'ClipboardList' },
+    { path: '/finishing/my-submissions', label: 'My Submissions', icon: 'FileText' },
     { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
