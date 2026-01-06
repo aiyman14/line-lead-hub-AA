@@ -23,8 +23,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
-import { FileText, Eye, Target, TrendingUp, Search, Users, Crosshair, ClipboardCheck } from "lucide-react";
+import { FileText, Target, TrendingUp, Search, Users, Crosshair, ClipboardCheck } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TargetDetailModal } from "@/components/TargetDetailModal";
+import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 
 interface SewingTarget {
   id: string;
@@ -81,6 +83,8 @@ export default function SewingMySubmissions() {
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<string>("targets");
+  const [selectedTarget, setSelectedTarget] = useState<SewingTarget | null>(null);
+  const [selectedActual, setSelectedActual] = useState<SewingActual | null>(null);
 
   useEffect(() => {
     if (profile?.factory_id && user) {
@@ -369,7 +373,11 @@ export default function SewingMySubmissions() {
                       const isTodayItem = isToday(date);
 
                       return (
-                        <TableRow key={target.id}>
+                        <TableRow 
+                          key={target.id} 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setSelectedTarget(target)}
+                        >
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <span>{format(date, "MMM dd")}</span>
@@ -460,7 +468,11 @@ export default function SewingMySubmissions() {
                       const isTodayItem = isToday(date);
 
                       return (
-                        <TableRow key={actual.id}>
+                        <TableRow 
+                          key={actual.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setSelectedActual(actual)}
+                        >
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <span>{format(date, "MMM dd")}</span>
@@ -513,6 +525,56 @@ export default function SewingMySubmissions() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Target Detail Modal */}
+      <TargetDetailModal
+        target={selectedTarget ? {
+          id: selectedTarget.id,
+          type: 'sewing',
+          line_name: selectedTarget.line?.line_id || 'Unknown Line',
+          po_number: selectedTarget.work_order?.po_number || null,
+          buyer: selectedTarget.work_order?.buyer || null,
+          style: selectedTarget.work_order?.style || null,
+          per_hour_target: selectedTarget.per_hour_target,
+          order_qty: selectedTarget.work_order?.order_qty || null,
+          submitted_at: selectedTarget.submitted_at || '',
+          production_date: selectedTarget.production_date,
+          manpower_planned: selectedTarget.manpower_planned,
+          ot_hours_planned: selectedTarget.ot_hours_planned,
+        } : null}
+        open={!!selectedTarget}
+        onOpenChange={(open) => !open && setSelectedTarget(null)}
+      />
+
+      {/* Actual/End of Day Detail Modal */}
+      <SubmissionDetailModal
+        submission={selectedActual ? {
+          id: selectedActual.id,
+          type: 'sewing',
+          line_name: selectedActual.line?.line_id || 'Unknown Line',
+          po_number: selectedActual.work_order?.po_number || null,
+          buyer: selectedActual.work_order?.buyer || null,
+          style: selectedActual.work_order?.style || null,
+          output_qty: selectedActual.good_today,
+          target_qty: null,
+          manpower: selectedActual.manpower_actual,
+          reject_qty: selectedActual.reject_today,
+          rework_qty: selectedActual.rework_today,
+          stage_progress: null,
+          ot_hours: selectedActual.ot_hours_actual,
+          ot_manpower: null,
+          has_blocker: false,
+          blocker_description: null,
+          blocker_impact: null,
+          blocker_owner: null,
+          blocker_status: null,
+          notes: null,
+          submitted_at: selectedActual.submitted_at || '',
+          production_date: selectedActual.production_date,
+        } : null}
+        open={!!selectedActual}
+        onOpenChange={(open) => !open && setSelectedActual(null)}
+      />
     </div>
   );
 }
