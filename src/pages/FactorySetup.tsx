@@ -318,10 +318,17 @@ export default function FactorySetup() {
       const trialEndDate = new Date();
       trialEndDate.setDate(trialEndDate.getDate() + 14);
 
+      // IMPORTANT: avoid `.select()` on the insert.
+      // The SELECT RLS policy depends on `profiles.factory_id`, which isn't set yet,
+      // and Postgres enforces SELECT policies on `INSERT ... RETURNING`.
+      // Instead, we generate the id client-side so we can reference it immediately.
+      const factoryId = crypto.randomUUID();
+
       // Create the factory with a 14-day free trial
-      const { data: factory, error: factoryError } = await supabase
+      const { error: factoryError } = await supabase
         .from('factory_accounts')
         .insert({
+          id: factoryId,
           name: newFactoryName.trim(),
           slug: newFactorySlug.trim().toLowerCase().replace(/\s+/g, '-'),
           subscription_status: 'trial',
@@ -329,16 +336,14 @@ export default function FactorySetup() {
           max_lines: 30,
           trial_start_date: trialStartDate.toISOString(),
           trial_end_date: trialEndDate.toISOString(),
-        })
-        .select()
-        .single();
+        });
 
       if (factoryError) throw factoryError;
 
       // Update user's profile to assign them to the factory
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ factory_id: factory.id })
+        .update({ factory_id: factoryId })
         .eq('id', user.id);
 
       if (profileError) throw profileError;
@@ -346,10 +351,10 @@ export default function FactorySetup() {
       // Assign owner role to the user who created the factory
       const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ 
-          user_id: user.id, 
+        .insert({
+          user_id: user.id,
           role: 'owner',
-          factory_id: factory.id 
+          factory_id: factoryId,
         });
 
       if (roleError) {
@@ -357,19 +362,19 @@ export default function FactorySetup() {
       }
 
       // Seed default stages
-      const stagesData = DEFAULT_STAGES.map(stage => ({
+      const stagesData = DEFAULT_STAGES.map((stage) => ({
         ...stage,
-        factory_id: factory.id,
+        factory_id: factoryId,
       }));
       await supabase.from('stages').insert(stagesData);
 
       // Seed default blocker types
-      const blockerTypesData = DEFAULT_BLOCKER_TYPES.map(bt => ({
+      const blockerTypesData = DEFAULT_BLOCKER_TYPES.map((bt) => ({
         code: bt.code,
         name: bt.name,
         default_owner: bt.default_owner,
         default_impact: bt.default_impact,
-        factory_id: factory.id,
+        factory_id: factoryId,
       }));
       await supabase.from('blocker_types').insert(blockerTypesData);
 
