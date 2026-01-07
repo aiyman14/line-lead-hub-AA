@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.productionportal.mobile',
-  appName: 'Production Portal',
+  appId: 'app.lovable.12eae2b2c6224589bd88ae25411192d0',
+  appName: 'line-lead-hub',
   webDir: 'dist',
   
   // Development server configuration for hot reload

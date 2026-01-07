@@ -12,6 +12,7 @@ import { Loader2, Factory, ArrowRight, KeyRound } from "lucide-react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { checkRateLimit } from "@/lib/security";
+import { getPasswordResetRedirectUrl } from "@/lib/capacitor";
 import logoSvg from "@/assets/logo.svg";
 
 const passwordSchema = z.object({
@@ -169,7 +170,7 @@ export default function Auth() {
 
     setForgotPasswordLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(forgotPasswordEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: getPasswordResetRedirectUrl(),
     });
     setForgotPasswordLoading(false);
 

@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { TrialExpirationBanner } from "@/components/TrialExpirationBanner";
+import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 
 export function AppLayout() {
   const { user, loading, factory, profile } = useAuth();
@@ -37,6 +38,7 @@ export function AppLayout() {
 
               <div className="flex-1" />
 
+              <NetworkStatusIndicator />
               <NotificationBell />
 
               {factory && (
