@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.terminate-account]
 verify_jwt = false
+
+[functions.auth-rate-limit]
+verify_jwt = false

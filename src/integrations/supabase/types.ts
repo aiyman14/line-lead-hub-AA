@@ -1617,6 +1617,69 @@ export type Database = {
           },
         ]
       }
+      rate_limits: {
+        Row: {
+          action_type: string
+          attempts: number | null
+          blocked_until: string | null
+          first_attempt_at: string | null
+          id: string
+          identifier: string
+          last_attempt_at: string | null
+        }
+        Insert: {
+          action_type: string
+          attempts?: number | null
+          blocked_until?: string | null
+          first_attempt_at?: string | null
+          id?: string
+          identifier: string
+          last_attempt_at?: string | null
+        }
+        Update: {
+          action_type?: string
+          attempts?: number | null
+          blocked_until?: string | null
+          first_attempt_at?: string | null
+          id?: string
+          identifier?: string
+          last_attempt_at?: string | null
+        }
+        Relationships: []
+      }
+      security_events: {
+        Row: {
+          created_at: string | null
+          details: Json | null
+          event_type: string
+          factory_id: string | null
+          id: string
+          ip_address: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          details?: Json | null
+          event_type: string
+          factory_id?: string | null
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          details?: Json | null
+          event_type?: string
+          factory_id?: string | null
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       sewing_actuals: {
         Row: {
           action_taken_today: string | null
@@ -2310,6 +2373,16 @@ export type Database = {
     }
     Functions: {
       can_activate_line: { Args: { _factory_id: string }; Returns: boolean }
+      check_rate_limit: {
+        Args: {
+          p_action_type: string
+          p_block_minutes?: number
+          p_identifier: string
+          p_max_attempts?: number
+          p_window_minutes?: number
+        }
+        Returns: Json
+      }
       count_active_lines: { Args: { _factory_id: string }; Returns: number }
       factory_has_active_access: {
         Args: { _factory_id: string }
@@ -2328,6 +2401,18 @@ export type Database = {
       has_storage_role: { Args: { _user_id: string }; Returns: boolean }
       is_admin_or_higher: { Args: { _user_id: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
+      is_supervisor_or_higher: { Args: { _user_id: string }; Returns: boolean }
+      log_security_event: {
+        Args: {
+          p_details?: Json
+          p_event_type: string
+          p_factory_id?: string
+          p_ip_address?: string
+          p_user_agent?: string
+          p_user_id?: string
+        }
+        Returns: undefined
+      }
       user_belongs_to_factory: {
         Args: { _factory_id: string; _user_id: string }
         Returns: boolean
