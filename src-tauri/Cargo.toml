@@ -1,0 +1,20 @@
+[package]
+name = "production-portal"
+version = "1.0.0"
+description = "Production Portal Desktop Application"
+authors = ["Production Portal Team"]
+license = "MIT"
+repository = ""
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = [ "clipboard-all", "os-all", "path-all", "window-all", "notification-all", "dialog-all", "fs-all", "shell-open", "http-all"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
