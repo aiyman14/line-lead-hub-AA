@@ -137,6 +137,46 @@ export const DEFAULT_BLOCKER_TYPES = [
   { code: 'OTHER', name: 'Other', default_owner: 'Production', default_impact: 'low' as BlockerImpact },
 ];
 
+// Default stage progress options (for dropdown settings)
+export const DEFAULT_STAGE_PROGRESS_OPTIONS = [
+  { label: '0%', sort_order: 1 },
+  { label: '25%', sort_order: 2 },
+  { label: '50%', sort_order: 3 },
+  { label: '75%', sort_order: 4 },
+  { label: '100%', sort_order: 5 },
+];
+
+// Default next milestone options (for dropdown settings)
+export const DEFAULT_NEXT_MILESTONE_OPTIONS = [
+  { label: 'Continue current stage', sort_order: 1 },
+  { label: 'Move to next stage', sort_order: 2 },
+  { label: 'Start Cutting', sort_order: 3 },
+  { label: 'Start Sewing', sort_order: 4 },
+  { label: 'Start Process (Wash/Print/Embroidery)', sort_order: 5 },
+  { label: 'Start Finishing', sort_order: 6 },
+  { label: 'Start Packing', sort_order: 7 },
+  { label: 'Start Final QC', sort_order: 8 },
+  { label: 'Ready for Shipment', sort_order: 9 },
+];
+
+// Default blocker owner options (for dropdown settings)
+export const DEFAULT_BLOCKER_OWNER_OPTIONS = [
+  { label: 'Factory', sort_order: 1 },
+  { label: 'Brand / Buyer', sort_order: 2 },
+  { label: 'Supplier', sort_order: 3 },
+  { label: 'Logistics / Forwarder', sort_order: 4 },
+];
+
+// Default blocker impact options (for dropdown settings)
+export const DEFAULT_BLOCKER_IMPACT_OPTIONS = [
+  { label: 'No Impact', sort_order: 1 },
+  { label: 'Risk (may delay)', sort_order: 2 },
+  { label: 'Delay 1–2 days', sort_order: 3 },
+  { label: 'Delay 3–7 days', sort_order: 4 },
+  { label: 'Delay 8+ days', sort_order: 5 },
+  { label: 'Unknown', sort_order: 6 },
+];
+
 // Navigation items per role
 // Worker navigation is determined dynamically based on department
 export const NAV_ITEMS = {

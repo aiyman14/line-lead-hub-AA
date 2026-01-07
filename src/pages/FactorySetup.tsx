@@ -378,9 +378,39 @@ export default function FactorySetup() {
       }));
       await supabase.from('blocker_types').insert(blockerTypesData);
 
+      // Seed default stage progress options
+      const { DEFAULT_STAGE_PROGRESS_OPTIONS, DEFAULT_NEXT_MILESTONE_OPTIONS, DEFAULT_BLOCKER_OWNER_OPTIONS, DEFAULT_BLOCKER_IMPACT_OPTIONS } = await import('@/lib/constants');
+      
+      const stageProgressData = DEFAULT_STAGE_PROGRESS_OPTIONS.map((opt) => ({
+        ...opt,
+        factory_id: factoryId,
+      }));
+      await supabase.from('stage_progress_options').insert(stageProgressData);
+
+      // Seed default next milestone options
+      const nextMilestoneData = DEFAULT_NEXT_MILESTONE_OPTIONS.map((opt) => ({
+        ...opt,
+        factory_id: factoryId,
+      }));
+      await supabase.from('next_milestone_options').insert(nextMilestoneData);
+
+      // Seed default blocker owner options
+      const blockerOwnerData = DEFAULT_BLOCKER_OWNER_OPTIONS.map((opt) => ({
+        ...opt,
+        factory_id: factoryId,
+      }));
+      await supabase.from('blocker_owner_options').insert(blockerOwnerData);
+
+      // Seed default blocker impact options
+      const blockerImpactData = DEFAULT_BLOCKER_IMPACT_OPTIONS.map((opt) => ({
+        ...opt,
+        factory_id: factoryId,
+      }));
+      await supabase.from('blocker_impact_options').insert(blockerImpactData);
+
       toast({ 
         title: "Factory created!", 
-        description: "Your 14-day free trial has started. Default stages and blocker types have been added." 
+        description: "Your 14-day free trial has started. Default settings have been added." 
       });
       
       // Reload the page to refresh auth context
