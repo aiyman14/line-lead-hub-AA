@@ -1110,10 +1110,10 @@ export default function FactorySetup() {
 
             <div className="space-y-2">
               <Label>Unit (optional)</Label>
-              <Select value={bulkUnitId} onValueChange={(v) => { setBulkUnitId(v); setBulkFloorId(''); }}>
+              <Select value={bulkUnitId || "none"} onValueChange={(v) => { setBulkUnitId(v === "none" ? "" : v); setBulkFloorId(''); }}>
                 <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No unit</SelectItem>
+                  <SelectItem value="none">No unit</SelectItem>
                   {units.filter(u => u.is_active).map(u => (
                     <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                   ))}
@@ -1124,10 +1124,10 @@ export default function FactorySetup() {
             {bulkUnitId && (
               <div className="space-y-2">
                 <Label>Floor (optional)</Label>
-                <Select value={bulkFloorId} onValueChange={setBulkFloorId}>
+                <Select value={bulkFloorId || "none"} onValueChange={(v) => setBulkFloorId(v === "none" ? "" : v)}>
                   <SelectTrigger><SelectValue placeholder="Select floor" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No floor</SelectItem>
+                    <SelectItem value="none">No floor</SelectItem>
                     {floors.filter(f => f.is_active && f.unit_id === bulkUnitId).map(f => (
                       <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
                     ))}
