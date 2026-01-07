@@ -13,10 +13,9 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+
     strategy:
       fail-fast: false
-      # IMPORTANT: prevent simultaneous release-asset style races by not running all OS builds at once
-      max-parallel: 1
       matrix:
         os: [ubuntu-22.04, windows-latest, macos-latest]
 
@@ -26,7 +25,9 @@ jobs:
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
+        shell: bash
         run: |
+          set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y \
             pkg-config \
@@ -35,13 +36,13 @@ jobs:
             librsvg2-dev \
             libsoup-3.0-dev \
             patchelf
+
           sudo apt-get install -y libayatana-appindicator3-dev || sudo apt-get install -y libappindicator3-dev
 
-          # Make pkg-config see libsoup-3.0.pc (now + later steps)
-          export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
-          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          # Make pkg-config see *.pc files (incl libsoup-3.0.pc) for later steps
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> "$GITHUB_ENV"
 
-          # Fail fast here if libsoup still isn't visible
+          # Fail fast if libsoup still isn't visible
           pkg-config --modversion libsoup-3.0
 
       - name: Setup Node
@@ -59,12 +60,6 @@ jobs:
       - name: Build desktop app (Tauri)
         run: npm run tauri:build
 
-      - name: List bundles (debug)
-        shell: bash
-        run: |
-          ls -la src-tauri/target/release || true
-          ls -R src-tauri/target/release/bundle || true
-
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
@@ -77,6 +72,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
 
+    # IMPORTANT: Only create a GitHub Release when this workflow is triggered by a TAG push
+    if: startsWith(github.ref, 'refs/tags/')
+
+    permissions:
+      contents: write
+
     steps:
       - name: Download all bundles
         uses: actions/download-artifact@v4
@@ -87,8 +88,14 @@ jobs:
 
       - name: Create Release + Upload Assets
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: |
-            dist/**
+          tag_name: ${{ github.ref_name }}
           name: Production Portal ${{ github.ref_name }}
           body: Desktop installers for Production Portal.
+          draft: false
+          prerelease: false
+          files: |
+            dist/**
+          fail_on_unmatched_files: true
