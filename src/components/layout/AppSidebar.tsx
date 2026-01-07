@@ -18,6 +18,7 @@ import {
   CreditCard,
   Receipt,
   Headphones,
+  HelpCircle,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -368,6 +369,18 @@ export function AppSidebar() {
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
+        <a
+          href="https://www.woventex.co"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 mt-2 transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+            collapsed && "justify-center"
+          )}
+        >
+          <HelpCircle className="h-5 w-5 shrink-0" />
+          {!collapsed && <span>{t('common.help') || 'Help'}</span>}
+        </a>
         <Button
           variant="ghost"
           size="sm"
