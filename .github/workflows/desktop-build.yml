@@ -6,47 +6,31 @@ on:
     tags:
       - "desktop-v*"
 
-permissions:
-  contents: write
-
 jobs:
   build:
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-22.04]
+        include:
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: windows-latest
+            args: ""
+          - platform: macos-latest
+            args: ""
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.platform }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: ${{ matrix.os == 'ubuntu-22.04' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: lts/*
           cache: npm
 
-      - name: Install frontend deps
-        run: npm ci
-
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build & Release (Tauri)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Production Portal ${{ github.ref_name }}"
-          releaseBody: "Desktop installers for Production Portal."
-          releaseDraft: false
-          prerelease: false
+        uses: dtolnay/rust-t
