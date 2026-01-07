@@ -95,71 +95,45 @@ serve(async (req) => {
 
     const origin = req.headers.get("origin") || "https://production-portal.lovable.app";
     
-    // If starting trial, require factory
+    // If starting trial, create checkout with trial period
     if (startTrial) {
-      if (!factoryId) {
-        throw new Error("Factory required to start trial");
-      }
+      logStep("Creating checkout session with 14-day trial", { tier });
       
-      logStep("Starting 14-day trial", { tier });
-      
-      // Create or get customer
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          metadata: {
-            factory_id: factoryId,
-            user_id: user.id,
-          },
-        });
-        customerId = customer.id;
-        logStep("Created new customer", { customerId });
-      }
-
-      // Calculate trial end (14 days from now)
-      const trialEnd = Math.floor(Date.now() / 1000) + (14 * 24 * 60 * 60);
-      
-      // Create subscription with trial using the selected tier
       const priceId = tierConfig?.priceId || PLAN_TIERS.starter.priceId;
+      const maxLines = tierConfig?.maxLines || 30;
       
-      const subscription = await stripe.subscriptions.create({
+      const session = await stripe.checkout.sessions.create({
         customer: customerId,
-        items: [{ price: priceId }],
-        trial_end: trialEnd,
-        payment_behavior: 'default_incomplete',
-        payment_settings: { save_default_payment_method: 'on_subscription' },
-        expand: ['latest_invoice.payment_intent'],
+        customer_email: customerId ? undefined : user.email,
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        mode: "subscription",
+        success_url: `${origin}/setup/factory?payment=success&trial=true`,
+        cancel_url: `${origin}/subscription?payment=cancelled`,
+        subscription_data: {
+          trial_period_days: 14,
+          metadata: {
+            factory_id: factoryId || '',
+            user_id: user.id,
+            tier: tier,
+            max_lines: maxLines.toString(),
+          },
+        },
         metadata: {
-          factory_id: factoryId,
+          factory_id: factoryId || '',
+          user_id: user.id,
           tier: tier,
+          is_trial: 'true',
         },
       });
-      
-      logStep("Trial subscription created", { subscriptionId: subscription.id, trialEnd, tier });
 
-      // Update factory with subscription info
-      await supabaseAdmin
-        .from('factory_accounts')
-        .update({
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscription.id,
-          subscription_status: 'trialing',
-          subscription_tier: tier,
-          max_lines: tierConfig?.maxLines || 30,
-          trial_start_date: new Date().toISOString(),
-          trial_end_date: new Date(trialEnd * 1000).toISOString(),
-        })
-        .eq('id', factoryId);
+      logStep("Trial checkout session created", { sessionId: session.id, tier, url: session.url });
 
-      logStep("Factory updated with trial info");
-
-      return new Response(JSON.stringify({ 
-        success: true, 
-        trial: true,
-        tier,
-        trialEndDate: new Date(trialEnd * 1000).toISOString(),
-        redirectUrl: `${origin}/billing-plan`
-      }), {
+      return new Response(JSON.stringify({ url: session.url }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
