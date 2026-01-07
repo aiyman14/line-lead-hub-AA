@@ -99,190 +99,48 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     setLoading(true);
 
     try {
-      // Generate a secure random password for initial account creation
-      // User will set their own password via the reset link
-      const randomPassword = crypto.randomUUID() + crypto.randomUUID();
-
-      // Preserve current session (inviter). supabase.auth.signUp will otherwise switch session to the new user.
-      const {
-        data: { session: inviterSession },
-      } = await supabase.auth.getSession();
-
-      // Create user via Auth using admin invite pattern - don't auto sign in
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: randomPassword,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth`,
-          data: {
-            full_name: formData.fullName,
-            invited_by_admin: "true",
-            factory_id: profile.factory_id,
-          },
+      // Use edge function to create user (doesn't affect current session)
+      const { data, error } = await supabase.functions.invoke('admin-invite-user', {
+        body: {
+          email: formData.email,
+          fullName: formData.fullName,
+          factoryId: profile.factory_id,
+          role: formData.role,
+          department: formData.role === 'worker' ? formData.department : null,
+          lineIds: formData.role === 'worker' ? selectedLineIds : [],
         },
       });
 
-      // Immediately restore inviter session to prevent any redirect
-      if (inviterSession) {
-        await supabase.auth.setSession({
-          access_token: inviterSession.access_token,
-          refresh_token: inviterSession.refresh_token,
-        });
-      }
-
-      let userId: string | null = null;
-
-      if (authError) {
-        if (authError.message.includes('already registered')) {
-          // User exists - we'll send them a password reset link
-          console.log("User already exists, will send password reset link...");
-          
-          // Look up the existing user to get their ID
-          const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('email', formData.email)
-            .single();
-          
-          if (!existingProfile) {
-            toast.error("User exists but profile not found");
-            return;
-          }
-          
-          userId = existingProfile.id;
-          
-          // Update the profile with factory_id, name, and department
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .update({ 
-              factory_id: profile.factory_id,
-              full_name: formData.fullName,
-              department: formData.role === 'worker' ? formData.department : null
-            })
-            .eq('id', userId);
-
-          if (profileError) {
-            console.error("Profile update error:", profileError);
-          }
-        } else {
-          toast.error(authError.message);
-          return;
-        }
-      } else {
-        if (!authData.user) {
-          toast.error("Failed to create user");
-          return;
-        }
-        userId = authData.user.id;
-
-        // Update the profile with factory_id and department
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({ 
-            factory_id: profile.factory_id,
-            department: formData.role === 'worker' ? formData.department : null
-          })
-          .eq('id', userId);
-
-        if (profileError) {
-          console.error("Profile update error:", profileError);
-        }
-      }
-
-      // Assign role to the new user
-      // IMPORTANT: do not delete all roles globally; keep scopes safe.
-      // 1) Remove any existing role for this factory
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', userId)
-        .eq('factory_id', profile.factory_id);
-
-      // 2) Remove accidental global admin role (from older trigger behavior)
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', userId)
-        .is('factory_id', null)
-        .eq('role', 'admin');
-
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: userId,
-          role: formData.role,
-          factory_id: profile.factory_id,
-        });
-
-      if (roleError) {
-        console.error("Role assignment error:", roleError);
-        toast.error("User created but role assignment failed");
+      if (error) {
+        console.error("Invite error:", error);
+        toast.error(error.message || "Failed to invite user");
         return;
       }
 
-      // Assign lines to the user - first delete existing, then insert new
-      if (userId) {
-        // Delete existing line assignments for this user
-        await supabase
-          .from('user_line_assignments')
-          .delete()
-          .eq('user_id', userId);
-
-        if (selectedLineIds.length > 0) {
-          const lineAssignments = selectedLineIds.map(lineId => ({
-            user_id: userId,
-            line_id: lineId,
-            factory_id: profile.factory_id,
-          }));
-
-          const { error: lineError } = await supabase
-            .from('user_line_assignments')
-            .insert(lineAssignments);
-
-          if (lineError) {
-            console.error("Line assignment error:", lineError);
-          }
-        }
+      if (data?.error) {
+        toast.error(data.error);
+        return;
       }
 
-      // Send welcome email with password reset link (no plain text password)
+      // Send welcome email
       try {
-        // Get factory name for the email
         const { data: factoryData } = await supabase
           .from('factory_accounts')
           .select('name')
           .eq('id', profile.factory_id)
           .single();
 
-        // Generate a password reset link for the user to set their own password
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-          formData.email,
-          { redirectTo: `${window.location.origin}/reset-password` }
-        );
-
-        if (resetError) {
-          console.error("Failed to generate reset link:", resetError);
-          toast.warning("User created but password setup email failed to send");
-        } else {
-          // Send a custom welcome email with the reset link context
-          // The reset email is sent by Supabase, but we can send a supplementary welcome
-          const { error: emailError } = await supabase.functions.invoke('send-welcome-email', {
-            body: {
-              email: formData.email,
-              fullName: formData.fullName,
-              resetLink: `${window.location.origin}/reset-password`,
-              factoryName: factoryData?.name,
-            },
-          });
-
-          if (emailError) {
-            console.error("Welcome email error:", emailError);
-            // Reset link email was sent by Supabase, so user can still set password
-          }
-        }
+        await supabase.functions.invoke('send-welcome-email', {
+          body: {
+            email: formData.email,
+            fullName: formData.fullName,
+            resetLink: `${window.location.origin}/reset-password`,
+            factoryName: factoryData?.name,
+          },
+        });
       } catch (emailErr) {
-        console.error("Email sending error:", emailErr);
-        // Don't block the success flow if email fails
+        console.error("Welcome email error:", emailErr);
+        // Don't block success if email fails
       }
 
       toast.success(`User ${formData.fullName} invited successfully`);
