@@ -22,9 +22,13 @@ import {
   Download,
   Search,
   AlertTriangle,
-  ArrowLeft
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  X
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface WorkOrder {
   id: string;
@@ -84,6 +88,15 @@ export default function WorkOrders() {
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
   const [editingItem, setEditingItem] = useState<WorkOrder | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // CSV Preview state
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewData, setPreviewData] = useState<{
+    detectedColumns: { original: string; mappedTo: string | null }[];
+    previewRows: any[];
+    totalRows: number;
+  } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -400,25 +413,22 @@ export default function WorkOrders() {
     return 'not_started';
   }
 
-  async function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !profile?.factory_id) return;
-    
-    const text = await file.text();
+  function parseCSVToRows(text: string): any[] {
     const csvLines = text.split('\n').filter(l => l.trim());
-    const headers = parseCSVLine(csvLines[0]).map(h => h.trim().toLowerCase());
+    if (csvLines.length < 2) return [];
     
-    const workOrdersToInsert = [];
+    const headers = parseCSVLine(csvLines[0]).map(h => h.trim().toLowerCase());
+    const rows: any[] = [];
+    
     for (let i = 1; i < csvLines.length; i++) {
       const values = parseCSVLine(csvLines[i]);
-      const row: any = { factory_id: profile.factory_id };
+      const row: any = { factory_id: profile?.factory_id };
       
       headers.forEach((header, idx) => {
         const mappedField = COLUMN_MAPPINGS[header];
         if (!mappedField) return;
         
         let value = values[idx]?.replace(/^["']|["']$/g, '').trim() || '';
-        // Remove currency symbols and commas from numbers
         if (mappedField === 'order_qty') {
           value = value.replace(/[$,]/g, '');
           row[mappedField] = parseInt(value) || 0;
@@ -429,7 +439,6 @@ export default function WorkOrders() {
         } else if (mappedField === 'status') {
           row[mappedField] = mapStatus(value);
         } else if (mappedField === 'planned_ex_factory' && value) {
-          // Try to parse date in various formats
           const parsed = new Date(value);
           row[mappedField] = isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
         } else {
@@ -437,29 +446,77 @@ export default function WorkOrders() {
         }
       });
       
-      // Ensure required fields exist
       if (row.po_number && row.buyer) {
-        // If style is missing, use item or a default
         if (!row.style) row.style = row.item || 'Default Style';
-        workOrdersToInsert.push(row);
+        rows.push(row);
       }
     }
+    return rows;
+  }
+
+  async function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !profile?.factory_id) return;
     
-    if (workOrdersToInsert.length === 0) {
-      toast({ variant: "destructive", title: "No valid rows found in CSV", description: "Make sure your CSV has columns like OrderLineID/po_number, Brand Name/buyer, etc." });
+    const text = await file.text();
+    const csvLines = text.split('\n').filter(l => l.trim());
+    if (csvLines.length < 2) {
+      toast({ variant: "destructive", title: "Invalid CSV", description: "File must have headers and at least one data row." });
       return;
     }
     
+    const originalHeaders = parseCSVLine(csvLines[0]).map(h => h.trim());
+    const detectedColumns = originalHeaders.map(h => ({
+      original: h,
+      mappedTo: COLUMN_MAPPINGS[h.toLowerCase()] || null
+    }));
+    
+    const parsedRows = parseCSVToRows(text);
+    
+    if (parsedRows.length === 0) {
+      toast({ variant: "destructive", title: "No valid rows found", description: "Make sure your CSV has columns like OrderLineID/po_number, Brand Name/buyer, etc." });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    
+    setPreviewData({
+      detectedColumns,
+      previewRows: parsedRows.slice(0, 5),
+      totalRows: parsedRows.length
+    });
+    setIsPreviewOpen(true);
+  }
+
+  async function confirmImport() {
+    if (!previewData || !profile?.factory_id) return;
+    
+    setIsImporting(true);
     try {
-      const { error } = await supabase.from('work_orders').insert(workOrdersToInsert);
+      // Re-parse to get all rows (previewRows only has 5)
+      const fileInput = fileInputRef.current;
+      if (!fileInput?.files?.[0]) throw new Error("File not found");
+      
+      const text = await fileInput.files[0].text();
+      const allRows = parseCSVToRows(text);
+      
+      const { error } = await supabase.from('work_orders').insert(allRows);
       if (error) throw error;
-      toast({ title: `Imported ${workOrdersToInsert.length} work orders` });
+      
+      toast({ title: `Imported ${allRows.length} work orders` });
+      setIsPreviewOpen(false);
+      setPreviewData(null);
       fetchWorkOrders();
     } catch (error: any) {
       toast({ variant: "destructive", title: "Import failed", description: error.message });
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
-    
-    // Reset file input
+  }
+
+  function cancelImport() {
+    setIsPreviewOpen(false);
+    setPreviewData(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -814,6 +871,119 @@ export default function WorkOrders() {
               {dialogMode === 'create' ? 'Create' : 'Save'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* CSV Preview Dialog */}
+      <Dialog open={isPreviewOpen} onOpenChange={(open) => !open && cancelImport()}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Import Preview
+            </DialogTitle>
+          </DialogHeader>
+          
+          {previewData && (
+            <div className="space-y-6">
+              {/* Column Mapping Section */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Detected Column Mappings</h3>
+                <ScrollArea className="h-[180px] rounded-md border">
+                  <div className="p-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {previewData.detectedColumns.map((col, idx) => (
+                        <div 
+                          key={idx} 
+                          className={`flex items-center justify-between p-2 rounded-md text-sm ${
+                            col.mappedTo 
+                              ? 'bg-success/10 border border-success/20' 
+                              : 'bg-muted border border-border'
+                          }`}
+                        >
+                          <span className="font-medium truncate">{col.original}</span>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                            {col.mappedTo ? (
+                              <span className="flex items-center gap-1 text-success">
+                                <Check className="h-3 w-3" />
+                                {col.mappedTo}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <X className="h-3 w-3" />
+                                Ignored
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* Data Preview Section */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold">Data Preview</h3>
+                  <Badge variant="secondary">
+                    {previewData.totalRows} row{previewData.totalRows !== 1 ? 's' : ''} to import
+                  </Badge>
+                </div>
+                <ScrollArea className="h-[200px] rounded-md border">
+                  <div className="p-2">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="whitespace-nowrap">PO Number</TableHead>
+                          <TableHead className="whitespace-nowrap">Buyer</TableHead>
+                          <TableHead className="whitespace-nowrap">Style</TableHead>
+                          <TableHead className="whitespace-nowrap">Item</TableHead>
+                          <TableHead className="whitespace-nowrap text-right">Qty</TableHead>
+                          <TableHead className="whitespace-nowrap">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {previewData.previewRows.map((row, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-mono text-sm">{row.po_number}</TableCell>
+                            <TableCell className="text-sm">{row.buyer}</TableCell>
+                            <TableCell className="text-sm">{row.style}</TableCell>
+                            <TableCell className="text-sm">{row.item || '-'}</TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {row.order_qty?.toLocaleString() || 0}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={`text-xs ${getStatusColor(row.status || 'not_started')}`}>
+                                {WORK_ORDER_STATUSES.find(s => s.value === row.status)?.label || 'Not Started'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </ScrollArea>
+                {previewData.totalRows > 5 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Showing first 5 of {previewData.totalRows} rows
+                  </p>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <Button variant="outline" onClick={cancelImport}>
+                  Cancel
+                </Button>
+                <Button onClick={confirmImport} disabled={isImporting}>
+                  {isImporting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Import {previewData.totalRows} Work Order{previewData.totalRows !== 1 ? 's' : ''}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
