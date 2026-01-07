@@ -68,8 +68,64 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+
+    // If user has no factory, check if they have an active Stripe subscription
+    // This allows users who subscribed but haven't created a factory yet to proceed
     if (!profile?.factory_id) {
-      logStep("No factory assigned");
+      logStep("No factory assigned, checking Stripe directly");
+      
+      // Look for Stripe customer by email
+      const customers = await stripe.customers.list({ email: user.email!, limit: 1 });
+      
+      if (customers.data.length > 0) {
+        const customerId = customers.data[0].id;
+        logStep("Found Stripe customer", { customerId });
+        
+        // Check for active subscriptions
+        const subs = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 10 });
+        const activeSub = subs.data.find((s: Stripe.Subscription) => s.status === 'active' || s.status === 'trialing');
+        
+        if (activeSub) {
+          const isTrial = activeSub.status === 'trialing';
+          const daysRemaining = isTrial && activeSub.trial_end
+            ? Math.ceil((activeSub.trial_end * 1000 - Date.now()) / (1000 * 60 * 60 * 24))
+            : null;
+          
+          // Get tier from subscription
+          let tier = 'starter';
+          if (activeSub.items.data.length > 0) {
+            const item = activeSub.items.data[0];
+            const productId = typeof item.price.product === 'string'
+              ? item.price.product
+              : item.price.product.id;
+            tier = PRODUCT_TO_TIER[productId] || 'starter';
+          }
+          
+          logStep("User has active subscription but no factory", { 
+            subscriptionId: activeSub.id, 
+            status: activeSub.status,
+            tier 
+          });
+          
+          return new Response(JSON.stringify({ 
+            subscribed: !isTrial,
+            hasAccess: true,
+            isTrial,
+            needsFactory: true,
+            currentTier: tier,
+            maxLines: TIER_MAX_LINES[tier] || 30,
+            daysRemaining,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: activeSub.id,
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+      }
+      
+      logStep("No factory and no active subscription");
       return new Response(JSON.stringify({ 
         subscribed: false, 
         needsFactory: true,
@@ -105,8 +161,6 @@ serve(async (req) => {
       tier: factory.subscription_tier,
       trialEnd: factory.trial_end_date 
     });
-
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
     const deriveTierAndMaxLines = (subscription: Stripe.Subscription) => {
       let tier = factory.subscription_tier || 'starter';

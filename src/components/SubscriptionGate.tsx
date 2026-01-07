@@ -75,8 +75,34 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
     return <>{children}</>;
   }
 
-  // Admin/Owner who needs to create a factory first
-  if (needsFactory) {
+  // User has subscription but needs to create a factory
+  if (needsFactory && hasAccess) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-4">
+        <Card className="max-w-md">
+          <CardHeader className="text-center">
+            <AlertCircle className="h-12 w-12 mx-auto text-primary mb-4" />
+            <CardTitle>Almost There!</CardTitle>
+            <CardDescription>
+              Your subscription is active{isTrial ? ' (trial)' : ''}. Now let's set up your factory to get started.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Button onClick={() => navigate('/setup/factory')} className="w-full">
+              Set Up Your Factory
+            </Button>
+            <Button onClick={handleSignOut} variant="outline" className="w-full">
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign Out
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Admin/Owner who needs to subscribe first (no active subscription and no factory)
+  if (needsFactory && !hasAccess) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-4">
         <Card className="max-w-md">
