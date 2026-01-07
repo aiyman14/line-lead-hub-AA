@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CreditCard, Clock, CheckCircle2, AlertCircle, Sparkles, ArrowRight, Crown, LogOut } from "lucide-react";
-import { SUBSCRIPTION_TIERS, formatPrice, type SubscriptionTier } from "@/lib/subscription-tiers";
+import { Loader2, CreditCard, Clock, CheckCircle2, AlertCircle, Sparkles, ArrowRight, Crown, LogOut, Mail } from "lucide-react";
+import { PLAN_TIERS, formatPlanPrice, type PlanTierConfig, type PlanTier } from "@/lib/plan-tiers";
 
 interface SubscriptionStatus {
   subscribed: boolean;
@@ -102,11 +102,17 @@ export default function Subscription() {
     }
   };
 
-  const handleSubscribe = async (tier: SubscriptionTier) => {
+  const handleSubscribe = async (tier: PlanTierConfig) => {
+    if (tier.id === 'enterprise') {
+      // For enterprise, open email
+      window.location.href = 'mailto:sales@garmentinsights.com?subject=Enterprise%20Plan%20Inquiry';
+      return;
+    }
+    
     setCheckoutLoading(tier.id);
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { priceId: tier.priceId, tierId: tier.id }
+        body: { tier: tier.id }
       });
       
       if (error) throw error;
@@ -177,8 +183,9 @@ export default function Subscription() {
     );
   }
 
-  const currentTier = status?.currentTier || 'professional';
-  const tiers = Object.values(SUBSCRIPTION_TIERS);
+  const currentTier = (status?.currentTier || 'starter') as PlanTier;
+  const tiers = Object.values(PLAN_TIERS);
+  const tierOrder: PlanTier[] = ['starter', 'growth', 'scale', 'enterprise'];
 
   return (
     <div className="container max-w-6xl py-8 px-4">
@@ -222,7 +229,7 @@ export default function Subscription() {
                 )}
               </CardTitle>
               <CardDescription className="mt-2">
-                {status?.subscribed && `You're on the ${SUBSCRIPTION_TIERS[currentTier]?.name || 'Professional'} plan.`}
+                {status?.subscribed && `You're on the ${PLAN_TIERS[currentTier]?.name || 'Starter'} plan.`}
                 {status?.isTrial && status.daysRemaining && `Trial ends in ${status.daysRemaining} days.`}
                 {status?.needsPayment && "Subscribe to access all features."}
                 {status?.needsFactory && "Create your factory to get started."}
@@ -305,15 +312,17 @@ export default function Subscription() {
       <div className="mb-6">
         <h2 className="text-2xl font-bold mb-2">Choose Your Plan</h2>
         <p className="text-muted-foreground">
-          All plans include a 14-day free trial. Upgrade or downgrade anytime with prorated billing.
+          All plans include a 14-day free trial. Pricing based on active production lines.
         </p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6 mb-8">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {tiers.map((tier) => {
           const isCurrentPlan = status?.subscribed && currentTier === tier.id;
-          const isUpgrade = status?.subscribed && tiers.indexOf(SUBSCRIPTION_TIERS[currentTier]) < tiers.indexOf(tier);
-          const isDowngrade = status?.subscribed && tiers.indexOf(SUBSCRIPTION_TIERS[currentTier]) > tiers.indexOf(tier);
+          const currentTierIndex = tierOrder.indexOf(currentTier);
+          const thisTierIndex = tierOrder.indexOf(tier.id);
+          const isUpgrade = status?.subscribed && thisTierIndex > currentTierIndex;
+          const isDowngrade = status?.subscribed && thisTierIndex < currentTierIndex;
           
           return (
             <Card 
@@ -354,8 +363,14 @@ export default function Subscription() {
 
               <CardContent className="flex-1">
                 <div className="text-center mb-6">
-                  <span className="text-4xl font-bold">{formatPrice(tier.price)}</span>
-                  <span className="text-muted-foreground">/month</span>
+                  {tier.priceMonthly === 0 ? (
+                    <span className="text-3xl font-bold">Custom</span>
+                  ) : (
+                    <>
+                      <span className="text-3xl font-bold">{formatPlanPrice(tier.priceMonthly)}</span>
+                      <span className="text-muted-foreground">/month</span>
+                    </>
+                  )}
                 </div>
                 
                 <ul className="space-y-3">
@@ -371,7 +386,7 @@ export default function Subscription() {
               <CardFooter className="pt-4">
                 {!status?.hasAccess ? (
                   <div className="w-full space-y-2">
-                    {tier.id === 'professional' && (
+                    {tier.id === 'starter' && (
                       <Button 
                         onClick={handleStartTrial} 
                         disabled={trialLoading}
@@ -386,25 +401,46 @@ export default function Subscription() {
                         Start 14-Day Free Trial
                       </Button>
                     )}
-                    <Button 
-                      onClick={() => handleSubscribe(tier)} 
-                      disabled={checkoutLoading === tier.id}
-                      variant={tier.id === 'professional' && !status?.needsFactory ? 'outline' : 'default'}
-                      className="w-full"
-                      size="lg"
-                    >
-                      {checkoutLoading === tier.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <CreditCard className="h-4 w-4 mr-2" />
-                      )}
-                      Subscribe Now
-                    </Button>
+                    {tier.id === 'enterprise' ? (
+                      <Button 
+                        onClick={() => handleSubscribe(tier)} 
+                        variant="outline"
+                        className="w-full"
+                        size="lg"
+                      >
+                        <Mail className="h-4 w-4 mr-2" />
+                        Contact Sales
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={() => handleSubscribe(tier)} 
+                        disabled={checkoutLoading === tier.id}
+                        variant={tier.id === 'starter' ? 'outline' : 'default'}
+                        className="w-full"
+                        size="lg"
+                      >
+                        {checkoutLoading === tier.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <CreditCard className="h-4 w-4 mr-2" />
+                        )}
+                        Subscribe Now
+                      </Button>
+                    )}
                   </div>
                 ) : isCurrentPlan ? (
                   <Button disabled variant="outline" className="w-full">
                     <CheckCircle2 className="h-4 w-4 mr-2" />
                     Current Plan
+                  </Button>
+                ) : tier.id === 'enterprise' ? (
+                  <Button 
+                    onClick={() => handleSubscribe(tier)}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    Contact Sales
                   </Button>
                 ) : (
                   <Button 
@@ -436,8 +472,8 @@ export default function Subscription() {
           <div>
             <h4 className="font-medium mb-1">How does the free trial work?</h4>
             <p className="text-sm text-muted-foreground">
-              Start with a 14-day free trial of the Professional plan. No credit card required. 
-              You'll have full access to all features during the trial.
+              Start with a 14-day free trial of the Starter plan. No credit card required. 
+              You'll have full access to all features during the trial (up to 30 active lines).
             </p>
           </div>
           <div>
