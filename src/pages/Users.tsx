@@ -34,6 +34,7 @@ interface User {
   phone: string | null;
   avatar_url: string | null;
   is_active: boolean;
+  invitation_status: 'pending' | 'active';
   role: string | null;
   department: string | null;
   assigned_line_ids: string[];
@@ -122,6 +123,7 @@ export default function UsersPage() {
           phone: p.phone,
           avatar_url: p.avatar_url,
           is_active: p.is_active,
+          invitation_status: (p.invitation_status as 'pending' | 'active') || 'active',
           role: roleMap.get(p.id) || 'worker',
           department: p.department,
           assigned_line_ids: lineIds,
@@ -167,7 +169,8 @@ export default function UsersPage() {
     }
   };
 
-  const activeUsers = users.filter(u => u.is_active);
+  const activeUsers = users.filter(u => u.invitation_status === 'active');
+  const pendingUsers = users.filter(u => u.invitation_status === 'pending');
   const adminCount = users.filter(u => ['admin', 'owner', 'superadmin'].includes(u.role || '')).length;
 
   function handleEditUser(user: User) {
@@ -206,7 +209,7 @@ export default function UsersPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold">{users.length}</p>
@@ -217,6 +220,12 @@ export default function UsersPage() {
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-success">{activeUsers.length}</p>
             <p className="text-sm text-muted-foreground">Active</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-warning">{pendingUsers.length}</p>
+            <p className="text-sm text-muted-foreground">Pending</p>
           </CardContent>
         </Card>
         <Card>
@@ -336,7 +345,9 @@ export default function UsersPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      {user.is_active ? (
+                      {user.invitation_status === 'pending' ? (
+                        <StatusBadge variant="warning" size="sm">Pending</StatusBadge>
+                      ) : user.is_active ? (
                         <StatusBadge variant="success" size="sm">Active</StatusBadge>
                       ) : (
                         <StatusBadge variant="default" size="sm">Inactive</StatusBadge>

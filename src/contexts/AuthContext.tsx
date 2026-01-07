@@ -107,6 +107,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
 
       if (profileData) {
+        // If user was pending, mark them as active now that they've signed in
+        if (profileData.invitation_status === 'pending') {
+          await supabase
+            .from('profiles')
+            .update({ invitation_status: 'active' })
+            .eq('id', userId);
+          profileData.invitation_status = 'active';
+        }
+
         setProfile(profileData as Profile);
 
         // Fetch roles

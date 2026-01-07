@@ -109,13 +109,14 @@ Deno.serve(async (req) => {
       userId = newUser.user.id;
     }
 
-    // Update profile with factory_id and department
+    // Update profile with factory_id, department, and set as pending
     const { error: profileError } = await adminClient
       .from("profiles")
       .update({
         factory_id: factoryId,
         full_name: fullName,
         department: role === "worker" ? (department || null) : null,
+        invitation_status: "pending", // New users are pending until they sign in
       })
       .eq("id", userId);
 

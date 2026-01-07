@@ -1572,6 +1572,7 @@ export type Database = {
           factory_id: string | null
           full_name: string
           id: string
+          invitation_status: string | null
           is_active: boolean | null
           phone: string | null
           updated_at: string | null
@@ -1586,6 +1587,7 @@ export type Database = {
           factory_id?: string | null
           full_name: string
           id: string
+          invitation_status?: string | null
           is_active?: boolean | null
           phone?: string | null
           updated_at?: string | null
@@ -1600,6 +1602,7 @@ export type Database = {
           factory_id?: string | null
           full_name?: string
           id?: string
+          invitation_status?: string | null
           is_active?: boolean | null
           phone?: string | null
           updated_at?: string | null
