@@ -1,19 +1,17 @@
 [package]
 name = "production-portal"
 version = "1.0.0"
-description = "Production Portal Desktop Application"
-authors = ["Production Portal Team"]
-license = "MIT"
-repository = ""
+description = "Production Portal desktop app"
+authors = ["WovenTex LTD"]
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "1.5", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "1.5", features = [ "clipboard-all", "os-all", "path-all", "window-all", "notification-all", "dialog-all", "fs-all", "shell-open", "http-all"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [features]
 default = ["custom-protocol"]
