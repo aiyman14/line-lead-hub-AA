@@ -114,7 +114,7 @@ function AppRoutes() {
         <Route path="/work-orders" element={<SubscriptionGate><WorkOrdersView /></SubscriptionGate>} />
         <Route path="/insights" element={<SubscriptionGate><Insights /></SubscriptionGate>} />
         <Route path="/setup" element={<SubscriptionGate><SetupHome /></SubscriptionGate>} />
-        <Route path="/setup/factory" element={<SubscriptionGate><FactorySetup /></SubscriptionGate>} />
+        <Route path="/setup/factory" element={<FactorySetup />} />
         <Route path="/setup/work-orders" element={<SubscriptionGate><WorkOrders /></SubscriptionGate>} />
         <Route path="/setup/dropdowns" element={<SubscriptionGate><DropdownSettings /></SubscriptionGate>} />
         <Route path="/users" element={<SubscriptionGate><UsersPage /></SubscriptionGate>} />
