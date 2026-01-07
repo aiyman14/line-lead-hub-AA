@@ -10,6 +10,7 @@ jobs:
   build:
     permissions:
       contents: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -24,13 +25,35 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node
-      - uses: actions/setup-node@v4
+        uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: npm
 
       - name: Install Rust
-        uses: dtolnay/rust-t
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build & Release (Tauri)
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: "Download and install from the assets below."
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
