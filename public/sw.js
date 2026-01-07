@@ -4,13 +4,21 @@ const CACHE_NAME = 'production-portal-v1';
 const OFFLINE_QUEUE_KEY = 'offline_submission_queue';
 const SYNC_TAG = 'sync-submissions';
 
-// Files to cache for offline use
+// Static assets to cache (JS/CSS/icons only - no API data)
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
   '/logo.svg',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
+];
+
+// Patterns for resources we should NOT cache (sensitive data)
+const NO_CACHE_PATTERNS = [
+  /supabase/,
+  /\/api\//,
+  /\/auth\//,
+  /\/rest\/v1\//,
 ];
 
 // Install event - cache static assets
@@ -37,16 +45,27 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Check if URL should not be cached (sensitive data)
+function shouldNotCache(url) {
+  return NO_CACHE_PATTERNS.some(pattern => pattern.test(url.href));
+}
+
+// Fetch event - network-first for API, cache-first for static assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests and API calls
-  if (request.method !== 'GET' || url.pathname.startsWith('/api') || url.hostname.includes('supabase')) {
+  // Skip non-GET requests
+  if (request.method !== 'GET') {
     return;
   }
 
+  // Never cache sensitive API responses - always use network
+  if (shouldNotCache(url)) {
+    return;
+  }
+
+  // For static assets: cache-first strategy
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -63,9 +82,10 @@ self.addEventListener('fetch', (event) => {
         return cachedResponse;
       }
 
+      // Network-first fallback
       return fetch(request).then((response) => {
-        // Cache successful responses
-        if (response.ok && response.type === 'basic') {
+        // Only cache static assets (not API responses)
+        if (response.ok && response.type === 'basic' && !shouldNotCache(url)) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(request, responseClone);
