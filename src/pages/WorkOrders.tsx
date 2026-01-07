@@ -347,39 +347,106 @@ export default function WorkOrders() {
     URL.revokeObjectURL(url);
   }
 
+  // Column mapping for flexible CSV import
+  const COLUMN_MAPPINGS: Record<string, string> = {
+    // Standard format
+    'po_number': 'po_number',
+    'buyer': 'buyer',
+    'style': 'style',
+    'item': 'item',
+    'color': 'color',
+    'order_qty': 'order_qty',
+    'smv': 'smv',
+    'planned_ex_factory': 'planned_ex_factory',
+    'target_per_hour': 'target_per_hour',
+    'target_per_day': 'target_per_day',
+    'status': 'status',
+    // Alternative column names (from user's CSV)
+    'orderlineid': 'po_number',
+    'brand name': 'buyer',
+    'buyer name': 'style', // Maps to style as it's a required field
+    'product type': 'item',
+    'quantity': 'order_qty',
+    'current status': 'status',
+    'delivery deadline': 'planned_ex_factory',
+    'comments': 'color', // Use comments as color/notes
+  };
+
+  function parseCSVLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  function mapStatus(status: string): string {
+    const statusLower = status.toLowerCase();
+    if (statusLower.includes('complet') || statusLower === 'shipped') return 'completed';
+    if (statusLower.includes('progress') || statusLower.includes('production') || statusLower.includes('started')) return 'in_progress';
+    if (statusLower.includes('hold') || statusLower.includes('wait') || statusLower.includes('await')) return 'on_hold';
+    return 'not_started';
+  }
+
   async function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !profile?.factory_id) return;
     
     const text = await file.text();
-    const lines = text.split('\n').filter(l => l.trim());
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const csvLines = text.split('\n').filter(l => l.trim());
+    const headers = parseCSVLine(csvLines[0]).map(h => h.trim().toLowerCase());
     
     const workOrdersToInsert = [];
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
+    for (let i = 1; i < csvLines.length; i++) {
+      const values = parseCSVLine(csvLines[i]);
       const row: any = { factory_id: profile.factory_id };
       
       headers.forEach((header, idx) => {
-        const value = values[idx];
-        if (header === 'order_qty' || header === 'target_per_hour' || header === 'target_per_day') {
-          row[header] = parseInt(value) || 0;
-        } else if (header === 'smv') {
-          row[header] = parseFloat(value) || null;
-        } else if (header === 'status') {
-          row[header] = value || 'not_started';
+        const mappedField = COLUMN_MAPPINGS[header];
+        if (!mappedField) return;
+        
+        let value = values[idx]?.replace(/^["']|["']$/g, '').trim() || '';
+        // Remove currency symbols and commas from numbers
+        if (mappedField === 'order_qty') {
+          value = value.replace(/[$,]/g, '');
+          row[mappedField] = parseInt(value) || 0;
+        } else if (mappedField === 'target_per_hour' || mappedField === 'target_per_day') {
+          row[mappedField] = parseInt(value) || null;
+        } else if (mappedField === 'smv') {
+          row[mappedField] = parseFloat(value) || null;
+        } else if (mappedField === 'status') {
+          row[mappedField] = mapStatus(value);
+        } else if (mappedField === 'planned_ex_factory' && value) {
+          // Try to parse date in various formats
+          const parsed = new Date(value);
+          row[mappedField] = isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
         } else {
-          row[header] = value || null;
+          row[mappedField] = value || null;
         }
       });
       
-      if (row.po_number && row.buyer && row.style) {
+      // Ensure required fields exist
+      if (row.po_number && row.buyer) {
+        // If style is missing, use item or a default
+        if (!row.style) row.style = row.item || 'Default Style';
         workOrdersToInsert.push(row);
       }
     }
     
     if (workOrdersToInsert.length === 0) {
-      toast({ variant: "destructive", title: "No valid rows found in CSV" });
+      toast({ variant: "destructive", title: "No valid rows found in CSV", description: "Make sure your CSV has columns like OrderLineID/po_number, Brand Name/buyer, etc." });
       return;
     }
     
