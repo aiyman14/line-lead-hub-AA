@@ -359,6 +359,15 @@ export function AppSidebar() {
               </span>
             </div>
           )}
+          <a
+            href="https://www.woventex.co"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 h-8 w-8 flex items-center justify-center rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            title={t('common.help') || 'Help'}
+          >
+            <HelpCircle className="h-4 w-4" />
+          </a>
           <Button
             variant="ghost"
             size="icon"
@@ -369,18 +378,6 @@ export function AppSidebar() {
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
-        <a
-          href="https://www.woventex.co"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 mt-2 transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-            collapsed && "justify-center"
-          )}
-        >
-          <HelpCircle className="h-5 w-5 shrink-0" />
-          {!collapsed && <span>{t('common.help') || 'Help'}</span>}
-        </a>
         <Button
           variant="ghost"
           size="sm"
