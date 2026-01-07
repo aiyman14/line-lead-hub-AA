@@ -12,6 +12,7 @@ interface InviteRequest {
   role: string;
   department?: string;
   lineIds?: string[];
+  temporaryPassword?: string; // Optional: if provided, use this instead of random password
 }
 
 Deno.serve(async (req) => {
@@ -65,7 +66,7 @@ Deno.serve(async (req) => {
     }
 
     const body: InviteRequest = await req.json();
-    const { email, fullName, factoryId, role, department, lineIds } = body;
+    const { email, fullName, factoryId, role, department, lineIds, temporaryPassword } = body;
 
     if (!email || !fullName || !factoryId || !role) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -86,10 +87,11 @@ Deno.serve(async (req) => {
       isExistingUser = true;
     } else {
       // Create user with admin API (doesn't trigger client-side auth change)
-      const randomPassword = crypto.randomUUID() + crypto.randomUUID();
+      // Use provided password or generate a random one
+      const password = temporaryPassword || (crypto.randomUUID() + crypto.randomUUID());
       const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
         email,
-        password: randomPassword,
+        password,
         email_confirm: true, // Auto-confirm since admin is inviting
         user_metadata: {
           full_name: fullName,

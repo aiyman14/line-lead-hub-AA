@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, UserPlus, Mail, User, Shield, GitBranch, Briefcase } from "lucide-react";
+import { Loader2, UserPlus, Mail, User, Shield, GitBranch, Briefcase, Key, Eye, EyeOff } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { ROLE_LABELS, type AppRole } from "@/lib/constants";
 
@@ -46,6 +47,9 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
   const [loading, setLoading] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
+  const [useTemporaryPassword, setUseTemporaryPassword] = useState(false);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     fullName: "",
@@ -96,6 +100,12 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     e.preventDefault();
     if (!profile?.factory_id) return;
 
+    // Validate password if using temporary password
+    if (useTemporaryPassword && temporaryPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -108,6 +118,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           role: formData.role,
           department: formData.role === 'worker' ? formData.department : null,
           lineIds: formData.role === 'worker' ? selectedLineIds : [],
+          temporaryPassword: useTemporaryPassword ? temporaryPassword : undefined,
         },
       });
 
@@ -143,11 +154,18 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         // Don't block success if email fails
       }
 
-      toast.success(`User ${formData.fullName} invited successfully`);
+      toast.success(
+        useTemporaryPassword 
+          ? `User ${formData.fullName} created with temporary password` 
+          : `User ${formData.fullName} invited successfully`
+      );
       onSuccess();
       onOpenChange(false);
       setFormData({ email: "", fullName: "", role: "worker", department: "both" });
       setSelectedLineIds([]);
+      setUseTemporaryPassword(false);
+      setTemporaryPassword("");
+      setShowPassword(false);
     } catch (error) {
       console.error("Error inviting user:", error);
       toast.error("Failed to invite user");
@@ -199,6 +217,63 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             />
           </div>
 
+          {/* Temporary Password Toggle */}
+          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+            <div className="flex items-center gap-2">
+              <Key className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <Label htmlFor="usePassword" className="text-sm font-medium cursor-pointer">
+                  Set temporary password
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  For in-person onboarding without email
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="usePassword"
+              checked={useTemporaryPassword}
+              onCheckedChange={setUseTemporaryPassword}
+            />
+          </div>
+
+          {/* Temporary Password Input */}
+          {useTemporaryPassword && (
+            <div className="space-y-2">
+              <Label htmlFor="temporaryPassword" className="flex items-center gap-2">
+                <Key className="h-4 w-4 text-muted-foreground" />
+                Temporary Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="temporaryPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={temporaryPassword}
+                  onChange={(e) => setTemporaryPassword(e.target.value)}
+                  placeholder="Enter a temporary password"
+                  minLength={6}
+                  required={useTemporaryPassword}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Share this password with the user. They should change it after first login.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="role" className="flex items-center gap-2">
