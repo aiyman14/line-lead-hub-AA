@@ -78,17 +78,14 @@ export default function Subscription() {
     setTrialLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { startTrial: true }
+        body: { tier: 'starter', startTrial: true }
       });
       
       if (error) throw error;
       
-      if (data.success && data.trial) {
-        toast({
-          title: "Trial started!",
-          description: "You have 14 days to explore all features.",
-        });
-        navigate('/setup/factory');
+      if (data.url) {
+        // Redirect to Stripe checkout with trial
+        window.open(data.url, '_blank');
       }
     } catch (err) {
       console.error('Error starting trial:', err);
