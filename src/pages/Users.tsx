@@ -289,27 +289,32 @@ export default function UsersPage() {
                                 <span className="text-muted-foreground text-xs ml-2">(you)</span>
                               )}
                             </p>
-                            {user.role === 'worker' && user.department && (
+                            {/* Show badge for workers with department OR for department-specific roles */}
+                            {((user.role === 'worker' && user.department) || ['sewing', 'finishing', 'cutting', 'storage'].includes(user.role || '')) && (
                               <Badge 
                                 variant="outline" 
                                 className={`text-xs ${
-                                  user.department === 'sewing' 
+                                  (user.department === 'sewing' || user.role === 'sewing')
                                     ? 'border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-950/30' 
-                                    : user.department === 'finishing'
+                                    : (user.department === 'finishing' || user.role === 'finishing')
                                     ? 'border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-950/30'
-                                    : user.department === 'cutting'
+                                    : (user.department === 'cutting' || user.role === 'cutting')
                                     ? 'border-green-500/50 text-green-600 bg-green-50 dark:bg-green-950/30'
-                                    : user.department === 'storage'
+                                    : (user.department === 'storage' || user.role === 'storage')
                                     ? 'border-purple-500/50 text-purple-600 bg-purple-50 dark:bg-purple-950/30'
                                     : 'border-gray-500/50 text-gray-600 bg-gray-50 dark:bg-gray-950/30'
                                 }`}
                               >
-                                {user.department === 'sewing' && <Layers className="h-3 w-3 mr-1" />}
-                                {user.department === 'finishing' && <PackageCheck className="h-3 w-3 mr-1" />}
-                                {user.department === 'cutting' && <Scissors className="h-3 w-3 mr-1" />}
-                                {user.department === 'storage' && <Warehouse className="h-3 w-3 mr-1" />}
+                                {(user.department === 'sewing' || user.role === 'sewing') && <Layers className="h-3 w-3 mr-1" />}
+                                {(user.department === 'finishing' || user.role === 'finishing') && <PackageCheck className="h-3 w-3 mr-1" />}
+                                {(user.department === 'cutting' || user.role === 'cutting') && <Scissors className="h-3 w-3 mr-1" />}
+                                {(user.department === 'storage' || user.role === 'storage') && <Warehouse className="h-3 w-3 mr-1" />}
                                 {user.department === 'both' && '⚡'}
-                                {user.department === 'sewing' ? 'Sewing' : user.department === 'finishing' ? 'Finishing' : user.department === 'cutting' ? 'Cutting' : user.department === 'storage' ? 'Storage' : 'Both'}
+                                {(user.department === 'sewing' || user.role === 'sewing') ? 'Sewing' 
+                                  : (user.department === 'finishing' || user.role === 'finishing') ? 'Finishing' 
+                                  : (user.department === 'cutting' || user.role === 'cutting') ? 'Cutting' 
+                                  : (user.department === 'storage' || user.role === 'storage') ? 'Storage' 
+                                  : 'Both'}
                               </Badge>
                             )}
                           </div>
