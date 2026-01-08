@@ -44,17 +44,39 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
     
+    const origin = req.headers.get("origin") || "https://production-portal.lovable.app";
+
     if (customers.data.length === 0) {
-      throw new Error("No Stripe customer found for this user");
+      // No customer yet - create a checkout session for starter plan
+      logStep("No Stripe customer found, creating checkout session");
+      
+      // Use starter tier price as default
+      const checkoutSession = await stripe.checkout.sessions.create({
+        customer_email: user.email,
+        line_items: [
+          {
+            price: "price_1Smxg0HuCf2bKZx0sW1E8vMI", // Starter plan price
+            quantity: 1,
+          },
+        ],
+        mode: "subscription",
+        success_url: `${origin}/billing-plan?payment=success&tier=starter`,
+        cancel_url: `${origin}/billing-plan?payment=cancelled`,
+      });
+      
+      logStep("Checkout session created for new customer", { sessionId: checkoutSession.id });
+      return new Response(JSON.stringify({ url: checkoutSession.url }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
     
     const customerId = customers.data[0].id;
     logStep("Found Stripe customer", { customerId });
 
-    const origin = req.headers.get("origin") || "https://production-portal.lovable.app";
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${origin}/subscription`,
+      return_url: `${origin}/billing-plan`,
     });
     logStep("Customer portal session created", { sessionId: portalSession.id, url: portalSession.url });
 
