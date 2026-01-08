@@ -311,7 +311,17 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell>
                       <StatusBadge variant={getRoleBadgeVariant(user.role) as any} size="sm">
-                        <Shield className="h-3 w-3 mr-1" />
+                        {user.role === 'storage' ? (
+                          <Warehouse className="h-3 w-3 mr-1" />
+                        ) : user.role === 'cutting' ? (
+                          <Scissors className="h-3 w-3 mr-1" />
+                        ) : user.role === 'sewing' ? (
+                          <Layers className="h-3 w-3 mr-1" />
+                        ) : user.role === 'finishing' ? (
+                          <PackageCheck className="h-3 w-3 mr-1" />
+                        ) : (
+                          <Shield className="h-3 w-3 mr-1" />
+                        )}
                         {ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] || 'Worker'}
                       </StatusBadge>
                     </TableCell>
