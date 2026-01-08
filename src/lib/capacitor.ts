@@ -360,10 +360,17 @@ export function getPasswordResetRedirectUrl(): string {
 }
 
 /**
- * Check if running in Tauri desktop app
+ * Check if running in Tauri desktop app (works with Tauri 2.x)
  */
 export function isTauri(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).__TAURI__;
+  if (typeof window === 'undefined') return false;
+  
+  // Tauri 2.x uses __TAURI_INTERNALS__ instead of __TAURI__
+  const hasTauri2 = !!(window as any).__TAURI_INTERNALS__;
+  // Tauri 1.x fallback
+  const hasTauri1 = !!(window as any).__TAURI__;
+  
+  return hasTauri2 || hasTauri1;
 }
 
 /**
