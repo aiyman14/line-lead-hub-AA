@@ -16,7 +16,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-22.04
+            platform: linux-x86_64
+          - os: windows-latest
+            platform: windows-x86_64
+          - os: macos-latest
+            platform: darwin-universal
 
     steps:
       - name: Checkout
@@ -49,10 +55,17 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Add universal target for macOS (builds for both Intel and Apple Silicon)
+      - name: Add macOS universal target
+        if: matrix.os == 'macos-latest'
+        run: |
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+
       - name: Install frontend deps
         run: npm ci
 
-      # ✅ Write the signing key (stored in GitHub Secrets) to a file for the signer step
+      # Write the signing key (stored in GitHub Secrets) to a file for the signer step
       - name: Write signing key to file
         shell: bash
         run: |
@@ -60,50 +73,94 @@ jobs:
           printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > ~/.tauri/production-portal.key
           chmod 600 ~/.tauri/production-portal.key
 
-      # ✅ Build Tauri app + generate updater artifacts (.sig) using SECRET CONTENTS (base64)
-      - name: Build desktop app (Tauri)
+      # Build Tauri app + generate updater artifacts (.sig)
+      - name: Build desktop app (Tauri) - Linux/Windows
+        if: matrix.os != 'macos-latest'
         run: npm run tauri:build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      # 🧩 Create latest.json (if it doesn't exist) then sign it (Linux job only)
-      - name: Generate updater JSON
+      # Build universal binary for macOS (both Intel and Apple Silicon)
+      - name: Build desktop app (Tauri) - macOS Universal
+        if: matrix.os == 'macos-latest'
+        run: npm run tauri:build -- --target universal-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # Find and save artifact paths with signatures
+      - name: Collect artifact info (Linux)
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         run: |
-          mkdir -p src-tauri/target/release/bundle
+          mkdir -p artifacts
+          
+          # Find AppImage and its signature
+          APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1)
+          if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
+            cp "$APPIMAGE" artifacts/
+            if [ -f "$APPIMAGE.sig" ]; then
+              SIGNATURE=$(cat "$APPIMAGE.sig")
+              echo "$SIGNATURE" > artifacts/linux-x86_64.sig
+            fi
+            echo "LINUX_ARTIFACT=$(basename $APPIMAGE)" >> $GITHUB_ENV
+          fi
+          
+          # Also copy deb and rpm if they exist
+          find src-tauri/target/release/bundle -name "*.deb" -exec cp {} artifacts/ \;
+          find src-tauri/target/release/bundle -name "*.rpm" -exec cp {} artifacts/ \;
 
-          cat > src-tauri/target/release/bundle/latest.json <<'JSON'
-          {
-            "version": "${{ github.ref_name }}",
-            "notes": "Production Portal update",
-            "pub_date": "2026-01-08T00:00:00Z",
-            "platforms": {
-              "linux-x86_64": {
-                "url": "REPLACE_WITH_ASSET_URL",
-                "signature": "REPLACE_WITH_SIGNATURE"
-              }
-            }
-          }
-          JSON
+      - name: Collect artifact info (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          
+          # Find MSI installer and its signature
+          MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1)
+          if [ -n "$MSI" ] && [ -f "$MSI" ]; then
+            cp "$MSI" artifacts/
+            if [ -f "$MSI.sig" ]; then
+              SIGNATURE=$(cat "$MSI.sig")
+              echo "$SIGNATURE" > artifacts/windows-x86_64.sig
+            fi
+            echo "WINDOWS_ARTIFACT=$(basename $MSI)" >> $GITHUB_ENV
+          fi
+          
+          # Also copy NSIS exe if it exists
+          find src-tauri/target/release/bundle -name "*.exe" -exec cp {} artifacts/ \;
 
-          npx tauri signer sign --private-key-path ~/.tauri/production-portal.key --password "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" src-tauri/target/release/bundle/latest.json
+      - name: Collect artifact info (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          
+          # Find DMG and its signature (universal build)
+          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
+          if [ -z "$DMG" ]; then
+            DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f | head -1)
+          fi
+          
+          if [ -n "$DMG" ] && [ -f "$DMG" ]; then
+            cp "$DMG" artifacts/
+            if [ -f "$DMG.sig" ]; then
+              SIGNATURE=$(cat "$DMG.sig")
+              # Save signature for both darwin platforms
+              echo "$SIGNATURE" > artifacts/darwin-aarch64.sig
+              echo "$SIGNATURE" > artifacts/darwin-x86_64.sig
+            fi
+            echo "MACOS_ARTIFACT=$(basename $DMG)" >> $GITHUB_ENV
+          fi
 
-      # ✅ Upload installer artifacts + latest.json for the release job
+      # Upload installer artifacts
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: installers-${{ matrix.os }}
+          name: installers-${{ matrix.platform }}
           if-no-files-found: error
-          path: |
-            src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.rpm
-            src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/latest.json
+          path: artifacts/
 
   release:
     name: Create GitHub Release
@@ -119,20 +176,105 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find dist -type f -ls
+
+      - name: Generate latest.json
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          REPO="WovenTexLTD/line-lead-hub"
+          BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Find artifact filenames
+          LINUX_FILE=$(find dist -name "*.AppImage" -type f | head -1 | xargs -r basename)
+          WINDOWS_FILE=$(find dist -name "*.msi" -type f | head -1 | xargs -r basename)
+          MACOS_FILE=$(find dist -name "*.dmg" -type f | head -1 | xargs -r basename)
+          
+          # Read signatures
+          LINUX_SIG=""
+          WINDOWS_SIG=""
+          DARWIN_SIG=""
+          
+          if [ -f "dist/linux-x86_64.sig" ]; then
+            LINUX_SIG=$(cat dist/linux-x86_64.sig)
+          fi
+          
+          if [ -f "dist/windows-x86_64.sig" ]; then
+            WINDOWS_SIG=$(cat dist/windows-x86_64.sig)
+          fi
+          
+          if [ -f "dist/darwin-aarch64.sig" ]; then
+            DARWIN_SIG=$(cat dist/darwin-aarch64.sig)
+          elif [ -f "dist/darwin-x86_64.sig" ]; then
+            DARWIN_SIG=$(cat dist/darwin-x86_64.sig)
+          fi
+          
+          # Build platforms JSON
+          PLATFORMS="{"
+          FIRST=true
+          
+          # Linux
+          if [ -n "$LINUX_FILE" ] && [ -n "$LINUX_SIG" ]; then
+            PLATFORMS="$PLATFORMS\"linux-x86_64\": {\"url\": \"$BASE_URL/$LINUX_FILE\", \"signature\": \"$LINUX_SIG\"}"
+            FIRST=false
+          fi
+          
+          # Windows
+          if [ -n "$WINDOWS_FILE" ] && [ -n "$WINDOWS_SIG" ]; then
+            if [ "$FIRST" = false ]; then PLATFORMS="$PLATFORMS, "; fi
+            PLATFORMS="$PLATFORMS\"windows-x86_64\": {\"url\": \"$BASE_URL/$WINDOWS_FILE\", \"signature\": \"$WINDOWS_SIG\"}"
+            FIRST=false
+          fi
+          
+          # macOS (both architectures point to universal binary)
+          if [ -n "$MACOS_FILE" ] && [ -n "$DARWIN_SIG" ]; then
+            if [ "$FIRST" = false ]; then PLATFORMS="$PLATFORMS, "; fi
+            PLATFORMS="$PLATFORMS\"darwin-aarch64\": {\"url\": \"$BASE_URL/$MACOS_FILE\", \"signature\": \"$DARWIN_SIG\"}"
+            PLATFORMS="$PLATFORMS, \"darwin-x86_64\": {\"url\": \"$BASE_URL/$MACOS_FILE\", \"signature\": \"$DARWIN_SIG\"}"
+          fi
+          
+          PLATFORMS="$PLATFORMS}"
+          
+          # Create latest.json
+          cat > dist/latest.json << EOF
+          {
+            "version": "$VERSION",
+            "notes": "Production Portal update",
+            "pub_date": "$PUB_DATE",
+            "platforms": $PLATFORMS
+          }
+          EOF
+          
+          echo "Generated latest.json:"
+          cat dist/latest.json
+
       - name: Create Release + Upload Assets
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.ref_name }}
           name: Production Portal ${{ github.ref_name }}
-          body: Desktop installers for Production Portal.
+          body: |
+            ## Desktop installers for Production Portal
+            
+            | Platform | Download |
+            |----------|----------|
+            | macOS (Universal) | `.dmg` file below |
+            | Windows | `.msi` file below |
+            | Linux | `.AppImage`, `.deb`, or `.rpm` files below |
+            
+            The app will automatically check for updates.
           allowUpdates: true
           replacesArtifacts: true
           artifacts: |
-            dist/**/*.AppImage
-            dist/**/*.deb
-            dist/**/*.rpm
-            dist/**/*.dmg
-            dist/**/*.msi
-            dist/**/*.exe
-            dist/**/latest.json
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
+            dist/*.dmg
+            dist/*.msi
+            dist/*.exe
+            dist/latest.json
           token: ${{ secrets.GITHUB_TOKEN }}
