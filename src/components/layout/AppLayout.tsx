@@ -2,8 +2,9 @@ import { Outlet, Navigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
+import { Button } from "@/components/ui/button";
 import { TrialExpirationBanner } from "@/components/TrialExpirationBanner";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 
@@ -39,6 +40,15 @@ export function AppLayout() {
               <div className="flex-1" />
 
               <NetworkStatusIndicator />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => window.location.reload()}
+                className="h-9 w-9"
+                title="Refresh page"
+              >
+                <RefreshCw className="h-5 w-5" />
+              </Button>
               <NotificationBell />
 
               {factory && (
