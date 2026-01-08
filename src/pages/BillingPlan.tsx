@@ -98,6 +98,9 @@ export default function BillingPlan() {
     }
   };
 
+  // Handle plan upgrades and downgrades
+  // - Upgrade: Immediate with proration (user pays difference now)
+  // - Downgrade: Scheduled for next billing cycle (no immediate charge)
   const handleChangePlan = async (tier: PlanTier) => {
     if (tier === 'enterprise') {
       handleContactSales();
@@ -113,13 +116,40 @@ export default function BillingPlan() {
       if (error) throw error;
       
       if (data.success) {
-        toast({
-          title: "Plan Changed!",
-          description: `You've switched to the ${PLAN_TIERS[tier].name} plan. Changes are effective immediately.`,
-        });
-        refetchLines();
-        // Force reload to update factory data
-        window.location.reload();
+        if (data.changeType === 'upgrade') {
+          // Upgrade is immediate - refresh right away
+          toast({
+            title: "Upgrade Complete! 🎉",
+            description: data.message || `You've upgraded to the ${PLAN_TIERS[tier].name} plan. Your new limits are active now.`,
+          });
+          refetchLines();
+          // Force reload to update factory data
+          window.location.reload();
+        } else if (data.changeType === 'downgrade') {
+          // Downgrade is scheduled - show when it takes effect
+          const scheduledDate = data.scheduledDate 
+            ? new Date(data.scheduledDate).toLocaleDateString() 
+            : 'your next billing date';
+          toast({
+            title: "Downgrade Scheduled",
+            description: data.message || `Your plan will change to ${PLAN_TIERS[tier].name} on ${scheduledDate}. You'll keep your current features until then.`,
+          });
+          
+          // If they need to add a payment method, notify them
+          if (data.needsPaymentMethod) {
+            setTimeout(() => {
+              toast({
+                title: "Payment Method Required",
+                description: "Please add a payment method to ensure your subscription continues at renewal.",
+                action: (
+                  <Button size="sm" variant="outline" onClick={handleManageBilling}>
+                    Add Payment Method
+                  </Button>
+                ),
+              });
+            }, 2000);
+          }
+        }
       } else if (data.error) {
         throw new Error(data.error);
       }
@@ -127,8 +157,8 @@ export default function BillingPlan() {
       console.error('Error changing plan:', err);
       toast({
         variant: "destructive",
-        title: "Error",
-        description: err.message || "Failed to change plan. Please try again.",
+        title: "Plan Change Failed",
+        description: err.message || "Failed to change plan. Please try again or contact support.",
       });
     } finally {
       setCheckoutLoading(null);
