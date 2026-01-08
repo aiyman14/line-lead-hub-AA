@@ -6,8 +6,30 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CreditCard, Clock, CheckCircle2, AlertCircle, Sparkles, ArrowRight, Crown, LogOut, Mail } from "lucide-react";
-import { PLAN_TIERS, formatPlanPrice, type PlanTierConfig, type PlanTier } from "@/lib/plan-tiers";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { 
+  Loader2, 
+  CreditCard, 
+  Clock, 
+  CheckCircle2, 
+  AlertCircle, 
+  Sparkles, 
+  ArrowRight, 
+  Crown, 
+  LogOut, 
+  Mail,
+  Percent
+} from "lucide-react";
+import { 
+  PLAN_TIERS, 
+  formatPlanPrice, 
+  type PlanTierConfig, 
+  type PlanTier,
+  type BillingInterval,
+  getDisplayPrice,
+  getMonthlyEquivalent
+} from "@/lib/plan-tiers";
 
 interface SubscriptionStatus {
   subscribed: boolean;
@@ -32,13 +54,15 @@ export default function Subscription() {
   const [trialLoading, setTrialLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>('month');
 
   useEffect(() => {
     const payment = searchParams.get('payment');
+    const interval = searchParams.get('interval');
     if (payment === 'success') {
       toast({
         title: "Payment successful!",
-        description: "Your subscription is now active.",
+        description: `Your subscription is now active${interval === 'year' ? ' (Yearly)' : ''}.`,
       });
     } else if (payment === 'cancelled') {
       toast({
@@ -78,13 +102,12 @@ export default function Subscription() {
     setTrialLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { tier: 'starter', startTrial: true }
+        body: { tier: 'starter', startTrial: true, interval: billingInterval }
       });
       
       if (error) throw error;
       
       if (data.url) {
-        // Redirect to Stripe checkout with trial
         window.open(data.url, '_blank');
       }
     } catch (err) {
@@ -101,15 +124,14 @@ export default function Subscription() {
 
   const handleSubscribe = async (tier: PlanTierConfig) => {
     if (tier.id === 'enterprise') {
-      // For enterprise, open email
-      window.location.href = 'mailto:sales@garmentinsights.com?subject=Enterprise%20Plan%20Inquiry';
+      window.location.href = 'mailto:sales@productionportal.app?subject=Enterprise%20Plan%20Inquiry';
       return;
     }
     
     setCheckoutLoading(tier.id);
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { tier: tier.id }
+        body: { tier: tier.id, interval: billingInterval }
       });
       
       if (error) throw error;
@@ -183,6 +205,7 @@ export default function Subscription() {
   const currentTier = (status?.currentTier || 'starter') as PlanTier;
   const tiers = Object.values(PLAN_TIERS);
   const tierOrder: PlanTier[] = ['starter', 'growth', 'scale', 'enterprise'];
+  const isYearly = billingInterval === 'year';
 
   return (
     <div className="container max-w-6xl py-8 px-4">
@@ -307,10 +330,43 @@ export default function Subscription() {
 
       {/* Pricing Tiers */}
       <div className="mb-6">
-        <h2 className="text-2xl font-bold mb-2">Choose Your Plan</h2>
-        <p className="text-muted-foreground">
-          All plans include a 14-day free trial. Pricing based on active production lines.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Choose Your Plan</h2>
+            <p className="text-muted-foreground">
+              All plans include a 14-day free trial. Pricing based on active production lines.
+            </p>
+          </div>
+          
+          {/* Billing Interval Toggle */}
+          <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+            <Label 
+              htmlFor="billing-toggle-sub" 
+              className={`text-sm font-medium cursor-pointer ${billingInterval === 'month' ? 'text-foreground' : 'text-muted-foreground'}`}
+            >
+              Monthly
+            </Label>
+            <Switch
+              id="billing-toggle-sub"
+              checked={billingInterval === 'year'}
+              onCheckedChange={(checked) => setBillingInterval(checked ? 'year' : 'month')}
+            />
+            <div className="flex items-center gap-1.5">
+              <Label 
+                htmlFor="billing-toggle-sub" 
+                className={`text-sm font-medium cursor-pointer ${billingInterval === 'year' ? 'text-foreground' : 'text-muted-foreground'}`}
+              >
+                Yearly
+              </Label>
+              {isYearly && (
+                <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                  <Percent className="h-3 w-3 mr-1" />
+                  Save 15%
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -321,6 +377,9 @@ export default function Subscription() {
           const isUpgrade = status?.subscribed && thisTierIndex > currentTierIndex;
           const isDowngrade = status?.subscribed && thisTierIndex < currentTierIndex;
           
+          const displayPrice = getDisplayPrice(tier, billingInterval);
+          const monthlyEquivalent = isYearly ? getMonthlyEquivalent(tier.priceYearly) : null;
+          
           return (
             <Card 
               key={tier.id} 
@@ -328,25 +387,29 @@ export default function Subscription() {
                 tier.popular ? 'border-2 border-primary shadow-lg' : ''
               } ${isCurrentPlan ? 'ring-2 ring-green-500' : ''}`}
             >
-              {tier.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+              {/* Badges container */}
+              <div className="absolute -top-3 left-0 right-0 flex justify-between px-4">
+                {tier.popular && (
                   <Badge className="bg-primary">
                     <Sparkles className="h-3 w-3 mr-1" />
                     Most Popular
                   </Badge>
-                </div>
-              )}
-              
-              {isCurrentPlan && (
-                <div className="absolute -top-3 right-4">
+                )}
+                {!tier.popular && <span />}
+                
+                {isCurrentPlan ? (
                   <Badge className="bg-green-600">
                     <CheckCircle2 className="h-3 w-3 mr-1" />
                     Current Plan
                   </Badge>
-                </div>
-              )}
+                ) : isYearly && tier.priceMonthly > 0 ? (
+                  <Badge className="bg-green-600 text-white">
+                    15% off
+                  </Badge>
+                ) : null}
+              </div>
 
-              <CardHeader className="text-center pb-4">
+              <CardHeader className="text-center pb-4 pt-8">
                 <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
                   {tier.id === 'enterprise' ? (
                     <Crown className="h-6 w-6 text-primary" />
@@ -360,11 +423,21 @@ export default function Subscription() {
 
               <CardContent className="flex-1">
                 <div className="text-center mb-6">
-                  {tier.priceMonthly === 0 ? (
+                  {displayPrice === 0 ? (
                     <span className="text-3xl font-bold">Custom</span>
+                  ) : isYearly ? (
+                    <div>
+                      <span className="text-3xl font-bold">{formatPlanPrice(displayPrice)}</span>
+                      <span className="text-muted-foreground">/year</span>
+                      {monthlyEquivalent && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ({formatPlanPrice(monthlyEquivalent)}/mo equivalent)
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <>
-                      <span className="text-3xl font-bold">{formatPlanPrice(tier.priceMonthly)}</span>
+                      <span className="text-3xl font-bold">{formatPlanPrice(displayPrice)}</span>
                       <span className="text-muted-foreground">/month</span>
                     </>
                   )}
@@ -481,10 +554,17 @@ export default function Subscription() {
             </p>
           </div>
           <div>
+            <h4 className="font-medium mb-1">How does yearly billing work?</h4>
+            <p className="text-sm text-muted-foreground">
+              Choose yearly billing to save 15% compared to monthly payments. 
+              You'll be billed once per year at the discounted rate.
+            </p>
+          </div>
+          <div>
             <h4 className="font-medium mb-1">What happens if I cancel?</h4>
             <p className="text-sm text-muted-foreground">
               You'll continue to have access until the end of your billing period. 
-              Your data will be preserved and you can resubscribe anytime.
+              Your data is retained for 30 days after cancellation.
             </p>
           </div>
         </CardContent>
