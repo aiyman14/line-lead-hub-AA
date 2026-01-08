@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { openExternalUrl } from "@/lib/capacitor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -108,7 +109,7 @@ export default function Subscription() {
       if (error) throw error;
       
       if (data.url) {
-        window.open(data.url, '_blank');
+        await openExternalUrl(data.url);
       }
     } catch (err) {
       console.error('Error starting trial:', err);
@@ -124,7 +125,7 @@ export default function Subscription() {
 
   const handleSubscribe = async (tier: PlanTierConfig) => {
     if (tier.id === 'enterprise') {
-      window.open('https://www.woventex.co', '_blank', 'noopener,noreferrer');
+      await openExternalUrl('https://www.woventex.co');
       return;
     }
     
@@ -137,7 +138,7 @@ export default function Subscription() {
       if (error) throw error;
       
       if (data.url) {
-        window.open(data.url, '_blank');
+        await openExternalUrl(data.url);
       }
     } catch (err) {
       console.error('Error creating checkout:', err);
@@ -159,7 +160,7 @@ export default function Subscription() {
       if (error) throw error;
       
       if (data.url) {
-        window.open(data.url, '_blank');
+        await openExternalUrl(data.url);
       }
     } catch (err) {
       console.error('Error opening portal:', err);

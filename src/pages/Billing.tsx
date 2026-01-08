@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { openExternalUrl } from "@/lib/capacitor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -105,7 +106,7 @@ export default function Billing() {
       if (error) throw error;
       
       if (data.url) {
-        window.open(data.url, '_blank');
+        await openExternalUrl(data.url);
       }
     } catch (err) {
       console.error('Error opening portal:', err);
@@ -351,7 +352,7 @@ export default function Billing() {
                               <Button 
                                 variant="ghost" 
                                 size="sm"
-                                onClick={() => window.open(invoice.invoice_pdf!, '_blank')}
+                                onClick={() => openExternalUrl(invoice.invoice_pdf!)}
                               >
                                 <Download className="h-4 w-4" />
                               </Button>
@@ -360,7 +361,7 @@ export default function Billing() {
                               <Button 
                                 variant="ghost" 
                                 size="sm"
-                                onClick={() => window.open(invoice.hosted_invoice_url!, '_blank')}
+                                onClick={() => openExternalUrl(invoice.hosted_invoice_url!)}
                               >
                                 <ExternalLink className="h-4 w-4" />
                               </Button>

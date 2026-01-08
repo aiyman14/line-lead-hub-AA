@@ -109,7 +109,7 @@ export default function BillingPlan() {
       if (error) throw error;
       
       if (data.url) {
-        window.open(data.url, '_blank');
+        await openExternalUrl(data.url);
       } else if (data.error) {
         throw new Error(data.error);
       }
@@ -205,7 +205,7 @@ export default function BillingPlan() {
           navigate(data.redirectUrl);
         }
       } else if (data.url) {
-        window.open(data.url, '_blank');
+        await openExternalUrl(data.url);
       } else if (data.error) {
         throw new Error(data.error);
       }
@@ -229,7 +229,7 @@ export default function BillingPlan() {
       if (error) throw error;
       
       if (data.url) {
-        window.open(data.url, '_blank');
+        await openExternalUrl(data.url);
       } else if (data.error) {
         throw new Error(data.error);
       }
