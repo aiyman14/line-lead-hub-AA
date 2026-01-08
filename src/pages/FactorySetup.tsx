@@ -124,12 +124,20 @@ export default function FactorySetup() {
   const [lowStockThreshold, setLowStockThreshold] = useState<number>(factory?.low_stock_threshold ?? 10);
   const [isSavingStorage, setIsSavingStorage] = useState(false);
 
+  // Factory name edit state
+  const [isEditingFactoryName, setIsEditingFactoryName] = useState(false);
+  const [editedFactoryName, setEditedFactoryName] = useState(factory?.name || "");
+  const [isSavingFactoryName, setIsSavingFactoryName] = useState(false);
+
   // Update lowStockThreshold when factory changes
   useEffect(() => {
     if (factory?.low_stock_threshold !== undefined) {
       setLowStockThreshold(factory.low_stock_threshold);
     }
-  }, [factory?.low_stock_threshold]);
+    if (factory?.name) {
+      setEditedFactoryName(factory.name);
+    }
+  }, [factory?.low_stock_threshold, factory?.name]);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -503,6 +511,27 @@ export default function FactorySetup() {
     }
   }
 
+  async function handleSaveFactoryName() {
+    if (!profile?.factory_id || !editedFactoryName.trim()) return;
+    setIsSavingFactoryName(true);
+    try {
+      const { error } = await supabase
+        .from('factory_accounts')
+        .update({ name: editedFactoryName.trim() })
+        .eq('id', profile.factory_id);
+      
+      if (error) throw error;
+      toast({ title: "Factory name updated" });
+      setIsEditingFactoryName(false);
+      // Reload to update auth context
+      window.location.reload();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setIsSavingFactoryName(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -609,6 +638,54 @@ export default function FactorySetup() {
           </p>
         </div>
       </div>
+
+      {/* Factory Name Card */}
+      <Card className="mb-6">
+        <CardHeader className="flex flex-row items-center justify-between py-4">
+          <div className="flex items-center gap-3">
+            <Factory className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-base">Factory Name</CardTitle>
+              <CardDescription className="text-xs">Your organization's display name</CardDescription>
+            </div>
+          </div>
+          {!isEditingFactoryName ? (
+            <div className="flex items-center gap-3">
+              <span className="font-medium">{factory?.name}</span>
+              <Button variant="outline" size="sm" onClick={() => setIsEditingFactoryName(true)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Input
+                value={editedFactoryName}
+                onChange={(e) => setEditedFactoryName(e.target.value)}
+                className="w-64"
+                placeholder="Factory name"
+              />
+              <Button 
+                size="sm" 
+                onClick={handleSaveFactoryName}
+                disabled={isSavingFactoryName || !editedFactoryName.trim()}
+              >
+                {isSavingFactoryName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => {
+                  setIsEditingFactoryName(false);
+                  setEditedFactoryName(factory?.name || "");
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </CardHeader>
+      </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-5 mb-6">
