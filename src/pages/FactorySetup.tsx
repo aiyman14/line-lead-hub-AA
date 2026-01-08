@@ -646,7 +646,9 @@ export default function FactorySetup() {
             <Factory className="h-5 w-5 text-primary" />
             <div>
               <CardTitle className="text-base">Factory Name</CardTitle>
-              <CardDescription className="text-xs">Your organization's display name</CardDescription>
+              <CardDescription className="text-xs">
+                Your organization's display name • ID: <span className="font-mono text-foreground/70">{factory?.id?.slice(0, 8)}</span>
+              </CardDescription>
             </div>
           </div>
           {!isEditingFactoryName ? (
