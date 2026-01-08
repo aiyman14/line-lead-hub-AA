@@ -124,7 +124,7 @@ export default function Subscription() {
 
   const handleSubscribe = async (tier: PlanTierConfig) => {
     if (tier.id === 'enterprise') {
-      window.location.href = 'mailto:sales@productionportal.app?subject=Enterprise%20Plan%20Inquiry';
+      window.open('https://www.woventex.co', '_blank', 'noopener,noreferrer');
       return;
     }
     
