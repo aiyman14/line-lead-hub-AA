@@ -341,11 +341,11 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-4">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9 shrink-0">
+      <SidebarFooter className={cn("border-t border-sidebar-border", collapsed ? "p-2" : "p-4")}>
+        <div className={cn("flex items-center", collapsed ? "flex-col gap-2" : "gap-3")}>
+          <Avatar className={cn("shrink-0", collapsed ? "h-7 w-7" : "h-9 w-9")}>
             <AvatarImage src={profile?.avatar_url || undefined} />
-            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+            <AvatarFallback className={cn("bg-primary text-primary-foreground", collapsed ? "text-xs" : "text-sm")}>
               {profile ? getInitials(profile.full_name) : '?'}
             </AvatarFallback>
           </Avatar>
@@ -359,24 +359,28 @@ export function AppSidebar() {
               </span>
             </div>
           )}
-          <a
-            href="https://www.woventex.co"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 h-8 w-8 flex items-center justify-center rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-            title={t('common.help') || 'Help'}
-          >
-            <HelpCircle className="h-4 w-4" />
-          </a>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleSignOut}
-            className="shrink-0 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-            title={t('common.signOut') || 'Sign Out'}
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
+          {!collapsed && (
+            <>
+              <a
+                href="https://www.woventex.co"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 h-8 w-8 flex items-center justify-center rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                title={t('common.help') || 'Help'}
+              >
+                <HelpCircle className="h-4 w-4" />
+              </a>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleSignOut}
+                className="shrink-0 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                title={t('common.signOut') || 'Sign Out'}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
         <Button
           variant="ghost"
