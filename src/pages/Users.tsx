@@ -164,6 +164,14 @@ export default function UsersPage() {
         return 'info';
       case 'supervisor':
         return 'warning';
+      case 'sewing':
+        return 'info';
+      case 'finishing':
+        return 'warning';
+      case 'cutting':
+        return 'success';
+      case 'storage':
+        return 'primary';
       default:
         return 'neutral';
     }
