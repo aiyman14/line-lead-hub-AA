@@ -8,6 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { 
   Loader2, 
   CreditCard, 
@@ -21,7 +31,8 @@ import {
   ExternalLink,
   RefreshCw,
   XCircle,
-  Percent
+  Percent,
+  AlertTriangle
 } from "lucide-react";
 import { ActiveLinesMeter } from "@/components/ActiveLinesMeter";
 import { useActiveLines } from "@/hooks/useActiveLines";
@@ -39,7 +50,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
 export default function BillingPlan() {
-  const { user, factory, isAdminOrHigher } = useAuth();
+  const { user, factory, isAdminOrHigher, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -49,6 +60,8 @@ export default function BillingPlan() {
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [billingInterval, setBillingInterval] = useState<BillingInterval>('month');
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const currentTier = mapLegacyTier(factory?.subscription_tier || 'starter');
   const currentPlan = PLAN_TIERS[currentTier];
@@ -234,6 +247,40 @@ export default function BillingPlan() {
 
   const handleContactSales = () => {
     openExternalUrl('mailto:sales@productionportal.app?subject=Enterprise%20Plan%20Inquiry');
+  };
+
+  const handleCancelSubscription = async () => {
+    setCancelLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-subscription');
+      
+      if (error) throw error;
+      
+      if (data.success) {
+        toast({
+          title: "Subscription cancelled",
+          description: "Access removed. You will be signed out.",
+        });
+        
+        // Sign out and redirect to login
+        setTimeout(async () => {
+          await signOut();
+          navigate('/auth');
+        }, 1500);
+      } else if (data.error) {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      console.error('Error cancelling subscription:', err);
+      toast({
+        variant: "destructive",
+        title: "Cancellation Failed",
+        description: err.message || "Failed to cancel subscription. Please try again or contact support.",
+      });
+    } finally {
+      setCancelLoading(false);
+      setCancelDialogOpen(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -674,6 +721,73 @@ export default function BillingPlan() {
           </div>
         </div>
       </div>
+
+      {/* Cancel Subscription Section */}
+      {hasActiveSubscription && (
+        <>
+          <Separator className="my-8" />
+          <div className="mb-8">
+            <Card className="border-destructive/30 bg-destructive/5">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-5 w-5" />
+                  Danger Zone
+                </CardTitle>
+                <CardDescription>
+                  Cancelling your subscription will immediately remove access for all users in your factory.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  variant="destructive" 
+                  onClick={() => setCancelDialogOpen(true)}
+                  disabled={cancelLoading}
+                >
+                  {cancelLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <XCircle className="h-4 w-4 mr-2" />
+                  )}
+                  Cancel Subscription
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Cancel subscription?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p className="font-medium text-destructive">
+                This will remove access for all users in your factory immediately.
+              </p>
+              <p>
+                You can resubscribe at any time to restore access.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelLoading}>Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelSubscription}
+              disabled={cancelLoading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {cancelLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Yes, cancel subscription
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
