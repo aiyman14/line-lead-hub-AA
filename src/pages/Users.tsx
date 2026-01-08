@@ -20,7 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, Users as UsersIcon, Search, UserPlus, Shield, Mail, Phone, MoreHorizontal, Pencil, Trash2, Scissors, Package } from "lucide-react";
+import { Loader2, Users as UsersIcon, Search, UserPlus, Shield, Mail, Phone, MoreHorizontal, Pencil, Trash2, Layers, PackageCheck, Scissors, Warehouse } from "lucide-react";
 import { ROLE_LABELS } from "@/lib/constants";
 import { InviteUserDialog } from "@/components/users/InviteUserDialog";
 import { EditUserDialog } from "@/components/users/EditUserDialog";
@@ -289,13 +289,19 @@ export default function UsersPage() {
                                     ? 'border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-950/30' 
                                     : user.department === 'finishing'
                                     ? 'border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-950/30'
-                                    : 'border-purple-500/50 text-purple-600 bg-purple-50 dark:bg-purple-950/30'
+                                    : user.department === 'cutting'
+                                    ? 'border-green-500/50 text-green-600 bg-green-50 dark:bg-green-950/30'
+                                    : user.department === 'storage'
+                                    ? 'border-purple-500/50 text-purple-600 bg-purple-50 dark:bg-purple-950/30'
+                                    : 'border-gray-500/50 text-gray-600 bg-gray-50 dark:bg-gray-950/30'
                                 }`}
                               >
-                                {user.department === 'sewing' && <Scissors className="h-3 w-3 mr-1" />}
-                                {user.department === 'finishing' && <Package className="h-3 w-3 mr-1" />}
+                                {user.department === 'sewing' && <Layers className="h-3 w-3 mr-1" />}
+                                {user.department === 'finishing' && <PackageCheck className="h-3 w-3 mr-1" />}
+                                {user.department === 'cutting' && <Scissors className="h-3 w-3 mr-1" />}
+                                {user.department === 'storage' && <Warehouse className="h-3 w-3 mr-1" />}
                                 {user.department === 'both' && '⚡'}
-                                {user.department === 'sewing' ? 'Sewing' : user.department === 'finishing' ? 'Finishing' : 'Both'}
+                                {user.department === 'sewing' ? 'Sewing' : user.department === 'finishing' ? 'Finishing' : user.department === 'cutting' ? 'Cutting' : user.department === 'storage' ? 'Storage' : 'Both'}
                               </Badge>
                             )}
                           </div>
