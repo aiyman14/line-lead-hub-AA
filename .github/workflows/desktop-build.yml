@@ -67,11 +67,27 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      # 🧩 Sign latest.json for the Tauri updater (one time, on Linux job)
+      # 🧩 Create latest.json (if it doesn't exist) then sign it (Linux job only)
       - name: Generate updater JSON
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         run: |
+          mkdir -p src-tauri/target/release/bundle
+
+          cat > src-tauri/target/release/bundle/latest.json <<'JSON'
+          {
+            "version": "${{ github.ref_name }}",
+            "notes": "Production Portal update",
+            "pub_date": "2026-01-08T00:00:00Z",
+            "platforms": {
+              "linux-x86_64": {
+                "url": "REPLACE_WITH_ASSET_URL",
+                "signature": "REPLACE_WITH_SIGNATURE"
+              }
+            }
+          }
+          JSON
+
           npx tauri signer sign --private-key-path ~/.tauri/production-portal.key --password "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" src-tauri/target/release/bundle/latest.json
 
       # ✅ Upload installer artifacts + latest.json for the release job
