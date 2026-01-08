@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { openExternalUrl } from "@/lib/capacitor";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -194,7 +195,7 @@ export default function BillingPlan() {
   };
 
   const handleContactSales = () => {
-    window.location.href = 'mailto:sales@productionportal.app?subject=Enterprise%20Plan%20Inquiry';
+    openExternalUrl('mailto:sales@productionportal.app?subject=Enterprise%20Plan%20Inquiry');
   };
 
   const getStatusBadge = (status: string) => {
