@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -27,7 +27,10 @@ import {
   Crosshair,
   ClipboardCheck,
   Scissors,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Sidebar,
   SidebarContent,
@@ -46,8 +49,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { NAV_ITEMS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { openExternalUrl } from "@/lib/capacitor";
+import { openExternalUrl, isTauri } from "@/lib/capacitor";
 import logoSvg from "@/assets/logo.svg";
+
+// App version - update this when releasing new versions
+const APP_VERSION = "1.0.24";
 import {
   Collapsible,
   CollapsibleContent,
@@ -126,6 +132,52 @@ export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const [expandedMenus, setExpandedMenus] = React.useState<string[]>(['/setup']);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  const handleCheckUpdate = async () => {
+    if (!isTauri()) {
+      toast.info("Updates are only available in the desktop app");
+      return;
+    }
+
+    setIsCheckingUpdate(true);
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const { relaunch } = await import('@tauri-apps/plugin-process');
+      
+      const update = await check();
+      
+      if (update) {
+        toast.info(`Update available: v${update.version}`, {
+          description: "Downloading update...",
+          duration: 5000,
+        });
+
+        await update.downloadAndInstall();
+        
+        toast.success("Update installed!", {
+          description: "Restarting application...",
+          duration: 3000,
+        });
+
+        // Relaunch the app after a short delay
+        setTimeout(() => {
+          relaunch();
+        }, 1500);
+      } else {
+        toast.success("You're up to date!", {
+          description: `Version ${APP_VERSION} is the latest version.`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Update check failed:', error);
+      toast.error("Update check failed", {
+        description: error.message || "Please try again later.",
+      });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -343,6 +395,52 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className={cn("border-t border-sidebar-border", collapsed ? "p-2" : "p-4")}>
+        {/* Version and Update */}
+        {!collapsed && (
+          <div className="flex items-center justify-between mb-3 pb-3 border-b border-sidebar-border/50">
+            <span className="text-xs text-sidebar-foreground/50">
+              v{APP_VERSION}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCheckUpdate}
+              disabled={isCheckingUpdate}
+              className="h-6 px-2 text-xs text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+              title="Check for updates"
+            >
+              {isCheckingUpdate ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3 mr-1" />
+              )}
+              {isCheckingUpdate ? "Checking..." : "Update"}
+            </Button>
+          </div>
+        )}
+        {collapsed && (
+          <div className="flex flex-col items-center gap-1 mb-2 pb-2 border-b border-sidebar-border/50">
+            <span className="text-[10px] text-sidebar-foreground/50">
+              v{APP_VERSION}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleCheckUpdate}
+              disabled={isCheckingUpdate}
+              className="h-6 w-6 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+              title="Check for updates"
+            >
+              {isCheckingUpdate ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+            </Button>
+          </div>
+        )}
+        
+        {/* User profile */}
         <div className={cn("flex items-center", collapsed ? "flex-col gap-2" : "gap-3")}>
           <Avatar className={cn("shrink-0", collapsed ? "h-7 w-7" : "h-9 w-9")}>
             <AvatarImage src={profile?.avatar_url || undefined} />
