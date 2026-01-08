@@ -1,0 +1,19 @@
+{
+  "version": "1.0.18",
+  "notes": "Production Portal update",
+  "pub_date": "2026-01-08T12:47:00Z",
+  "platforms": {
+    "linux-x86_64": {
+      "url": "https://github.com/WovenTexLTD/line-lead-hub/releases/download/desktop-v1.0.18/Production%20Portal_1.0.18_amd64.AppImage",
+      "signature": "PASTE_APPIMAGE_SIG_HERE"
+    },
+    "linux-x86_64_deb": {
+      "url": "https://github.com/WovenTexLTD/line-lead-hub/releases/download/desktop-v1.0.18/Production%20Portal_1.0.18_amd64.deb",
+      "signature": "PASTE_DEB_SIG_HERE"
+    },
+    "linux-x86_64_rpm": {
+      "url": "https://github.com/WovenTexLTD/line-lead-hub/releases/download/desktop-v1.0.18/Production%20Portal-1.0.18-1.x86_64.rpm",
+      "signature": "PASTE_RPM_SIG_HERE"
+    }
+  }
+}
