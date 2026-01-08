@@ -53,6 +53,9 @@
       "https://github.com/WovenTexLTD/line-lead-hub/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExQTU4RkFGNzRCMzRCRTcKUldUblM3TjByNCtsRVROVjUrTTEza28zdjZ1Y3lYTnI5dGpSY1cvMGg4WGp2dGRBdjFRb3FyQzYK"
+    },
+    "shell": {
+      "open": true
     }
   }
 }
