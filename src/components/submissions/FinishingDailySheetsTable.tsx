@@ -124,10 +124,28 @@ export function FinishingDailySheetsTable({
     });
   };
 
+  const isToday = (dateString: string) => {
+    const today = new Date().toISOString().split("T")[0];
+    return dateString === today;
+  };
+
+  const getSheetStatus = (sheet: DailySheetRow): "complete" | "pending" | "incomplete" => {
+    if (sheet.hours_logged >= MIN_REQUIRED_HOURS) {
+      return "complete";
+    }
+    // If it's today's sheet and not complete, show pending
+    if (isToday(sheet.production_date)) {
+      return "pending";
+    }
+    // Past day and not complete = incomplete
+    return "incomplete";
+  };
+
   // Stats
   const totalSheets = filteredSheets.length;
   const completeSheets = filteredSheets.filter((s) => s.hours_logged >= MIN_REQUIRED_HOURS).length;
-  const incompleteSheets = totalSheets - completeSheets;
+  const pendingSheets = filteredSheets.filter((s) => isToday(s.production_date) && s.hours_logged < MIN_REQUIRED_HOURS).length;
+  const incompleteSheets = totalSheets - completeSheets - pendingSheets;
   const totalPoly = filteredSheets.reduce((sum, s) => sum + s.total_poly, 0);
   const totalCarton = filteredSheets.reduce((sum, s) => sum + s.total_carton, 0);
 
@@ -281,13 +299,24 @@ export function FinishingDailySheetsTable({
                       </span>
                     </TableCell>
                     <TableCell>
-                      {sheet.hours_logged >= MIN_REQUIRED_HOURS ? (
-                        <Badge variant="default" className="bg-success hover:bg-success/90">
-                          Complete
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive">Incomplete</Badge>
-                      )}
+                      {(() => {
+                        const status = getSheetStatus(sheet);
+                        if (status === "complete") {
+                          return (
+                            <Badge variant="default" className="bg-success hover:bg-success/90">
+                              Complete
+                            </Badge>
+                          );
+                        }
+                        if (status === "pending") {
+                          return (
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400">
+                              Pending
+                            </Badge>
+                          );
+                        }
+                        return <Badge variant="destructive">Incomplete</Badge>;
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Link to={`/finishing/daily-sheet?sheet=${sheet.id}`}>
