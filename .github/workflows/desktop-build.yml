@@ -191,140 +191,6 @@ jobs:
           echo "Downloaded artifacts:"
           find dist -type f -ls
 
-      - name: Generate latest.json
-        shell: bash
-        run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#desktop-v}"
-          REPO="WovenTexLTD/line-lead-hub"
-          BASE_URL="https://github.com/$REPO/releases/download/$TAG"
-          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
-          # Find artifact filenames (update bundles)
-          # NOTE: Some pipelines/tools normalize filenames when uploading (e.g. spaces -> dots).
-          # We normalize locally before generating latest.json so the URLs always match the uploaded assets.
-          LINUX_PATH=$(find dist -name "*.AppImage" -type f -print -quit)
-          WINDOWS_PATH=$(find dist -name "*.msi" -type f -print -quit)
-          MACOS_PATH=$(find dist -name "*.app.tar.gz" -type f -print -quit)
-
-          LINUX_FILE=$(basename "$LINUX_PATH")
-          WINDOWS_FILE=$(basename "$WINDOWS_PATH")
-          MACOS_FILE=$(basename "$MACOS_PATH")
-
-          normalize_name() {
-            # Match GitHub asset naming (what we observe in releases): spaces are replaced with dots
-            echo "$1" | tr ' ' '.'
-          }
-
-          if [ -n "$LINUX_PATH" ]; then
-            LINUX_FILE_NORM=$(normalize_name "$LINUX_FILE")
-            if [ "$LINUX_FILE" != "$LINUX_FILE_NORM" ]; then
-              mv -f "$LINUX_PATH" "dist/$LINUX_FILE_NORM"
-              LINUX_PATH="dist/$LINUX_FILE_NORM"
-              LINUX_FILE="$LINUX_FILE_NORM"
-            fi
-          fi
-
-          if [ -n "$WINDOWS_PATH" ]; then
-            WINDOWS_FILE_NORM=$(normalize_name "$WINDOWS_FILE")
-            if [ "$WINDOWS_FILE" != "$WINDOWS_FILE_NORM" ]; then
-              mv -f "$WINDOWS_PATH" "dist/$WINDOWS_FILE_NORM"
-              WINDOWS_PATH="dist/$WINDOWS_FILE_NORM"
-              WINDOWS_FILE="$WINDOWS_FILE_NORM"
-            fi
-          fi
-
-          if [ -n "$MACOS_PATH" ]; then
-            MACOS_FILE_NORM=$(normalize_name "$MACOS_FILE")
-            if [ "$MACOS_FILE" != "$MACOS_FILE_NORM" ]; then
-              mv -f "$MACOS_PATH" "dist/$MACOS_FILE_NORM"
-              MACOS_PATH="dist/$MACOS_FILE_NORM"
-              MACOS_FILE="$MACOS_FILE_NORM"
-            fi
-          fi
-
-          # URL-encode filenames for GitHub release download URLs (spaces must be %20)
-          urlencode() {
-            python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$1"
-          }
-          LINUX_FILE_URL=$(urlencode "$LINUX_FILE")
-          WINDOWS_FILE_URL=$(urlencode "$WINDOWS_FILE")
-          MACOS_FILE_URL=$(urlencode "$MACOS_FILE")
-
-          # Read signatures (strip newlines just in case)
-          LINUX_SIG=""
-          WINDOWS_SIG=""
-          DARWIN_SIG=""
-
-          if [ -f "dist/linux-x86_64.sig" ]; then
-            LINUX_SIG=$(tr -d '\n' < dist/linux-x86_64.sig)
-          fi
-
-          if [ -f "dist/windows-x86_64.sig" ]; then
-            WINDOWS_SIG=$(tr -d '\n' < dist/windows-x86_64.sig)
-          fi
-
-          if [ -f "dist/darwin-aarch64.sig" ]; then
-            DARWIN_SIG=$(tr -d '\n' < dist/darwin-aarch64.sig)
-          elif [ -f "dist/darwin-x86_64.sig" ]; then
-            DARWIN_SIG=$(tr -d '\n' < dist/darwin-x86_64.sig)
-          fi
-
-          # Fail the release if any platform artifacts/signatures are missing
-          if [ -z "$LINUX_FILE" ] || [ -z "$LINUX_SIG" ]; then
-            echo "Missing Linux updater artifact or signature (expected *.AppImage + linux-x86_64.sig)" >&2
-            exit 1
-          fi
-
-          if [ -z "$WINDOWS_FILE" ] || [ -z "$WINDOWS_SIG" ]; then
-            echo "Missing Windows updater artifact or signature (expected *.msi + windows-x86_64.sig)" >&2
-            exit 1
-          fi
-
-          if [ -z "$MACOS_FILE" ] || [ -z "$DARWIN_SIG" ]; then
-            echo "Missing macOS updater artifact or signature (expected *.app.tar.gz + darwin-aarch64.sig)" >&2
-            exit 1
-          fi
-
-          # Build platforms JSON
-          PLATFORMS="{"
-          FIRST=true
-
-          # Linux
-          if [ -n "$LINUX_FILE" ] && [ -n "$LINUX_SIG" ]; then
-            PLATFORMS="$PLATFORMS\"linux-x86_64\": {\"url\": \"$BASE_URL/$LINUX_FILE_URL\", \"signature\": \"$LINUX_SIG\"}"
-            FIRST=false
-          fi
-
-          # Windows
-          if [ -n "$WINDOWS_FILE" ] && [ -n "$WINDOWS_SIG" ]; then
-            if [ "$FIRST" = false ]; then PLATFORMS="$PLATFORMS, "; fi
-            PLATFORMS="$PLATFORMS\"windows-x86_64\": {\"url\": \"$BASE_URL/$WINDOWS_FILE_URL\", \"signature\": \"$WINDOWS_SIG\"}"
-            FIRST=false
-          fi
-
-          # macOS (both architectures point to universal binary)
-          if [ -n "$MACOS_FILE" ] && [ -n "$DARWIN_SIG" ]; then
-            if [ "$FIRST" = false ]; then PLATFORMS="$PLATFORMS, "; fi
-            PLATFORMS="$PLATFORMS\"darwin-aarch64\": {\"url\": \"$BASE_URL/$MACOS_FILE_URL\", \"signature\": \"$DARWIN_SIG\"}"
-            PLATFORMS="$PLATFORMS, \"darwin-x86_64\": {\"url\": \"$BASE_URL/$MACOS_FILE_URL\", \"signature\": \"$DARWIN_SIG\"}"
-          fi
-          
-          PLATFORMS="$PLATFORMS}"
-          
-          # Create latest.json
-          cat > dist/latest.json << EOF
-          {
-            "version": "$VERSION",
-            "notes": "Production Portal update",
-            "pub_date": "$PUB_DATE",
-            "platforms": $PLATFORMS
-          }
-          EOF
-          
-          echo "Generated latest.json:"
-          cat dist/latest.json
-
       - name: Create Release + Upload Assets
         uses: ncipollo/release-action@v1
         with:
@@ -350,5 +216,111 @@ jobs:
             dist/*.app.tar.gz
             dist/*.msi
             dist/*.exe
-            dist/latest.json
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate latest.json (use actual uploaded asset URLs)
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#desktop-v}"
+          REPO="WovenTexLTD/line-lead-hub"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Fetch the release we just created so we can use the *exact* asset names/URLs.
+          curl -sSL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/releases/tags/$TAG" \
+            > dist/release.json
+
+          # Extract browser_download_url for each required update bundle
+          python3 - <<'PY' > dist/asset_urls.env
+          import json
+
+          with open('dist/release.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+          assets = data.get('assets', []) or []
+
+          def find_url(endswith: str) -> str:
+            for a in assets:
+              name = a.get('name', '') or ''
+              if name.endswith(endswith):
+                return a.get('browser_download_url', '') or ''
+            return ''
+
+          linux_url = find_url('.AppImage')
+          windows_url = find_url('.msi')
+          macos_url = find_url('.app.tar.gz')
+
+          print(f"LINUX_URL={linux_url}")
+          print(f"WINDOWS_URL={windows_url}")
+          print(f"MACOS_URL={macos_url}")
+          PY
+
+          source dist/asset_urls.env
+
+          if [ -z "${LINUX_URL:-}" ]; then
+            echo "Could not find Linux .AppImage asset URL in release" >&2
+            exit 1
+          fi
+          if [ -z "${WINDOWS_URL:-}" ]; then
+            echo "Could not find Windows .msi asset URL in release" >&2
+            exit 1
+          fi
+          if [ -z "${MACOS_URL:-}" ]; then
+            echo "Could not find macOS .app.tar.gz asset URL in release" >&2
+            exit 1
+          fi
+
+          # Read signatures (strip newlines)
+          if [ ! -f "dist/linux-x86_64.sig" ] || [ ! -f "dist/windows-x86_64.sig" ]; then
+            echo "Missing linux-x86_64.sig or windows-x86_64.sig in dist" >&2
+            exit 1
+          fi
+
+          LINUX_SIG=$(tr -d '\n' < dist/linux-x86_64.sig)
+          WINDOWS_SIG=$(tr -d '\n' < dist/windows-x86_64.sig)
+
+          DARWIN_SIG=""
+          if [ -f "dist/darwin-aarch64.sig" ]; then
+            DARWIN_SIG=$(tr -d '\n' < dist/darwin-aarch64.sig)
+          elif [ -f "dist/darwin-x86_64.sig" ]; then
+            DARWIN_SIG=$(tr -d '\n' < dist/darwin-x86_64.sig)
+          fi
+
+          if [ -z "$DARWIN_SIG" ]; then
+            echo "Missing macOS signature (darwin-aarch64.sig or darwin-x86_64.sig) in dist" >&2
+            exit 1
+          fi
+
+          cat > dist/latest.json << EOF
+          {
+            "version": "$VERSION",
+            "notes": "Production Portal update",
+            "pub_date": "$PUB_DATE",
+            "platforms": {
+              "linux-x86_64": { "url": "$LINUX_URL", "signature": "$LINUX_SIG" },
+              "windows-x86_64": { "url": "$WINDOWS_URL", "signature": "$WINDOWS_SIG" },
+              "darwin-aarch64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" },
+              "darwin-x86_64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" }
+            }
+          }
+          EOF
+
+          echo "Generated latest.json:"
+          cat dist/latest.json
+
+      - name: Upload latest.json
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          allowUpdates: true
+          replacesArtifacts: true
+          artifacts: dist/latest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
