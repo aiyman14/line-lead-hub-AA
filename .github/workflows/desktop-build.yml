@@ -201,7 +201,8 @@ jobs:
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           
           # Find artifact filenames (update bundles)
-          # IMPORTANT: filenames include spaces ("Production Portal ..."), so avoid xargs (it splits on whitespace)
+          # NOTE: Some pipelines/tools normalize filenames when uploading (e.g. spaces -> dots).
+          # We normalize locally before generating latest.json so the URLs always match the uploaded assets.
           LINUX_PATH=$(find dist -name "*.AppImage" -type f -print -quit)
           WINDOWS_PATH=$(find dist -name "*.msi" -type f -print -quit)
           MACOS_PATH=$(find dist -name "*.app.tar.gz" -type f -print -quit)
@@ -209,6 +210,38 @@ jobs:
           LINUX_FILE=$(basename "$LINUX_PATH")
           WINDOWS_FILE=$(basename "$WINDOWS_PATH")
           MACOS_FILE=$(basename "$MACOS_PATH")
+
+          normalize_name() {
+            # Match GitHub asset naming (what we observe in releases): spaces are replaced with dots
+            echo "$1" | tr ' ' '.'
+          }
+
+          if [ -n "$LINUX_PATH" ]; then
+            LINUX_FILE_NORM=$(normalize_name "$LINUX_FILE")
+            if [ "$LINUX_FILE" != "$LINUX_FILE_NORM" ]; then
+              mv -f "$LINUX_PATH" "dist/$LINUX_FILE_NORM"
+              LINUX_PATH="dist/$LINUX_FILE_NORM"
+              LINUX_FILE="$LINUX_FILE_NORM"
+            fi
+          fi
+
+          if [ -n "$WINDOWS_PATH" ]; then
+            WINDOWS_FILE_NORM=$(normalize_name "$WINDOWS_FILE")
+            if [ "$WINDOWS_FILE" != "$WINDOWS_FILE_NORM" ]; then
+              mv -f "$WINDOWS_PATH" "dist/$WINDOWS_FILE_NORM"
+              WINDOWS_PATH="dist/$WINDOWS_FILE_NORM"
+              WINDOWS_FILE="$WINDOWS_FILE_NORM"
+            fi
+          fi
+
+          if [ -n "$MACOS_PATH" ]; then
+            MACOS_FILE_NORM=$(normalize_name "$MACOS_FILE")
+            if [ "$MACOS_FILE" != "$MACOS_FILE_NORM" ]; then
+              mv -f "$MACOS_PATH" "dist/$MACOS_FILE_NORM"
+              MACOS_PATH="dist/$MACOS_FILE_NORM"
+              MACOS_FILE="$MACOS_FILE_NORM"
+            fi
+          fi
 
           # URL-encode filenames for GitHub release download URLs (spaces must be %20)
           urlencode() {
