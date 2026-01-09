@@ -136,23 +136,33 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-          
-          # Find DMG and its signature (universal build)
+
+          # Updater bundle for macOS (required by tauri-plugin-updater)
+          MACOS_UPDATE=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
+          if [ -z "$MACOS_UPDATE" ]; then
+            MACOS_UPDATE=$(find src-tauri/target/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
+          fi
+
+          if [ -n "$MACOS_UPDATE" ] && [ -f "$MACOS_UPDATE" ]; then
+            cp "$MACOS_UPDATE" artifacts/
+            if [ -f "$MACOS_UPDATE.sig" ]; then
+              SIGNATURE=$(cat "$MACOS_UPDATE.sig")
+              # Save signature for both darwin platforms (universal bundle)
+              echo "$SIGNATURE" > artifacts/darwin-aarch64.sig
+              echo "$SIGNATURE" > artifacts/darwin-x86_64.sig
+            fi
+            echo "MACOS_ARTIFACT=$(basename "$MACOS_UPDATE")" >> $GITHUB_ENV
+          fi
+
+          # Also copy DMG (manual install) if it exists
           DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
           if [ -z "$DMG" ]; then
             DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f | head -1)
           fi
-          
           if [ -n "$DMG" ] && [ -f "$DMG" ]; then
             cp "$DMG" artifacts/
-            if [ -f "$DMG.sig" ]; then
-              SIGNATURE=$(cat "$DMG.sig")
-              # Save signature for both darwin platforms
-              echo "$SIGNATURE" > artifacts/darwin-aarch64.sig
-              echo "$SIGNATURE" > artifacts/darwin-x86_64.sig
-            fi
-            echo "MACOS_ARTIFACT=$(basename $DMG)" >> $GITHUB_ENV
           fi
+
 
       # Upload installer artifacts
       - name: Upload installers
@@ -190,11 +200,11 @@ jobs:
           BASE_URL="https://github.com/$REPO/releases/download/$TAG"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           
-          # Find artifact filenames
+          # Find artifact filenames (update bundles)
           LINUX_FILE=$(find dist -name "*.AppImage" -type f | head -1 | xargs -r basename)
           WINDOWS_FILE=$(find dist -name "*.msi" -type f | head -1 | xargs -r basename)
-          MACOS_FILE=$(find dist -name "*.dmg" -type f | head -1 | xargs -r basename)
-          
+          MACOS_FILE=$(find dist -name "*.app.tar.gz" -type f | head -1 | xargs -r basename)
+
           # Read signatures
           LINUX_SIG=""
           WINDOWS_SIG=""
@@ -212,6 +222,22 @@ jobs:
             DARWIN_SIG=$(cat dist/darwin-aarch64.sig)
           elif [ -f "dist/darwin-x86_64.sig" ]; then
             DARWIN_SIG=$(cat dist/darwin-x86_64.sig)
+          fi
+
+          # Fail the release if any platform artifacts/signatures are missing
+          if [ -z "$LINUX_FILE" ] || [ -z "$LINUX_SIG" ]; then
+            echo "Missing Linux updater artifact or signature (expected *.AppImage + linux-x86_64.sig)" >&2
+            exit 1
+          fi
+
+          if [ -z "$WINDOWS_FILE" ] || [ -z "$WINDOWS_SIG" ]; then
+            echo "Missing Windows updater artifact or signature (expected *.msi + windows-x86_64.sig)" >&2
+            exit 1
+          fi
+
+          if [ -z "$MACOS_FILE" ] || [ -z "$DARWIN_SIG" ]; then
+            echo "Missing macOS updater artifact or signature (expected *.app.tar.gz + darwin-aarch64.sig)" >&2
+            exit 1
           fi
           
           # Build platforms JSON
@@ -275,6 +301,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.dmg
+            dist/*.app.tar.gz
             dist/*.msi
             dist/*.exe
             dist/latest.json
