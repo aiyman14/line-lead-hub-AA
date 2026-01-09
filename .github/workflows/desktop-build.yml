@@ -210,23 +210,31 @@ jobs:
           WINDOWS_FILE=$(basename "$WINDOWS_PATH")
           MACOS_FILE=$(basename "$MACOS_PATH")
 
-          # Read signatures
+          # URL-encode filenames for GitHub release download URLs (spaces must be %20)
+          urlencode() {
+            python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$1"
+          }
+          LINUX_FILE_URL=$(urlencode "$LINUX_FILE")
+          WINDOWS_FILE_URL=$(urlencode "$WINDOWS_FILE")
+          MACOS_FILE_URL=$(urlencode "$MACOS_FILE")
+
+          # Read signatures (strip newlines just in case)
           LINUX_SIG=""
           WINDOWS_SIG=""
           DARWIN_SIG=""
-          
+
           if [ -f "dist/linux-x86_64.sig" ]; then
-            LINUX_SIG=$(cat dist/linux-x86_64.sig)
+            LINUX_SIG=$(tr -d '\n' < dist/linux-x86_64.sig)
           fi
-          
+
           if [ -f "dist/windows-x86_64.sig" ]; then
-            WINDOWS_SIG=$(cat dist/windows-x86_64.sig)
+            WINDOWS_SIG=$(tr -d '\n' < dist/windows-x86_64.sig)
           fi
-          
+
           if [ -f "dist/darwin-aarch64.sig" ]; then
-            DARWIN_SIG=$(cat dist/darwin-aarch64.sig)
+            DARWIN_SIG=$(tr -d '\n' < dist/darwin-aarch64.sig)
           elif [ -f "dist/darwin-x86_64.sig" ]; then
-            DARWIN_SIG=$(cat dist/darwin-x86_64.sig)
+            DARWIN_SIG=$(tr -d '\n' < dist/darwin-x86_64.sig)
           fi
 
           # Fail the release if any platform artifacts/signatures are missing
@@ -244,29 +252,29 @@ jobs:
             echo "Missing macOS updater artifact or signature (expected *.app.tar.gz + darwin-aarch64.sig)" >&2
             exit 1
           fi
-          
+
           # Build platforms JSON
           PLATFORMS="{"
           FIRST=true
-          
+
           # Linux
           if [ -n "$LINUX_FILE" ] && [ -n "$LINUX_SIG" ]; then
-            PLATFORMS="$PLATFORMS\"linux-x86_64\": {\"url\": \"$BASE_URL/$LINUX_FILE\", \"signature\": \"$LINUX_SIG\"}"
+            PLATFORMS="$PLATFORMS\"linux-x86_64\": {\"url\": \"$BASE_URL/$LINUX_FILE_URL\", \"signature\": \"$LINUX_SIG\"}"
             FIRST=false
           fi
-          
+
           # Windows
           if [ -n "$WINDOWS_FILE" ] && [ -n "$WINDOWS_SIG" ]; then
             if [ "$FIRST" = false ]; then PLATFORMS="$PLATFORMS, "; fi
-            PLATFORMS="$PLATFORMS\"windows-x86_64\": {\"url\": \"$BASE_URL/$WINDOWS_FILE\", \"signature\": \"$WINDOWS_SIG\"}"
+            PLATFORMS="$PLATFORMS\"windows-x86_64\": {\"url\": \"$BASE_URL/$WINDOWS_FILE_URL\", \"signature\": \"$WINDOWS_SIG\"}"
             FIRST=false
           fi
-          
+
           # macOS (both architectures point to universal binary)
           if [ -n "$MACOS_FILE" ] && [ -n "$DARWIN_SIG" ]; then
             if [ "$FIRST" = false ]; then PLATFORMS="$PLATFORMS, "; fi
-            PLATFORMS="$PLATFORMS\"darwin-aarch64\": {\"url\": \"$BASE_URL/$MACOS_FILE\", \"signature\": \"$DARWIN_SIG\"}"
-            PLATFORMS="$PLATFORMS, \"darwin-x86_64\": {\"url\": \"$BASE_URL/$MACOS_FILE\", \"signature\": \"$DARWIN_SIG\"}"
+            PLATFORMS="$PLATFORMS\"darwin-aarch64\": {\"url\": \"$BASE_URL/$MACOS_FILE_URL\", \"signature\": \"$DARWIN_SIG\"}"
+            PLATFORMS="$PLATFORMS, \"darwin-x86_64\": {\"url\": \"$BASE_URL/$MACOS_FILE_URL\", \"signature\": \"$DARWIN_SIG\"}"
           fi
           
           PLATFORMS="$PLATFORMS}"
