@@ -171,8 +171,8 @@ export function AppSidebar() {
           processModule.relaunch();
         }, 1500);
       } else {
-        toast.success("You're up to date!", {
-          description: `Version ${APP_VERSION} is the latest version.`,
+        toast.success("No updates required", {
+          description: `You're already on the latest version (v${APP_VERSION}).`,
         });
       }
     } catch (error: any) {
