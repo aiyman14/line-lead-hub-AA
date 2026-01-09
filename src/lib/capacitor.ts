@@ -380,9 +380,12 @@ export async function openExternalUrl(url: string): Promise<void> {
   // Tauri desktop app
   if (isTauri()) {
     try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(url);
-      return;
+      // Dynamic import with error handling for web environments
+      const shellModule = await import('@tauri-apps/plugin-shell').catch(() => null);
+      if (shellModule?.open) {
+        await shellModule.open(url);
+        return;
+      }
     } catch (error) {
       console.warn('Tauri shell open failed, falling back to window.open:', error);
     }
