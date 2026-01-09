@@ -15,4 +15,18 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    // Exclude Tauri plugins from pre-bundling to prevent duplicate React issues in web mode
+    exclude: [
+      "@tauri-apps/plugin-updater",
+      "@tauri-apps/plugin-process",
+      "@tauri-apps/plugin-shell",
+    ],
+  },
+  build: {
+    rollupOptions: {
+      // Mark Tauri plugins as external for production builds
+      external: (id) => id.startsWith("@tauri-apps/"),
+    },
+  },
 }));
