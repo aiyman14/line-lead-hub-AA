@@ -53,7 +53,7 @@ import { openExternalUrl, isTauri } from "@/lib/capacitor";
 import logoSvg from "@/assets/logo.svg";
 
 // App version - update this when releasing new versions
-const APP_VERSION = "1.0.31";
+const APP_VERSION = "1.0.32";
 import {
   Collapsible,
   CollapsibleContent,

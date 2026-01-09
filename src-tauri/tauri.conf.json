@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
   "productName": "Production Portal",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "identifier": "com.woventex.productionportal",
   "build": {
     "beforeDevCommand": "npm run dev",
