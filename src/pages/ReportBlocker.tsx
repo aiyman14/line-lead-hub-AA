@@ -344,6 +344,36 @@ export default function ReportBlocker() {
 
       if (error) throw error;
 
+      // Get the blocker type name for notification
+      const blockerTypeName = blockerTypes.find(bt => bt.id === blockerType)?.name || "Unknown";
+      
+      // Get the line name for notification
+      const lineName = isCuttingOrStorage
+        ? (lines.find(l => l.id === workOrder?.line_id)?.name || lines.find(l => l.id === workOrder?.line_id)?.line_id || "Unknown")
+        : (lines.find(l => l.id === selectedLine)?.name || lines.find(l => l.id === selectedLine)?.line_id || "Unknown");
+
+      // Send notification to admins (fire and forget - don't block the user)
+      supabase.functions.invoke("notify-blocker", {
+        body: {
+          factoryId: profile?.factory_id,
+          lineName,
+          poNumber: workOrder?.po_number || undefined,
+          blockerType: blockerTypeName,
+          blockerImpact: impactValue,
+          blockerDescription,
+          submittedBy: profile?.full_name || "Unknown",
+          department: updateType,
+        },
+      }).then((res) => {
+        if (res.error) {
+          console.error("Failed to send blocker notifications:", res.error);
+        } else {
+          console.log("Blocker notifications sent:", res.data);
+        }
+      }).catch((err) => {
+        console.error("Error calling notify-blocker function:", err);
+      });
+
       toast({
         title: t('reportBlocker.blockerReported'),
         description: t('reportBlocker.blockerReportedDesc'),
