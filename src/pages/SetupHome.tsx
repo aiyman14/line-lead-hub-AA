@@ -19,8 +19,10 @@ import {
   Globe,
   ChevronRight,
   AlertTriangle,
-  Factory
+  Factory,
+  Mail
 } from "lucide-react";
+import { EmailScheduleSettings } from "@/components/insights/EmailScheduleSettings";
 
 interface FactoryStats {
   linesCount: number;
@@ -392,6 +394,11 @@ export default function SetupHome() {
             </Card>
           </Link>
         ))}
+      </div>
+
+      {/* Email Report Settings */}
+      <div className="mt-6">
+        <EmailScheduleSettings />
       </div>
 
     </div>
