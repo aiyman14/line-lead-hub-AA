@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -27,10 +28,33 @@ interface Notification {
 }
 
 export function NotificationBell() {
+  const navigate = useNavigate();
   const { user, profile } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
+
+  // Get navigation path based on notification type and data
+  const getNavigationPath = (notification: Notification): string | null => {
+    const data = notification.data as Record<string, unknown> | null;
+    
+    switch (notification.type) {
+      case "blocker":
+        return "/blockers";
+      case "efficiency_alert":
+        // Navigate to the line insights if we have line info
+        if (data?.lineId) {
+          return `/insights?line=${data.lineId}`;
+        }
+        return "/insights";
+      case "target_reminder":
+        return "/morning-targets";
+      case "submission_reminder":
+        return "/end-of-day";
+      default:
+        return null;
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -177,6 +201,12 @@ export function NotificationBell() {
                 onClick={() => {
                   if (!notification.is_read) {
                     markAsRead(notification.id);
+                  }
+                  // Navigate to relevant page
+                  const path = getNavigationPath(notification);
+                  if (path) {
+                    setOpen(false);
+                    navigate(path);
                   }
                 }}
               >
