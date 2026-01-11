@@ -174,7 +174,7 @@ export default function Dashboard() {
     activeWorkOrders: 0,
     avgEfficiency: 0,
   });
-  const [departmentTab, setDepartmentTab] = useState<'sewing' | 'finishing' | 'cutting' | 'storage'>('sewing');
+  const [departmentTab, setDepartmentTab] = useState<'sewing' | 'finishing' | 'cutting' | 'storage'>('storage');
   const [sewingTargets, setSewingTargets] = useState<TargetSubmission[]>([]);
   const [finishingTargets, setFinishingTargets] = useState<TargetSubmission[]>([]);
   const [sewingEndOfDay, setSewingEndOfDay] = useState<EndOfDaySubmission[]>([]);
@@ -611,6 +611,14 @@ export default function Dashboard() {
       {/* Department Tabs */}
       <Tabs value={departmentTab} onValueChange={(v) => setDepartmentTab(v as 'sewing' | 'finishing' | 'cutting' | 'storage')} className="space-y-4">
         <TabsList className="w-full grid grid-cols-4 h-auto p-1">
+          <TabsTrigger value="storage" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
+            <Archive className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="hidden xs:inline">Storage</span>
+          </TabsTrigger>
+          <TabsTrigger value="cutting" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
+            <Scissors className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="hidden xs:inline">Cutting</span>
+          </TabsTrigger>
           <TabsTrigger value="sewing" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
             <Factory className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
             <span className="hidden xs:inline">Sewing</span>
@@ -618,14 +626,6 @@ export default function Dashboard() {
           <TabsTrigger value="finishing" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
             <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
             <span className="hidden xs:inline">Finishing</span>
-          </TabsTrigger>
-          <TabsTrigger value="cutting" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
-            <Scissors className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-            <span className="hidden xs:inline">Cutting</span>
-          </TabsTrigger>
-          <TabsTrigger value="storage" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2">
-            <Archive className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-            <span className="hidden xs:inline">Storage</span>
           </TabsTrigger>
         </TabsList>
 
