@@ -40,6 +40,11 @@ export function NotificationBell() {
     
     switch (notification.type) {
       case "blocker":
+      case "blocker_reported":
+        // Navigate to blockers page with filter params if available
+        if (data?.lineName) {
+          return `/blockers?search=${encodeURIComponent(data.lineName as string)}`;
+        }
         return "/blockers";
       case "efficiency_alert":
         // Navigate to the line insights if we have line info

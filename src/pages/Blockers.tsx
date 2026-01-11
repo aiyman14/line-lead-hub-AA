@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,10 +42,11 @@ interface Blocker {
 }
 
 export default function Blockers() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { profile, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
   const [filterImpact, setFilterImpact] = useState("all");
   const [activeTab, setActiveTab] = useState("open");
   const [selectedBlocker, setSelectedBlocker] = useState<Blocker | null>(null);
@@ -52,6 +54,30 @@ export default function Blockers() {
   const [resolving, setResolving] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [bulkDismissing, setBulkDismissing] = useState(false);
+
+  // Initialize search term from URL and auto-open first matching blocker
+  useEffect(() => {
+    const urlSearch = searchParams.get("search");
+    if (urlSearch) {
+      setSearchTerm(urlSearch);
+      // Clear the search param from URL after using it
+      setSearchParams({}, { replace: true });
+    }
+  }, []);
+
+  // Auto-open first matching blocker when navigating from notification
+  useEffect(() => {
+    if (!loading && blockers.length > 0 && searchTerm) {
+      const matchingBlocker = blockers.find(b => 
+        b.line_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (b.description || '').toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      if (matchingBlocker && !detailModalOpen) {
+        setSelectedBlocker(matchingBlocker);
+        setDetailModalOpen(true);
+      }
+    }
+  }, [loading, blockers, searchTerm]);
 
   useEffect(() => {
     if (profile?.factory_id) {
