@@ -53,12 +53,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { email, factoryId, scheduleType, userId } = await req.json();
 
-    // Parse email recipients - can be comma-separated string or single email
-    const emailRecipients: string[] = typeof email === 'string' 
-      ? email.split(',').map((e: string) => e.trim()).filter(Boolean)
-      : [email];
-
-    console.log(`Sending ${scheduleType} report to ${emailRecipients.length} recipient(s) for factory ${factoryId}`);
+    console.log(`Sending ${scheduleType} report to ${email} for factory ${factoryId}`);
 
     // Get factory info
     const { data: factory } = await supabase
@@ -222,7 +217,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       const emailResponse = await resend.emails.send({
         from: "Production Reports <onboarding@resend.dev>",
-        to: emailRecipients,
+        to: [email],
         subject: `Daily Production Report - ${factoryName} - ${todayStr}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -280,16 +275,6 @@ const handler = async (req: Request): Promise<Response> => {
         ],
       });
 
-      // IMPORTANT: Resend can return 200-level responses with an embedded error.
-      // Treat that as a failure so the frontend shows a proper error toast.
-      if (emailResponse?.error) {
-        console.error("Daily email failed:", emailResponse.error);
-        return new Response(
-          JSON.stringify({ success: false, error: emailResponse.error.message, emailResponse }),
-          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } },
-        );
-      }
-
       console.log("Daily email sent successfully:", emailResponse);
 
       if (userId) {
@@ -302,7 +287,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       return new Response(
         JSON.stringify({ success: true, emailResponse }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
@@ -733,7 +718,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Send email with both attachments
     const emailResponse = await resend.emails.send({
       from: "Production Reports <onboarding@resend.dev>",
-      to: emailRecipients,
+      to: [email],
       subject: `Weekly Production Report - ${factoryName} - Week of ${startDateStr}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -810,15 +795,6 @@ const handler = async (req: Request): Promise<Response> => {
       ],
     });
 
-    // IMPORTANT: Resend can return 200-level responses with an embedded error.
-    if (emailResponse?.error) {
-      console.error("Weekly email failed:", emailResponse.error);
-      return new Response(
-        JSON.stringify({ success: false, error: emailResponse.error.message, emailResponse }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } },
-      );
-    }
-
     console.log("Weekly email sent successfully:", emailResponse);
 
     if (userId) {
@@ -831,7 +807,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     return new Response(
       JSON.stringify({ success: true, emailResponse }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
 
   } catch (error: any) {
