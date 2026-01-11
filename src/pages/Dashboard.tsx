@@ -193,7 +193,7 @@ export default function Dashboard() {
   const [cuttingModalOpen, setCuttingModalOpen] = useState(false);
   const [storageModalOpen, setStorageModalOpen] = useState(false);
 
-  const canViewDashboard = hasRole("supervisor") || isAdminOrHigher();
+  const canViewDashboard = isAdminOrHigher();
 
   useEffect(() => {
     if (authLoading) return;

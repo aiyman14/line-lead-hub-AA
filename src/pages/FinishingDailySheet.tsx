@@ -384,7 +384,7 @@ export default function FinishingDailySheet() {
 
   async function handleToggleLock(log: HourlyLog) {
     if (!isAdminOrHigher()) {
-      toast.error("Only supervisors/admins can lock/unlock hours");
+      toast.error("Only admins can lock/unlock hours");
       return;
     }
 

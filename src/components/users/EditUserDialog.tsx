@@ -59,7 +59,7 @@ interface Line {
   name: string | null;
 }
 
-const ASSIGNABLE_ROLES: AppRole[] = ['worker', 'supervisor', 'admin', 'storage'];
+const ASSIGNABLE_ROLES: AppRole[] = ['worker', 'admin', 'storage'];
 
 export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUserDialogProps) {
   const { profile, hasRole, user: currentUser } = useAuth();

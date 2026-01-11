@@ -134,7 +134,7 @@ export function HourlyEntryDialog({
         <div className="space-y-4 py-4">
           {isLocked && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
-              This hour is locked. Contact a supervisor to make changes.
+              This hour is locked. Contact an admin to make changes.
             </div>
           )}
 

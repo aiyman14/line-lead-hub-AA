@@ -6,7 +6,6 @@ export const APP_DESCRIPTION = "Garment Factory Production Tracking System";
 // Role definitions
 export const ROLES = {
   WORKER: 'worker',
-  SUPERVISOR: 'supervisor',
   ADMIN: 'admin',
   OWNER: 'owner',
   SUPERADMIN: 'superadmin',
@@ -19,7 +18,6 @@ export type AppRole = typeof ROLES[keyof typeof ROLES];
 // Role display names
 export const ROLE_LABELS: Record<AppRole, string> = {
   worker: 'Manager',
-  supervisor: 'Supervisor',
   admin: 'Admin',
   owner: 'Owner',
   superadmin: 'Super Admin',
@@ -202,19 +200,6 @@ export const NAV_ITEMS = {
     { path: '/finishing/end-of-day', label: 'Finishing End of Day', icon: 'ClipboardCheck' },
     { path: '/submissions', label: 'My Submissions', icon: 'FileText' },
     { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
-    { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
-  ],
-  supervisor: [
-    { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-    { path: '/today', label: 'Today Updates', icon: 'CalendarDays' },
-    { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
-    { path: '/week', label: 'This Week', icon: 'Calendar' },
-    { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
-    { path: '/lines', label: 'Lines', icon: 'Rows3' },
-    { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
-    { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
-    { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
-    { path: '/users', label: 'Users', icon: 'Users' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   admin: [

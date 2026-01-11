@@ -202,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   function isAdminOrHigher(): boolean {
-    return roles.some(r => ['admin', 'owner', 'superadmin', 'supervisor'].includes(r.role));
+    return roles.some(r => ['admin', 'owner', 'superadmin'].includes(r.role));
   }
 
   function isSuperAdmin(): boolean {

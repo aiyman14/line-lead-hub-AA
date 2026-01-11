@@ -47,7 +47,7 @@ export default function Index() {
       return <Navigate to="/finishing/daily-sheet" replace />;
     }
 
-    const isWorker = (profile.department != null) || (hasRole('worker') && !hasRole('supervisor') && !isAdminOrHigher());
+    const isWorker = (profile.department != null) || (hasRole('worker') && !isAdminOrHigher());
     return <Navigate to={isWorker ? "/sewing/morning-targets" : "/dashboard"} replace />;
   }
 
@@ -127,7 +127,7 @@ export default function Index() {
               {
                 icon: Users,
                 title: "Role-Based Access",
-                description: "Workers, supervisors, and admins get exactly what they need.",
+                description: "Workers and admins get exactly what they need.",
                 color: "info"
               },
               {

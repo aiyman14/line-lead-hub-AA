@@ -99,7 +99,6 @@
   },
   "roles": {
     "worker": "Manager",
-    "supervisor": "Supervisor",
     "admin": "Admin",
     "owner": "Owner",
     "superadmin": "Super Admin",
@@ -426,7 +425,7 @@
     "smartInsights": "Smart Insights",
     "smartInsightsDesc": "Get daily and weekly reports with efficiency metrics.",
     "roleBasedAccess": "Role-Based Access",
-    "roleBasedAccessDesc": "Workers, supervisors, and admins see what they need.",
+    "roleBasedAccessDesc": "Workers and admins see what they need.",
     "mobileFirst": "Mobile First",
     "mobileFirstDesc": "Optimized for use on the factory floor.",
     "multiTenant": "Multi-Tenant",

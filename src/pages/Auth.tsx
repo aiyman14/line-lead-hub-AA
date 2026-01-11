@@ -105,7 +105,7 @@ export default function Auth() {
 
         const isWorker =
           profile.department != null ||
-          (hasRole("worker") && !hasRole("supervisor") && !isAdminOrHigher());
+          (hasRole("worker") && !isAdminOrHigher());
 
         navigate(isWorker ? "/sewing/morning-targets" : "/dashboard", { replace: true });
       } else if (profile) {

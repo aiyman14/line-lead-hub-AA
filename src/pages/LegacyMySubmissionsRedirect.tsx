@@ -35,7 +35,7 @@ export default function LegacyMySubmissionsRedirect() {
 
   const isWorker =
     profile.department != null ||
-    (hasRole("worker") && !hasRole("supervisor") && !isAdminOrHigher());
+    (hasRole("worker") && !isAdminOrHigher());
 
   return (
     <Navigate
