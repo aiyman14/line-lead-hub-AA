@@ -279,21 +279,41 @@ export function EmailScheduleSettings() {
     setSending(true);
 
     try {
-      // Send to all email addresses
-      const emailString = emails.filter(e => e.trim()).join(", ");
-      
+      // Include pending input (newEmail) even if user didn't click "Add"
+      const normalized = [...emails, newEmail].map((e) => e.trim()).filter(Boolean);
+      const seen = new Set<string>();
+      const uniqueEmails = normalized.filter((e) => {
+        const key = e.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const emailString = uniqueEmails.join(", ");
+
       const { data, error } = await supabase.functions.invoke("send-insights-report", {
         body: {
           email: emailString,
           factoryId: profile.factory_id,
-          scheduleType: scheduleType,
+          scheduleType,
           userId: user?.id,
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Try to surface server message when available
+        const errAny: any = error;
+        const serverMsg = errAny?.context?.error || errAny?.context?.message;
+        throw new Error(serverMsg || error.message);
+      }
 
-      toast.success(`Test email sent to ${emails.length} recipient(s)! Check your inbox.`);
+      // Backward compatibility: some responses might be 200 with an embedded error
+      const embeddedError = (data as any)?.error || (data as any)?.emailResponse?.error?.message;
+      if (embeddedError) {
+        throw new Error(embeddedError);
+      }
+
+      toast.success(`Test email sent to ${uniqueEmails.length} recipient(s)! Check your inbox.`);
     } catch (error: any) {
       console.error("Error sending test email:", error);
       toast.error(error.message || "Failed to send test email");

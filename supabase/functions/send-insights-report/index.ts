@@ -280,6 +280,16 @@ const handler = async (req: Request): Promise<Response> => {
         ],
       });
 
+      // IMPORTANT: Resend can return 200-level responses with an embedded error.
+      // Treat that as a failure so the frontend shows a proper error toast.
+      if (emailResponse?.error) {
+        console.error("Daily email failed:", emailResponse.error);
+        return new Response(
+          JSON.stringify({ success: false, error: emailResponse.error.message, emailResponse }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } },
+        );
+      }
+
       console.log("Daily email sent successfully:", emailResponse);
 
       if (userId) {
@@ -292,7 +302,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       return new Response(
         JSON.stringify({ success: true, emailResponse }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
       );
     }
 
@@ -800,6 +810,15 @@ const handler = async (req: Request): Promise<Response> => {
       ],
     });
 
+    // IMPORTANT: Resend can return 200-level responses with an embedded error.
+    if (emailResponse?.error) {
+      console.error("Weekly email failed:", emailResponse.error);
+      return new Response(
+        JSON.stringify({ success: false, error: emailResponse.error.message, emailResponse }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } },
+      );
+    }
+
     console.log("Weekly email sent successfully:", emailResponse);
 
     if (userId) {
@@ -812,7 +831,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     return new Response(
       JSON.stringify({ success: true, emailResponse }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
     );
 
   } catch (error: any) {
