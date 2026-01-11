@@ -29,9 +29,11 @@ import {
   Package,
   ArrowLeft
 } from "lucide-react";
+import { Mail } from "lucide-react";
 import { BLOCKER_IMPACTS, BLOCKER_IMPACT_LABELS, DEFAULT_STAGES, DEFAULT_BLOCKER_TYPES } from "@/lib/constants";
 import { ActiveLinesMeter } from "@/components/ActiveLinesMeter";
 import { useActiveLines } from "@/hooks/useActiveLines";
+import { EmailScheduleSettings } from "@/components/insights/EmailScheduleSettings";
 
 // Types
 interface Unit {
@@ -690,7 +692,7 @@ export default function FactorySetup() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5 mb-6">
+        <TabsList className="grid w-full grid-cols-6 mb-6">
           <TabsTrigger value="units" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Units</span>
@@ -710,6 +712,10 @@ export default function FactorySetup() {
           <TabsTrigger value="blockerTypes" className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
             <span className="hidden sm:inline">Blockers</span>
+          </TabsTrigger>
+          <TabsTrigger value="emailReports" className="flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            <span className="hidden sm:inline">Reports</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1049,6 +1055,11 @@ export default function FactorySetup() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Email Reports Tab */}
+        <TabsContent value="emailReports">
+          <EmailScheduleSettings />
         </TabsContent>
 
       </Tabs>

@@ -17,7 +17,7 @@ import {
 import { PeriodComparison } from "@/components/insights/PeriodComparison";
 import { LineDrillDown } from "@/components/insights/LineDrillDown";
 import { ExportInsights } from "@/components/insights/ExportInsights";
-import { EmailScheduleSettings } from "@/components/insights/EmailScheduleSettings";
+
 import { LineEfficiencyTargets } from "@/components/insights/LineEfficiencyTargets";
 import { NotificationPreferences } from "@/components/NotificationPreferences";
 
@@ -1155,10 +1155,7 @@ export default function Insights() {
             efficiency: l.efficiency,
           }))}
         />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <EmailScheduleSettings />
-          <NotificationPreferences />
-        </div>
+        <NotificationPreferences />
       </div>
     </div>
   );
