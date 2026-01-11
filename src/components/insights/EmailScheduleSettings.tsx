@@ -165,6 +165,84 @@ export function EmailScheduleSettings() {
     }
   }
 
+  async function saveEmailRecipients() {
+    if (!user || !profile?.factory_id) return;
+    setSaving(true);
+
+    try {
+      const emailString = emails.filter(e => e.trim()).join(", ");
+      
+      // Update both schedules with the new email list
+      const updates = [];
+      
+      if (dailySchedule.id) {
+        updates.push(
+          supabase
+            .from("email_schedules")
+            .update({ email: emailString })
+            .eq("id", dailySchedule.id)
+        );
+      } else {
+        // Create daily schedule if it doesn't exist
+        updates.push(
+          supabase
+            .from("email_schedules")
+            .insert({
+              factory_id: profile.factory_id,
+              user_id: user.id,
+              email: emailString,
+              schedule_type: "daily",
+              is_active: false,
+              send_time: "18:00:00",
+              day_of_week: 5,
+            })
+            .select()
+            .single()
+            .then(({ data }) => {
+              if (data) setDailySchedule(prev => ({ ...prev, id: data.id }));
+            })
+        );
+      }
+      
+      if (weeklySchedule.id) {
+        updates.push(
+          supabase
+            .from("email_schedules")
+            .update({ email: emailString })
+            .eq("id", weeklySchedule.id)
+        );
+      } else {
+        // Create weekly schedule if it doesn't exist
+        updates.push(
+          supabase
+            .from("email_schedules")
+            .insert({
+              factory_id: profile.factory_id,
+              user_id: user.id,
+              email: emailString,
+              schedule_type: "weekly",
+              is_active: false,
+              send_time: "18:00:00",
+              day_of_week: 5,
+            })
+            .select()
+            .single()
+            .then(({ data }) => {
+              if (data) setWeeklySchedule(prev => ({ ...prev, id: data.id }));
+            })
+        );
+      }
+
+      await Promise.all(updates);
+      toast.success(`Email recipients saved (${emails.filter(e => e.trim()).length} recipient(s))`);
+    } catch (error) {
+      console.error("Error saving email recipients:", error);
+      toast.error("Failed to save email recipients");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function sendTestEmail(scheduleType: "daily" | "weekly") {
     if (!profile?.factory_id) return;
     setSending(true);
@@ -302,8 +380,18 @@ export function EmailScheduleSettings() {
               Add
             </Button>
           </div>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={saveEmailRecipients}
+            disabled={saving || emails.filter(e => e.trim()).length === 0}
+            className="w-full sm:w-auto"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Mail className="h-4 w-4 mr-1" />}
+            Save Recipients
+          </Button>
           <p className="text-xs text-muted-foreground">
-            All recipients will receive both daily and weekly reports when enabled.
+            Click "Save Recipients" to save your email list. All recipients will receive both daily and weekly reports when enabled.
           </p>
         </div>
 
