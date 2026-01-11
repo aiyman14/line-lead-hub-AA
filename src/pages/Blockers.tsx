@@ -46,7 +46,22 @@ export default function Blockers() {
   const { profile, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
-  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+
+  // Normal page search (what the user types). This should NOT be forced by notification deep-links.
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // One-time deep-link value (e.g. coming from notifications: /blockers?search=Line%202)
+  const [deepLinkSearch, setDeepLinkSearch] = useState(searchParams.get("search") || "");
+
+  // If we are already on /blockers and a notification navigates to /blockers?search=..., the component
+  // stays mounted. This keeps deepLinkSearch in sync with the URL.
+  useEffect(() => {
+    const urlSearch = searchParams.get("search");
+    if (urlSearch && urlSearch !== deepLinkSearch) {
+      setDeepLinkSearch(urlSearch);
+    }
+  }, [searchParams, deepLinkSearch]);
+
   const [filterImpact, setFilterImpact] = useState("all");
   const [activeTab, setActiveTab] = useState("open");
   const [selectedBlocker, setSelectedBlocker] = useState<Blocker | null>(null);
@@ -55,29 +70,25 @@ export default function Blockers() {
   const [dismissing, setDismissing] = useState(false);
   const [bulkDismissing, setBulkDismissing] = useState(false);
 
-  // Initialize search term from URL and auto-open first matching blocker
+  // Auto-open first matching blocker when navigating from a notification.
+  // Important: we do NOT populate the search input, so the full blocker list stays visible.
   useEffect(() => {
-    const urlSearch = searchParams.get("search");
-    if (urlSearch) {
-      setSearchTerm(urlSearch);
-      // Clear the search param from URL after using it
-      setSearchParams({}, { replace: true });
-    }
-  }, []);
-
-  // Auto-open first matching blocker when navigating from notification
-  useEffect(() => {
-    if (!loading && blockers.length > 0 && searchTerm) {
-      const matchingBlocker = blockers.find(b => 
-        b.line_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (b.description || '').toLowerCase().includes(searchTerm.toLowerCase())
+    if (!loading && blockers.length > 0 && deepLinkSearch) {
+      const q = deepLinkSearch.toLowerCase();
+      const matchingBlocker = blockers.find((b) =>
+        b.line_name.toLowerCase().includes(q) || (b.description || "").toLowerCase().includes(q)
       );
+
       if (matchingBlocker && !detailModalOpen) {
         setSelectedBlocker(matchingBlocker);
         setDetailModalOpen(true);
       }
+
+      // Consume deep-link param (whether we matched or not)
+      setDeepLinkSearch("");
+      setSearchParams({}, { replace: true });
     }
-  }, [loading, blockers, searchTerm]);
+  }, [loading, blockers, deepLinkSearch, detailModalOpen, setSearchParams]);
 
   useEffect(() => {
     if (profile?.factory_id) {
