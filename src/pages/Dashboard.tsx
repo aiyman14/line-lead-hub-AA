@@ -360,32 +360,40 @@ export default function Dashboard() {
       }));
 
       // Format sewing end of day
-      const formattedSewingEOD: EndOfDaySubmission[] = (sewingActualsData || []).map(u => ({
-        id: u.id,
-        type: 'sewing' as const,
-        line_uuid: u.line_id,
-        line_id: u.lines?.line_id || 'Unknown',
-        line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
-        output: u.output_qty,
-        submitted_at: u.submitted_at,
-        production_date: u.production_date,
-        has_blocker: u.has_blocker || false,
-        blocker_description: u.blocker_description,
-        blocker_impact: u.blocker_impact,
-        blocker_owner: u.blocker_owner,
-        blocker_status: u.blocker_status,
-        po_number: u.work_orders?.po_number || null,
-        buyer: u.work_orders?.buyer || null,
-        style: u.work_orders?.style || null,
-        target_qty: u.target_qty,
-        manpower: u.manpower,
-        reject_qty: u.reject_qty,
-        rework_qty: u.rework_qty,
-        stage_progress: u.stage_progress,
-        ot_hours: u.ot_hours,
-        ot_manpower: u.ot_manpower,
-        notes: u.notes,
-      }));
+      // Filter out blocker-only submissions (output_qty = 0 with has_blocker = true)
+      // These are standalone blocker reports and should only appear in the Blockers section
+      const formattedSewingEOD: EndOfDaySubmission[] = (sewingActualsData || [])
+        .filter(u => {
+          // Exclude blocker-only submissions (no actual production data)
+          const isBlockerOnly = u.output_qty === 0 && u.has_blocker === true;
+          return !isBlockerOnly;
+        })
+        .map(u => ({
+          id: u.id,
+          type: 'sewing' as const,
+          line_uuid: u.line_id,
+          line_id: u.lines?.line_id || 'Unknown',
+          line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
+          output: u.output_qty,
+          submitted_at: u.submitted_at,
+          production_date: u.production_date,
+          has_blocker: u.has_blocker || false,
+          blocker_description: u.blocker_description,
+          blocker_impact: u.blocker_impact,
+          blocker_owner: u.blocker_owner,
+          blocker_status: u.blocker_status,
+          po_number: u.work_orders?.po_number || null,
+          buyer: u.work_orders?.buyer || null,
+          style: u.work_orders?.style || null,
+          target_qty: u.target_qty,
+          manpower: u.manpower,
+          reject_qty: u.reject_qty,
+          rework_qty: u.rework_qty,
+          stage_progress: u.stage_progress,
+          ot_hours: u.ot_hours,
+          ot_manpower: u.ot_manpower,
+          notes: u.notes,
+        }));
 
       // Format finishing daily sheets (new structure with hourly logs)
       const formattedFinishingEOD: EndOfDaySubmission[] = (finishingDailySheetsData || [])
