@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,19 +42,19 @@ interface Blocker {
 }
 
 export default function Blockers() {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
 
-  // Normal page search (what the user types). This should NOT be forced by notification deep-links.
+  // Normal page search (what the user types).
   const [searchTerm, setSearchTerm] = useState("");
 
-  // One-time deep-link value (e.g. coming from notifications: /blockers?search=Line%202)
+  // One-time deep-link value (kept for compatibility, but blocker notifications now just go to /blockers).
   const [deepLinkSearch, setDeepLinkSearch] = useState(searchParams.get("search") || "");
 
-  // If we are already on /blockers and a notification navigates to /blockers?search=..., the component
-  // stays mounted. This keeps deepLinkSearch in sync with the URL.
+  // If we are already on /blockers and a navigation updates ?search=..., keep deepLinkSearch in sync.
   useEffect(() => {
     const urlSearch = searchParams.get("search");
     if (urlSearch && urlSearch !== deepLinkSearch) {
@@ -69,6 +69,20 @@ export default function Blockers() {
   const [resolving, setResolving] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [bulkDismissing, setBulkDismissing] = useState(false);
+
+  // If we jumped here from a notification, reset filters so the full list remains visible.
+  useEffect(() => {
+    const state = (location.state || {}) as any;
+    if (state?.resetBlockersFilters) {
+      setSearchTerm("");
+      setFilterImpact("all");
+      setActiveTab("open");
+      setSelectedBlocker(null);
+      setDetailModalOpen(false);
+      setDeepLinkSearch("");
+      setSearchParams({}, { replace: true });
+    }
+  }, [location.key]);
 
   // Auto-open first matching blocker when navigating from a notification.
   // Important: we do NOT populate the search input, so the full blocker list stays visible.

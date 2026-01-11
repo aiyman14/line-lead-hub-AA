@@ -39,15 +39,10 @@ export function NotificationBell() {
     const data = notification.data as Record<string, unknown> | null;
 
     switch (notification.type) {
-      // Blocker notifications (older + new)
+      // Blocker notifications
       case "blocker":
-      case "blocker_reported": {
-        const lineName = (data?.lineName as string | undefined) ?? (data?.line_name as string | undefined);
-        if (lineName) {
-          return `/blockers?search=${encodeURIComponent(lineName)}`;
-        }
+      case "blocker_reported":
         return "/blockers";
-      }
 
       // Efficiency alerts (current data uses type="warning" and data.line_id)
       case "efficiency_alert":
@@ -213,18 +208,27 @@ export function NotificationBell() {
                 onSelect={(e) => {
                   e.preventDefault();
 
-                  const path = getNavigationPath(notification);
-                  console.log("Notification selected:", {
-                    id: notification.id,
-                    type: notification.type,
-                    path,
-                    data: notification.data,
-                  });
+                  const isBlocker =
+                    notification.type === "blocker" || notification.type === "blocker_reported";
 
                   if (!notification.is_read) {
                     markAsRead(notification.id);
                   }
 
+                  if (isBlocker) {
+                    setOpen(false);
+                    // Reset filters when jumping from a notification
+                    setTimeout(
+                      () =>
+                        navigate("/blockers", {
+                          state: { resetBlockersFilters: true, ts: Date.now() },
+                        }),
+                      0
+                    );
+                    return;
+                  }
+
+                  const path = getNavigationPath(notification);
                   if (path) {
                     setOpen(false);
                     // Allow Radix menu to close cleanly before route change
