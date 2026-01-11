@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, Loader2, Calendar, Clock, Send } from "lucide-react";
+import { Mail, Loader2, Calendar, Clock, Send, Globe } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 interface EmailSchedule {
   id?: string;
@@ -25,6 +26,7 @@ export function EmailScheduleSettings() {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [email, setEmail] = useState("");
+  const [factoryTimezone, setFactoryTimezone] = useState<string>("UTC");
   const [dailySchedule, setDailySchedule] = useState<EmailSchedule>({
     schedule_type: "daily",
     is_active: false,
@@ -43,8 +45,26 @@ export function EmailScheduleSettings() {
   useEffect(() => {
     if (user && profile?.factory_id) {
       fetchSchedules();
+      fetchFactoryTimezone();
     }
   }, [user, profile?.factory_id]);
+
+  async function fetchFactoryTimezone() {
+    if (!profile?.factory_id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("factory_accounts")
+        .select("timezone")
+        .eq("id", profile.factory_id)
+        .single();
+      
+      if (error) throw error;
+      setFactoryTimezone(data?.timezone || "UTC");
+    } catch (error) {
+      console.error("Error fetching factory timezone:", error);
+    }
+  }
 
   async function fetchSchedules() {
     if (!user) return;
@@ -66,18 +86,18 @@ export function EmailScheduleSettings() {
           setDailySchedule({
             id: schedule.id,
             schedule_type: "daily",
-            is_active: schedule.is_active,
+            is_active: schedule.is_active ?? false,
             send_time: schedule.send_time?.slice(0, 5) || "18:00",
-            day_of_week: schedule.day_of_week,
+            day_of_week: schedule.day_of_week ?? 5,
             last_sent_at: schedule.last_sent_at,
           });
         } else if (schedule.schedule_type === "weekly") {
           setWeeklySchedule({
             id: schedule.id,
             schedule_type: "weekly",
-            is_active: schedule.is_active,
+            is_active: schedule.is_active ?? false,
             send_time: schedule.send_time?.slice(0, 5) || "18:00",
-            day_of_week: schedule.day_of_week,
+            day_of_week: schedule.day_of_week ?? 5,
             last_sent_at: schedule.last_sent_at,
           });
         }
@@ -191,6 +211,17 @@ export function EmailScheduleSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Timezone Notice */}
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+          <Globe className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">
+            Emails will be sent according to your factory timezone:
+          </span>
+          <Badge variant="secondary" className="font-mono">
+            {factoryTimezone}
+          </Badge>
+        </div>
+
         {/* Email Address */}
         <div className="space-y-2">
           <Label htmlFor="email">Email Address</Label>
@@ -335,10 +366,14 @@ export function EmailScheduleSettings() {
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Note: Scheduled emails will be sent automatically at the configured times. 
-          Make sure your email domain is verified in Resend for production use.
-        </p>
+        <div className="text-xs text-muted-foreground space-y-1">
+          <p>
+            <strong>How it works:</strong> Emails are automatically sent at the scheduled times based on your factory timezone ({factoryTimezone}).
+          </p>
+          <p>
+            You can change your factory timezone in <a href="/setup/factory" className="text-primary underline">Factory Settings</a>.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
