@@ -516,6 +516,14 @@ export default function Blockers() {
                 </StatusBadge>
               </div>
 
+              {/* Blocker Type */}
+              {selectedBlocker.blocker_type_name && (
+                <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
+                  <p className="text-sm font-medium text-warning mb-1">Issue Type</p>
+                  <p className="text-base font-semibold">{selectedBlocker.blocker_type_name}</p>
+                </div>
+              )}
+
               {/* Description */}
               <div className="p-3 bg-muted/50 rounded-lg">
                 <p className="text-sm font-medium mb-1">Description</p>
