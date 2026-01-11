@@ -376,6 +376,12 @@
     "selectBlockerType": "Select blocker type",
     "selectBlockerOwner": "Select owner",
     "selectBlockerImpact": "Select impact",
+    "severity": "Severity",
+    "selectSeverity": "Select severity",
+    "severityLow": "Low",
+    "severityMedium": "Medium",
+    "severityHigh": "High",
+    "severityCritical": "Critical",
     "blockerReported": "Blocker reported!",
     "blockerReportedDesc": "Your blocker has been submitted and will be reviewed.",
     "goBack": "Go Back"

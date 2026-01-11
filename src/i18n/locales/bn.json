@@ -374,6 +374,12 @@
     "selectBlockerType": "ব্লকারের ধরন নির্বাচন করুন",
     "selectBlockerOwner": "দায়িত্বশীল নির্বাচন করুন",
     "selectBlockerImpact": "প্রভাব নির্বাচন করুন",
+    "severity": "তীব্রতা",
+    "selectSeverity": "তীব্রতা নির্বাচন করুন",
+    "severityLow": "নিম্ন",
+    "severityMedium": "মাঝারি",
+    "severityHigh": "উচ্চ",
+    "severityCritical": "গুরুতর",
     "blockerReported": "ব্লকার রিপোর্ট হয়েছে!",
     "blockerReportedDesc": "আপনার ব্লকার জমা দেওয়া হয়েছে এবং পর্যালোচনা করা হবে।",
     "goBack": "পিছনে যান"

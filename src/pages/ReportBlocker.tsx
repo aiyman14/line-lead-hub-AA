@@ -78,6 +78,7 @@ export default function ReportBlocker() {
   const [blockerType, setBlockerType] = useState("");
   const [blockerOwner, setBlockerOwner] = useState("");
   const [blockerImpact, setBlockerImpact] = useState("");
+  const [blockerSeverity, setBlockerSeverity] = useState("");
   const [blockerResolution, setBlockerResolution] = useState<Date | undefined>(new Date());
   const [blockerDescription, setBlockerDescription] = useState("");
 
@@ -263,6 +264,7 @@ export default function ReportBlocker() {
     if (!selectedPO) newErrors.po = "PO is required";
     if (!blockerType) newErrors.blockerType = "Blocker Type is required";
     if (!blockerOwner) newErrors.blockerOwner = "Blocker Owner is required";
+    if (!blockerSeverity) newErrors.blockerSeverity = "Severity is required";
     if (!blockerImpact) newErrors.blockerImpact = "Blocker Impact is required";
     if (!blockerResolution) newErrors.blockerResolution = "Expected Resolution date is required";
     if (!blockerDescription.trim()) newErrors.blockerDescription = "Description is required";
@@ -283,15 +285,9 @@ export default function ReportBlocker() {
 
     try {
       const blockerOwnerLabel = blockerOwnerOptions.find((o) => o.id === blockerOwner)?.label || "";
-      const blockerImpactLabel = blockerImpactOptions.find((i) => i.id === blockerImpact)?.label || "";
 
-      const impactValue = blockerImpactLabel.toLowerCase().includes("critical")
-        ? "critical"
-        : blockerImpactLabel.toLowerCase().includes("high")
-        ? "high"
-        : blockerImpactLabel.toLowerCase().includes("medium")
-        ? "medium"
-        : "low";
+      // Use selected severity directly
+      const severityValue = blockerSeverity as "low" | "medium" | "high" | "critical";
 
       const workOrder = workOrders.find((w) => w.id === selectedPO);
       // For cutting/storage use PO's line_id, for workers use selectedLine
@@ -311,7 +307,7 @@ export default function ReportBlocker() {
         has_blocker: true,
         blocker_type_id: blockerType,
         blocker_owner: blockerOwnerLabel,
-        blocker_impact: impactValue as "low" | "medium" | "high" | "critical",
+        blocker_impact: severityValue,
         blocker_resolution_date: blockerResolution ? format(blockerResolution, "yyyy-MM-dd") : null,
         blocker_description: blockerDescription,
         blocker_status: "open",
@@ -359,7 +355,7 @@ export default function ReportBlocker() {
           lineName,
           poNumber: workOrder?.po_number || undefined,
           blockerType: blockerTypeName,
-          blockerImpact: impactValue,
+          blockerImpact: severityValue,
           blockerDescription,
           submittedBy: profile?.full_name || "Unknown",
           department: updateType,
@@ -580,6 +576,23 @@ export default function ReportBlocker() {
                 </SelectContent>
               </Select>
               {errors.blockerOwner && <p className="text-xs text-destructive">{errors.blockerOwner}</p>}
+            </div>
+
+            {/* Severity */}
+            <div className="space-y-2">
+              <Label>{t('reportBlocker.severity')} *</Label>
+              <Select value={blockerSeverity} onValueChange={setBlockerSeverity}>
+                <SelectTrigger className={`h-12 ${errors.blockerSeverity ? "border-destructive" : ""}`}>
+                  <SelectValue placeholder={t('reportBlocker.selectSeverity')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">{t('reportBlocker.severityLow')}</SelectItem>
+                  <SelectItem value="medium">{t('reportBlocker.severityMedium')}</SelectItem>
+                  <SelectItem value="high">{t('reportBlocker.severityHigh')}</SelectItem>
+                  <SelectItem value="critical">{t('reportBlocker.severityCritical')}</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.blockerSeverity && <p className="text-xs text-destructive">{errors.blockerSeverity}</p>}
             </div>
 
             {/* Blocker Impact */}
