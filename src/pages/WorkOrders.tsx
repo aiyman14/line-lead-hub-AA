@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Loader2, 
@@ -114,6 +115,10 @@ export default function WorkOrders() {
     is_active: true,
   });
   const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
+  
+  // Delete confirmation state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -323,8 +328,16 @@ export default function WorkOrders() {
     );
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this work order?')) return;
+  function openDeleteDialog(id: string) {
+    setItemToDelete(id);
+    setDeleteDialogOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!itemToDelete) return;
+    const id = itemToDelete;
+    setDeleteDialogOpen(false);
+    setItemToDelete(null);
     
     try {
       const { error } = await supabase.from('work_orders').delete().eq('id', id);
@@ -680,7 +693,7 @@ export default function WorkOrders() {
                         <Button variant="ghost" size="icon" onClick={() => openEditDialog(wo)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(wo.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(wo.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </TableCell>
@@ -986,6 +999,17 @@ export default function WorkOrders() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Work Order"
+        description="Are you sure you want to delete this work order? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

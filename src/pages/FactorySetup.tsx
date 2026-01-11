@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Loader2, 
@@ -131,6 +132,10 @@ export default function FactorySetup() {
   const [editedFactoryName, setEditedFactoryName] = useState(factory?.name || "");
   const [isSavingFactoryName, setIsSavingFactoryName] = useState(false);
 
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
   // Update lowStockThreshold when factory changes
   useEffect(() => {
     if (factory?.low_stock_threshold !== undefined) {
@@ -249,8 +254,16 @@ export default function FactorySetup() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+  function openDeleteDialog(id: string) {
+    setItemToDelete(id);
+    setDeleteDialogOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!itemToDelete) return;
+    const id = itemToDelete;
+    setDeleteDialogOpen(false);
+    setItemToDelete(null);
 
     try {
       let error: any = null;
@@ -764,7 +777,7 @@ export default function FactorySetup() {
                           <Button variant="ghost" size="icon" onClick={() => openEditDialog(unit)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(unit.id)}>
+                          <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(unit.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </TableCell>
@@ -824,7 +837,7 @@ export default function FactorySetup() {
                           <Button variant="ghost" size="icon" onClick={() => openEditDialog(floor)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(floor.id)}>
+                          <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(floor.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </TableCell>
@@ -920,7 +933,7 @@ export default function FactorySetup() {
                           <Button variant="ghost" size="icon" onClick={() => openEditDialog(line)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(line.id)}>
+                          <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(line.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </TableCell>
@@ -980,7 +993,7 @@ export default function FactorySetup() {
                           <Button variant="ghost" size="icon" onClick={() => openEditDialog(stage)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(stage.id)}>
+                          <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(stage.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </TableCell>
@@ -1044,7 +1057,7 @@ export default function FactorySetup() {
                           <Button variant="ghost" size="icon" onClick={() => openEditDialog(bt)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(bt.id)}>
+                          <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(bt.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </TableCell>
@@ -1100,6 +1113,17 @@ export default function FactorySetup() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Item"
+        description="Are you sure you want to delete this item? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-md">

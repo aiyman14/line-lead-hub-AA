@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Loader2, 
@@ -202,6 +203,10 @@ export default function DropdownSettings() {
   const [formCode, setFormCode] = useState('');
   const [formSortOrder, setFormSortOrder] = useState('0');
   const [formActive, setFormActive] = useState(true);
+  
+  // Delete confirmation state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -364,8 +369,16 @@ export default function DropdownSettings() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this option?')) return;
+  function openDeleteDialog(id: string) {
+    setItemToDelete(id);
+    setDeleteDialogOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!itemToDelete) return;
+    const id = itemToDelete;
+    setDeleteDialogOpen(false);
+    setItemToDelete(null);
     
     try {
       if (activeTab === 'stages') {
@@ -630,7 +643,7 @@ export default function DropdownSettings() {
                                 hasCode={cfg.hasCode}
                                 canReorder={true}
                                 onEdit={openEditDialog}
-                                onDelete={handleDelete}
+                                onDelete={openDeleteDialog}
                                 onToggleActive={toggleActive}
                               />
                             ))}
@@ -707,6 +720,17 @@ export default function DropdownSettings() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Option"
+        description="Are you sure you want to delete this option? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
