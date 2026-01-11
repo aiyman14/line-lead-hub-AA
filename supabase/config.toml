@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.auth-rate-limit]
 verify_jwt = false
+
+[functions.process-scheduled-emails]
+verify_jwt = false
