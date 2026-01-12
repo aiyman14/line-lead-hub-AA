@@ -287,7 +287,7 @@ export default function CuttingForm() {
 
       toast.success("Cutting report submitted successfully!");
       
-      navigate("/cutting/all-submissions");
+      navigate("/cutting/submissions");
     } catch (error: any) {
       console.error("Error submitting:", error);
       toast.error("Submission failed");
