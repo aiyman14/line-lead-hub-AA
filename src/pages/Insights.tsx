@@ -442,11 +442,25 @@ export default function Insights() {
           endAngle={endAngle}
           fill="rgba(255,255,255,0.3)"
         />
-        {/* Center text */}
-        <text x={cx} y={cy - 8} textAnchor="middle" fill="hsl(var(--foreground))" className="text-sm font-semibold">
-          {payload.type}
+        {/* Center text - truncated to fit */}
+        <text 
+          x={cx} 
+          y={cy - 6} 
+          textAnchor="middle" 
+          fill="hsl(var(--foreground))" 
+          fontSize={11}
+          fontWeight={600}
+        >
+          {payload.type.length > 12 ? `${payload.type.slice(0, 10)}...` : payload.type}
         </text>
-        <text x={cx} y={cy + 12} textAnchor="middle" fill="hsl(var(--muted-foreground))" className="text-xs">
+        <text 
+          x={cx} 
+          y={cy + 12} 
+          textAnchor="middle" 
+          fill="hsl(var(--muted-foreground))" 
+          fontSize={14}
+          fontWeight={700}
+        >
           {`${(percent * 100).toFixed(0)}%`}
         </text>
       </g>
