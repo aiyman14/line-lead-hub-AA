@@ -117,7 +117,12 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           factoryId: profile.factory_id,
           role: formData.role,
           department: formData.role === 'worker' ? formData.department : null,
-          lineIds: ['worker', 'storage', 'cutting'].includes(formData.role) ? selectedLineIds : [],
+          // Storage and cutting roles get all lines automatically, workers get selected lines
+          lineIds: formData.role === 'worker' 
+            ? selectedLineIds 
+            : ['storage', 'cutting'].includes(formData.role) 
+              ? lines.map(l => l.id) 
+              : [],
           temporaryPassword: useTemporaryPassword ? temporaryPassword : undefined,
         },
       });
@@ -323,8 +328,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             </div>
           )}
 
-          {/* Line assignments - for workers, storage, and cutting roles */}
-          {['worker', 'storage', 'cutting'].includes(formData.role) && (
+          {/* Line assignments - only for workers (storage and cutting get all lines automatically) */}
+          {formData.role === 'worker' && (
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <GitBranch className="h-4 w-4 text-muted-foreground" />
@@ -361,11 +366,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                 )}
               </ScrollArea>
               <p className="text-xs text-muted-foreground">
-                {formData.role === 'storage' 
-                  ? 'Select which lines this storage user manages inventory for.'
-                  : formData.role === 'cutting'
-                  ? 'Select which lines this cutting user manages.'
-                  : 'Select which lines this worker can submit updates for.'}
+                Select which lines this worker can submit updates for.
               </p>
             </div>
           )}
