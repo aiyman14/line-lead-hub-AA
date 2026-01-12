@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Package, Search, Plus, Save, AlertTriangle, Unlock } from "lucide-react";
+import { Loader2, Package, Search, Plus, Save, AlertTriangle, Unlock, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import {
   Command,
@@ -91,6 +91,7 @@ export default function StorageBinCard() {
   const [binCard, setBinCard] = useState<BinCard | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
   
   // Header fields (editable if not locked)
   const [headerFields, setHeaderFields] = useState({
@@ -587,42 +588,92 @@ export default function StorageBinCard() {
           </CardHeader>
           <CardContent className="space-y-4 px-3 sm:px-6">
             {/* Existing transactions table */}
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>DATE</TableHead>
-                    <TableHead className="text-right">RECEIVE QTY</TableHead>
-                    <TableHead className="text-right">TTL RECEIVE</TableHead>
-                    <TableHead className="text-right">ISSUE QTY</TableHead>
-                    <TableHead className="text-right">BALANCE QTY</TableHead>
-                    <TableHead>REMARKS</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                        No transactions yet. Add your first entry below.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    transactions.map(txn => (
-                      <TableRow key={txn.id}>
-                        <TableCell>{format(new Date(txn.transaction_date), "dd/MM/yyyy")}</TableCell>
-                        <TableCell className="text-right">{txn.receive_qty}</TableCell>
-                        <TableCell className="text-right font-medium">{txn.ttl_receive}</TableCell>
-                        <TableCell className="text-right">{txn.issue_qty}</TableCell>
-                        <TableCell className={`text-right font-medium ${txn.balance_qty < 0 ? 'text-destructive' : ''}`}>
-                          {txn.balance_qty}
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate">{txn.remarks || "-"}</TableCell>
+            {(() => {
+              const latestTransactions = transactions.slice(-3);
+              const olderTransactions = transactions.slice(0, -3);
+              const hasOlderTransactions = olderTransactions.length > 0;
+              
+              return (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>DATE</TableHead>
+                        <TableHead className="text-right">RECEIVE QTY</TableHead>
+                        <TableHead className="text-right">TTL RECEIVE</TableHead>
+                        <TableHead className="text-right">ISSUE QTY</TableHead>
+                        <TableHead className="text-right">BALANCE QTY</TableHead>
+                        <TableHead>REMARKS</TableHead>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {transactions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                            No transactions yet. Add your first entry below.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <>
+                          {/* Show latest 3 transactions first */}
+                          {latestTransactions.map(txn => (
+                            <TableRow key={txn.id}>
+                              <TableCell>{format(new Date(txn.transaction_date), "dd/MM/yyyy")}</TableCell>
+                              <TableCell className="text-right">{txn.receive_qty}</TableCell>
+                              <TableCell className="text-right font-medium">{txn.ttl_receive}</TableCell>
+                              <TableCell className="text-right">{txn.issue_qty}</TableCell>
+                              <TableCell className={`text-right font-medium ${txn.balance_qty < 0 ? 'text-destructive' : ''}`}>
+                                {txn.balance_qty}
+                              </TableCell>
+                              <TableCell className="max-w-[200px] truncate">{txn.remarks || "-"}</TableCell>
+                            </TableRow>
+                          ))}
+                          
+                          {/* Show more button if there are older transactions */}
+                          {hasOlderTransactions && (
+                            <TableRow>
+                              <TableCell colSpan={6} className="p-0">
+                                <Button
+                                  variant="ghost"
+                                  className="w-full h-10 rounded-none hover:bg-muted/50"
+                                  onClick={() => setShowAllTransactions(!showAllTransactions)}
+                                >
+                                  {showAllTransactions ? (
+                                    <>
+                                      <ChevronUp className="mr-2 h-4 w-4" />
+                                      Hide older entries ({olderTransactions.length})
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="mr-2 h-4 w-4" />
+                                      Show {olderTransactions.length} older {olderTransactions.length === 1 ? 'entry' : 'entries'}
+                                    </>
+                                  )}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          
+                          {/* Show older transactions when expanded */}
+                          {showAllTransactions && olderTransactions.map(txn => (
+                            <TableRow key={txn.id}>
+                              <TableCell>{format(new Date(txn.transaction_date), "dd/MM/yyyy")}</TableCell>
+                              <TableCell className="text-right">{txn.receive_qty}</TableCell>
+                              <TableCell className="text-right font-medium">{txn.ttl_receive}</TableCell>
+                              <TableCell className="text-right">{txn.issue_qty}</TableCell>
+                              <TableCell className={`text-right font-medium ${txn.balance_qty < 0 ? 'text-destructive' : ''}`}>
+                                {txn.balance_qty}
+                              </TableCell>
+                              <TableCell className="max-w-[200px] truncate">{txn.remarks || "-"}</TableCell>
+                            </TableRow>
+                          ))}
+                        </>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              );
+            })()}
 
             {/* New entry row */}
             <div className="border rounded-lg p-3 sm:p-4 bg-muted/30">
