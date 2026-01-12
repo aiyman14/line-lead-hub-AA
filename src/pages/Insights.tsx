@@ -385,7 +385,15 @@ export default function Insights() {
     }
   }
 
-  const COLORS = ['hsl(var(--primary))', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--info))', 'hsl(var(--success))'];
+  // Premium chart colors with better visual hierarchy
+  const CHART_COLORS = [
+    '#1e40af', // Deep blue
+    '#7c3aed', // Vibrant violet  
+    '#0891b2', // Cyan
+    '#059669', // Emerald
+    '#d97706', // Amber
+    '#dc2626', // Red
+  ];
 
   const TrendIcon = ({ trend }: { trend: 'up' | 'down' | 'stable' }) => {
     if (trend === 'up') return <ArrowUp className="h-4 w-4 text-success" />;
@@ -886,57 +894,96 @@ export default function Insights() {
         </h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Blocker Type Distribution */}
-          <Card className="w-full overflow-hidden">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
+          {/* Blocker Type Distribution - Premium Design */}
+          <Card className="w-full overflow-hidden bg-gradient-to-br from-card via-card to-muted/30 shadow-lg border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold tracking-tight">
                 Blocker Type Distribution
               </CardTitle>
-              <CardDescription>Most common blocker categories</CardDescription>
+              <CardDescription className="text-muted-foreground/80">
+                Most common blocker categories
+              </CardDescription>
             </CardHeader>
-            <CardContent className="p-2 sm:p-6">
+            <CardContent className="p-4 sm:p-6">
               {blockerBreakdown.length > 0 ? (
-                <div className="w-full">
-                  <ResponsiveContainer width="100%" height={250}>
+                <div className="w-full flex flex-col items-center">
+                  <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
+                      <defs>
+                        {CHART_COLORS.map((color, idx) => (
+                          <linearGradient key={idx} id={`blockerGradient${idx}`} x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stopColor={color} stopOpacity={1} />
+                            <stop offset="100%" stopColor={color} stopOpacity={0.75} />
+                          </linearGradient>
+                        ))}
+                        <filter id="pieDropShadow" x="-20%" y="-20%" width="140%" height="140%">
+                          <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.15" />
+                        </filter>
+                      </defs>
                       <Pie
                         data={blockerBreakdown}
                         dataKey="count"
                         nameKey="type"
                         cx="50%"
                         cy="50%"
-                        outerRadius={60}
-                        innerRadius={25}
+                        outerRadius={85}
+                        innerRadius={50}
+                        paddingAngle={3}
+                        cornerRadius={4}
                         label={false}
                         labelLine={false}
+                        stroke="hsl(var(--card))"
+                        strokeWidth={2}
+                        style={{ filter: 'url(#pieDropShadow)' }}
                       >
                         {blockerBreakdown.map((_, idx) => (
-                          <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                          <Cell 
+                            key={idx} 
+                            fill={`url(#blockerGradient${idx % CHART_COLORS.length})`}
+                          />
                         ))}
                       </Pie>
                       <Tooltip 
                         contentStyle={{ 
                           backgroundColor: 'hsl(var(--card))', 
                           border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px'
-                        }} 
-                      />
-                      <Legend 
-                        layout="horizontal" 
-                        verticalAlign="bottom" 
-                        align="center"
-                        wrapperStyle={{ paddingTop: '16px' }}
-                        formatter={(value, entry: any) => (
-                          <span className="text-xs">{value} ({entry.payload?.count})</span>
-                        )}
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.15)',
+                          padding: '12px 16px'
+                        }}
+                        itemStyle={{
+                          color: 'hsl(var(--foreground))',
+                          fontWeight: 500
+                        }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
+                  
+                  {/* Custom Legend */}
+                  <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 mt-4">
+                    {blockerBreakdown.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full shadow-sm" 
+                          style={{ backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }}
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          {item.type}
+                        </span>
+                        <span className="text-sm font-semibold text-foreground">
+                          ({item.count})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
-                <div className="h-[250px] flex flex-col items-center justify-center text-muted-foreground">
-                  <CheckCircle2 className="h-12 w-12 mb-2 text-success" />
-                  <p>No blockers in this period!</p>
+                <div className="h-[280px] flex flex-col items-center justify-center text-muted-foreground">
+                  <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mb-4">
+                    <CheckCircle2 className="h-8 w-8 text-success" />
+                  </div>
+                  <p className="font-medium">No blockers in this period!</p>
+                  <p className="text-sm text-muted-foreground/70 mt-1">Great job keeping production flowing</p>
                 </div>
               )}
             </CardContent>
@@ -1003,7 +1050,7 @@ export default function Insights() {
                     <div className="flex items-center gap-3">
                       <div 
                         className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                        style={{ backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }}
                       />
                       <span className="font-medium">{blocker.type}</span>
                     </div>
