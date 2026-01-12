@@ -233,8 +233,8 @@ export default function StorageBinCard() {
       .from("storage_bin_card_transactions")
       .select("*")
       .eq("bin_card_id", binCardId)
-      .order("transaction_date", { ascending: true })
-      .order("created_at", { ascending: true });
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false });
     
     if (error) {
       console.error("Error loading transactions:", error);
@@ -589,8 +589,8 @@ export default function StorageBinCard() {
           <CardContent className="space-y-4 px-3 sm:px-6">
             {/* Existing transactions table */}
             {(() => {
-              const latestTransactions = transactions.slice(-3);
-              const olderTransactions = transactions.slice(0, -3);
+              const newestTransactions = transactions.slice(0, 3);
+              const olderTransactions = transactions.slice(3);
               const hasOlderTransactions = olderTransactions.length > 0;
               
               return (
@@ -616,7 +616,7 @@ export default function StorageBinCard() {
                       ) : (
                         <>
                           {/* Show latest 3 transactions first */}
-                          {latestTransactions.map(txn => (
+                          {newestTransactions.map(txn => (
                             <TableRow key={txn.id}>
                               <TableCell>{format(new Date(txn.transaction_date), "dd/MM/yyyy")}</TableCell>
                               <TableCell className="text-right">{txn.receive_qty}</TableCell>
