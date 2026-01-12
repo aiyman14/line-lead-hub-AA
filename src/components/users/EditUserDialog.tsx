@@ -306,8 +306,8 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
               )}
             </div>
 
-            {/* Line Assignment - only for workers/supervisors */}
-            {!isAdminOrHigher && (
+            {/* Line Assignment - for workers, storage, and cutting roles */}
+            {['worker', 'storage', 'cutting'].includes(formData.role) && (
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <GitBranch className="h-4 w-4 text-muted-foreground" />
@@ -343,6 +343,13 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
                     </div>
                   )}
                 </ScrollArea>
+                <p className="text-xs text-muted-foreground">
+                  {formData.role === 'storage' 
+                    ? 'Lines this storage user manages inventory for.'
+                    : formData.role === 'cutting'
+                    ? 'Lines this cutting user manages.'
+                    : 'Lines this worker can submit updates for.'}
+                </p>
               </div>
             )}
 
