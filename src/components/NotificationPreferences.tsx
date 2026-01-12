@@ -15,7 +15,7 @@ interface NotificationPreference {
   email_enabled: boolean;
 }
 
-type UserRole = "worker" | "admin" | "owner" | "superadmin";
+type UserRole = "worker" | "admin" | "owner";
 
 interface NotificationType {
   type: string;
@@ -32,56 +32,56 @@ const ALL_NOTIFICATION_TYPES: NotificationType[] = [
     label: "Low Efficiency Alerts",
     description: "Get notified when line efficiency drops below target",
     icon: TrendingDown,
-    roles: ["admin", "owner", "superadmin"], // Not for workers
+    roles: ["admin", "owner"], // Not for workers
   },
   {
     type: "critical_blocker",
     label: "Critical Blockers",
     description: "Get notified when critical blockers are reported",
     icon: AlertTriangle,
-    roles: ["admin", "owner", "superadmin"], // Not for workers
+    roles: ["admin", "owner"], // Not for workers
   },
   {
     type: "blocker_resolved",
     label: "Blocker Resolved",
     description: "Get notified when blockers are marked as resolved",
     icon: CheckCircle,
-    roles: ["admin", "owner", "superadmin"], // Not for workers
+    roles: ["admin", "owner"], // Not for workers
   },
   {
     type: "work_order_updates",
     label: "Work Order Updates",
     description: "Get notified about work order status changes",
     icon: FileText,
-    roles: ["admin", "owner", "superadmin"], // Not for workers
+    roles: ["admin", "owner"], // Not for workers
   },
   {
     type: "target_achieved",
     label: "Target Achieved",
     description: "Get notified when production targets are met",
     icon: Target,
-    roles: ["worker", "admin", "owner", "superadmin"], // Everyone
+    roles: ["worker", "admin", "owner"], // Everyone
   },
   {
     type: "daily_summary",
     label: "Daily Summary",
     description: "Receive daily production summary reports",
     icon: Calendar,
-    roles: ["admin", "owner", "superadmin"], // Not for workers
+    roles: ["admin", "owner"], // Not for workers
   },
   {
     type: "shift_reminder",
     label: "Shift Reminders",
     description: "Get reminders before shift starts",
     icon: Clock,
-    roles: ["worker", "admin", "owner", "superadmin"], // Everyone
+    roles: ["worker", "admin", "owner"], // Everyone
   },
   {
     type: "general",
     label: "General Notifications",
     description: "System updates and general announcements",
     icon: Info,
-    roles: ["worker", "admin", "owner", "superadmin"], // Everyone
+    roles: ["worker", "admin", "owner"], // Everyone
   },
 ];
 
@@ -93,7 +93,7 @@ export function NotificationPreferences() {
 
   // Get the user's primary role (highest role they have)
   const userRole = useMemo((): UserRole => {
-    const roleHierarchy: UserRole[] = ["superadmin", "owner", "admin", "worker"];
+    const roleHierarchy: UserRole[] = ["owner", "admin", "worker"];
     for (const role of roleHierarchy) {
       if (roles.some(r => r.role === role)) {
         return role;

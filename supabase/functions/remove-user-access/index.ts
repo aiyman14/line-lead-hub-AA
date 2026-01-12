@@ -106,41 +106,26 @@ serve(async (req) => {
       });
     }
 
-    const { data: isSuperadmin, error: isSuperadminError } = await supabaseAdmin.rpc(
-      "is_superadmin",
-      { _user_id: requesterId }
-    );
+    // Ensure target belongs to same factory
+    const { data: targetProfile, error: targetProfileError } = await supabaseAdmin
+      .from("profiles")
+      .select("factory_id")
+      .eq("id", targetUserId)
+      .single();
 
-    if (isSuperadminError) {
-      console.error("[remove-user-access] Error checking superadmin status:", isSuperadminError);
-      return new Response(JSON.stringify({ error: "Failed to verify permissions" }), {
-        status: 500,
+    if (targetProfileError) {
+      console.error("[remove-user-access] Error fetching target profile:", targetProfileError);
+      return new Response(JSON.stringify({ error: "Target user not found" }), {
+        status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Ensure target belongs to same factory (unless superadmin)
-    if (!isSuperadmin) {
-      const { data: targetProfile, error: targetProfileError } = await supabaseAdmin
-        .from("profiles")
-        .select("factory_id")
-        .eq("id", targetUserId)
-        .single();
-
-      if (targetProfileError) {
-        console.error("[remove-user-access] Error fetching target profile:", targetProfileError);
-        return new Response(JSON.stringify({ error: "Target user not found" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (targetProfile?.factory_id !== requesterFactoryId) {
-        return new Response(JSON.stringify({ error: "Target user not in your factory" }), {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    if (targetProfile?.factory_id !== requesterFactoryId) {
+      return new Response(JSON.stringify({ error: "Target user not in your factory" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Delete user_roles for this user in the factory

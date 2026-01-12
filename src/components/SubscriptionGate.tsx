@@ -21,10 +21,10 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
 
   // If user was invited to an existing factory (has factory_id but is not the owner), 
   // they don't need to pay - the factory owner pays
-  // Supervisors and admins who are invited should also have access
+  // Admins who are invited should also have access
   const isOwner = hasRole('owner');
-  const isSuperAdmin = hasRole('superadmin');
-  const isInvitedUser = profile?.factory_id && !isOwner && !isSuperAdmin;
+  const isAdmin = hasRole('admin');
+  const isInvitedUser = profile?.factory_id && !isOwner;
 
   // Still loading
   if (authLoading || subLoading) {

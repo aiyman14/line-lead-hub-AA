@@ -126,9 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (rolesData) {
           // Only consider roles for the user's current factory.
-          // Also allow global superadmin (factory_id null) but ignore accidental global admin.
           const filtered = (rolesData as UserRole[]).filter((r) => {
-            if (r.role === 'superadmin') return true;
             if (profileData.factory_id) return r.factory_id === profileData.factory_id;
             // No factory assigned yet: keep only non-scoped roles
             return r.factory_id === null;
@@ -202,11 +200,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   function isAdminOrHigher(): boolean {
-    return roles.some(r => ['admin', 'owner', 'superadmin'].includes(r.role));
+    return roles.some(r => ['admin', 'owner'].includes(r.role));
   }
 
+  // Keep for backwards compatibility - admin now has all privileges
   function isSuperAdmin(): boolean {
-    return roles.some(r => r.role === 'superadmin');
+    return roles.some(r => r.role === 'admin');
   }
 
   function isStorageUser(): boolean {

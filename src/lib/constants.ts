@@ -8,7 +8,6 @@ export const ROLES = {
   WORKER: 'worker',
   ADMIN: 'admin',
   OWNER: 'owner',
-  SUPERADMIN: 'superadmin',
   STORAGE: 'storage',
   CUTTING: 'cutting',
 } as const;
@@ -20,7 +19,6 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   worker: 'Manager',
   admin: 'Admin',
   owner: 'Owner',
-  superadmin: 'Super Admin',
   storage: 'Storage',
   cutting: 'Cutting',
 };
@@ -229,11 +227,6 @@ export const NAV_ITEMS = {
     { path: '/users', label: 'Users', icon: 'Users' },
     { path: '/billing-plan', label: 'Billing & Plan', icon: 'CreditCard' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
-  ],
-  superadmin: [
-    { path: '/admin/tenants', label: 'Tenants', icon: 'Building2' },
-    { path: '/admin/plans', label: 'Plans', icon: 'CreditCard' },
-    { path: '/admin/support', label: 'Support', icon: 'HeadphonesIcon' },
   ],
   storage: [
     { path: '/storage', label: 'Bin Card Entry', icon: 'Package' },

@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
       .eq("user_id", callerUser.id);
 
     const isAdminOrHigher = callerRoles?.some(r => 
-      ["admin", "owner", "superadmin"].includes(r.role)
+      ["admin", "owner"].includes(r.role)
     );
 
     if (!isAdminOrHigher) {

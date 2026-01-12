@@ -227,7 +227,7 @@ export function AppSidebar() {
   // Note: storage and cutting are separate roles, not in hierarchy - check them first
   const isStorageRole = roles.some(ur => ur.role === 'storage');
   const isCuttingRole = roles.some(ur => ur.role === 'cutting');
-  const roleHierarchy = ['superadmin', 'owner', 'admin', 'sewing_manager', 'finishing_manager', 'worker'];
+  const roleHierarchy = ['owner', 'admin', 'sewing_manager', 'finishing_manager', 'worker'];
   const highestRole = roleHierarchy.find(r => 
     roles.some(ur => ur.role === r)
   ) || (isStorageRole ? 'storage' : (isCuttingRole ? 'cutting' : 'worker'));

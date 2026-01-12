@@ -57,8 +57,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     department: "both" as Department,
   });
 
-  // Owners can assign admin roles, admins can only assign worker/supervisor
-  const availableRoles = hasRole('owner') || hasRole('superadmin') 
+  // Admins can invite all roles including other admins
+  const availableRoles = hasRole('admin') || hasRole('owner')
     ? ASSIGNABLE_ROLES 
     : ASSIGNABLE_ROLES.filter(r => r !== 'admin');
 

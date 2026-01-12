@@ -86,13 +86,12 @@ export default function UsersPage() {
       const roleMap = new Map<string, string>();
       rolesRes.data?.forEach((r: any) => {
         const isFactoryScoped = r.factory_id === profile.factory_id;
-        const isGlobalSuperadmin = r.factory_id == null && r.role === 'superadmin';
 
-        // Ignore accidental global roles (like global admin) for display
-        if (!isFactoryScoped && !isGlobalSuperadmin) return;
+        // Ignore roles that aren't scoped to this factory
+        if (!isFactoryScoped) return;
 
         const existingRole = roleMap.get(r.user_id);
-        const roleOrder = ['superadmin', 'owner', 'admin', 'supervisor', 'worker'];
+        const roleOrder = ['owner', 'admin', 'supervisor', 'worker'];
         if (!existingRole || roleOrder.indexOf(r.role) < roleOrder.indexOf(existingRole)) {
           roleMap.set(r.user_id, r.role);
         }
@@ -158,7 +157,6 @@ export default function UsersPage() {
   const getRoleBadgeVariant = (role: string | null) => {
     switch (role) {
       case 'owner':
-      case 'superadmin':
         return 'primary';
       case 'admin':
         return 'info';
@@ -179,7 +177,7 @@ export default function UsersPage() {
 
   const activeUsers = users.filter(u => u.invitation_status === 'active');
   const pendingUsers = users.filter(u => u.invitation_status === 'pending');
-  const adminCount = users.filter(u => ['admin', 'owner', 'superadmin'].includes(u.role || '')).length;
+  const adminCount = users.filter(u => ['admin', 'owner'].includes(u.role || '')).length;
 
   function handleEditUser(user: User) {
     setSelectedUser(user);
@@ -395,7 +393,7 @@ export default function UsersPage() {
                               <Pencil className="h-4 w-4 mr-2" />
                               Edit User
                             </DropdownMenuItem>
-                            {user.id !== currentUser?.id && user.role !== 'owner' && user.role !== 'superadmin' && (
+                            {user.id !== currentUser?.id && user.role !== 'owner' && (
                               <DropdownMenuItem 
                                 onClick={() => handleEditUser(user)}
                                 className="text-destructive focus:text-destructive"

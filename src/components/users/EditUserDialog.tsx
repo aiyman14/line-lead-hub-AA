@@ -72,14 +72,14 @@ export function EditUserDialog({ open, onOpenChange, user, onSuccess }: EditUser
     isActive: true,
   });
 
-  // Owners can assign admin roles, admins can only assign worker/supervisor
-  const availableRoles = hasRole('owner') || hasRole('superadmin')
+  // Admins can assign all roles including other admins
+  const availableRoles = hasRole('admin') || hasRole('owner')
     ? ASSIGNABLE_ROLES
     : ASSIGNABLE_ROLES.filter(r => r !== 'admin');
 
   const isCurrentUser = currentUser?.id === user?.id;
-  const isOwnerOrHigher = user?.role === 'owner' || user?.role === 'superadmin';
-  const isAdminOrHigher = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'superadmin';
+  const isOwnerOrHigher = user?.role === 'owner';
+  const isAdminOrHigher = user?.role === 'admin' || user?.role === 'owner';
 
   useEffect(() => {
     if (open && profile?.factory_id) {

@@ -101,7 +101,6 @@
     "worker": "Manager",
     "admin": "Admin",
     "owner": "Owner",
-    "superadmin": "Super Admin",
     "storage": "Storage",
     "cutting": "Cutting",
     "sewing_manager": "Manager",
