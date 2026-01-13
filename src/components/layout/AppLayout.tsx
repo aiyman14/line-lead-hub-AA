@@ -27,25 +27,25 @@ export function AppLayout() {
   }
 
   return (
-    <SidebarProvider defaultOpen={true} className="w-full overflow-x-hidden">
+    <SidebarProvider defaultOpen={true} className="w-full min-h-[100dvh] overflow-x-hidden bg-background">
       {/* 
-        Root container: fills viewport including safe areas
-        Background color set explicitly to prevent black areas
+        Root container: fills viewport INCLUDING safe areas
+        (We paint safe-area top/bottom with background to prevent any black bars.)
       */}
-      <div 
-        className="flex w-full flex-col overflow-x-hidden" 
-        style={{ 
-          minHeight: '100dvh',
-          backgroundColor: '#f1f3f5',
-          paddingTop: 'env(safe-area-inset-top, 0px)',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        }}
-      >
+      <div className="flex w-full flex-col overflow-x-hidden bg-background" style={{ minHeight: '100dvh' }}>
+        {/* Safe-area background filler (top) */}
+        <div
+          className="w-full bg-background"
+          style={{ height: 'env(safe-area-inset-top, 0px)' }}
+          aria-hidden="true"
+        />
+
         <TrialExpirationBanner />
+
         <div className="flex flex-1 min-w-0 overflow-x-hidden">
           <AppSidebar />
           <div className="flex flex-1 min-w-0 flex-col overflow-x-hidden">
-            {/* Header - sticky below safe area */}
+            {/* Header */}
             <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 md:px-6">
               <SidebarTrigger className="lg:hidden" />
 
@@ -71,9 +71,7 @@ export function AppLayout() {
               )}
             </header>
 
-            {/* 
-              Main content - single scroll container with momentum scrolling
-            */}
+            {/* Main content - single scroll container */}
             <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-background">
               <div className="w-full px-4 md:px-6 pb-6">
                 <Outlet />
@@ -81,6 +79,13 @@ export function AppLayout() {
             </main>
           </div>
         </div>
+
+        {/* Safe-area background filler (bottom) */}
+        <div
+          className="w-full bg-background"
+          style={{ height: 'env(safe-area-inset-bottom, 0px)' }}
+          aria-hidden="true"
+        />
       </div>
     </SidebarProvider>
   );

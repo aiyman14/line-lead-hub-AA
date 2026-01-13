@@ -44,7 +44,8 @@ const config: CapacitorConfig = {
 
   // iOS specific configuration
   ios: {
-    contentInset: 'automatic',
+    // Critical: allow our web app to paint safe areas itself (prevents native black bars)
+    contentInset: 'never',
     preferredContentMode: 'mobile',
     scheme: 'productionportal',
     // Required for Supabase auth deep links
@@ -52,6 +53,8 @@ const config: CapacitorConfig = {
     // Enable native iOS bounce scrolling
     scrollEnabled: true,
     allowsLinkPreview: true,
+    // Paint the underlying native view the same as the app background
+    backgroundColor: '#f1f3f5',
   },
 
   // Android specific configuration
