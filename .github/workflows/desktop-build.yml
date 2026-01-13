@@ -225,14 +225,46 @@ jobs:
           fi
 
           echo "Submitting for notarization: $DMG"
-          xcrun notarytool submit "$DMG" \
+
+          retry() {
+            local n=0
+            local max=5
+            local delay=20
+            until "$@"; do
+              n=$((n+1))
+              if [ "$n" -ge "$max" ]; then
+                echo "Command failed after $n attempts: $*" >&2
+                return 1
+              fi
+              echo "Command failed (attempt $n/$max). Retrying in ${delay}s..." >&2
+              sleep "$delay"
+              delay=$((delay*2))
+            done
+          }
+
+          SUBMIT_JSON=$(retry xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
+            --output-format json)
+
+          echo "$SUBMIT_JSON"
+
+          UUID=$(python3 - <<'PY'
+          import json, sys
+          print(json.loads(sys.stdin.read())["id"])
+          PY
+          <<< "$SUBMIT_JSON")
+
+          echo "Notary submission id: $UUID"
+
+          retry xcrun notarytool wait "$UUID" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID"
 
           echo "Stapling notarization ticket..."
-          xcrun stapler staple "$DMG"
+          retry xcrun stapler staple "$DMG"
 
           echo "Gatekeeper verification:"
           spctl -a -vv "$DMG" || true
