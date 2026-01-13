@@ -2,102 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Safe area insets for mobile devices */
+/* 
+ * SAFE AREA & SCROLLING FIX FOR iOS/Android Capacitor
+ * - Eliminates black bands behind safe areas
+ * - Enables native iOS momentum scrolling with bounce
+ * - Works with viewport-fit=cover
+ */
+
 :root {
-  --safe-area-inset-top: env(safe-area-inset-top, 0px);
-  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-area-inset-left: env(safe-area-inset-left, 0px);
-  --safe-area-inset-right: env(safe-area-inset-right, 0px);
-  /* App background color - use same as design system background */
-  --app-bg-color: hsl(220 14% 96%);
+  /* App background color - matches design system --background: 220 14% 96% = #f1f3f5 */
+  --app-bg-color: #f1f3f5;
 }
 
 .dark:root {
+  /* Dark mode background - matches --background: 222 47% 6% */
   --app-bg-color: hsl(222 47% 6%);
 }
 
 /* 
- * CRITICAL: Extend background BEHIND safe areas to eliminate black bands
- * The background must cover the full screen including behind notch/status bar
+ * HTML/BODY/ROOT: Full screen coverage with consistent background
+ * This ensures no black gaps anywhere on the screen
  */
 html {
-  /* Full viewport coverage - no gaps */
   background-color: var(--app-bg-color);
+  /* Use 100% + safe-area to extend behind status bar/home indicator */
   min-height: 100%;
-  min-height: 100dvh;
-  /* iOS momentum scrolling at document level */
-  -webkit-overflow-scrolling: touch;
-  overflow-scrolling: touch;
+  min-height: -webkit-fill-available;
+  /* DO NOT set overflow: hidden - it breaks iOS scroll bounce */
 }
 
 body {
-  /* Match the app background - MUST be same as html to prevent black bands */
   background-color: var(--app-bg-color);
   min-height: 100%;
-  min-height: 100dvh;
-  /* Safe area padding so content doesn't sit under notch */
-  padding-top: var(--safe-area-inset-top);
-  padding-bottom: var(--safe-area-inset-bottom);
-  padding-left: var(--safe-area-inset-left);
-  padding-right: var(--safe-area-inset-right);
-  /* iOS momentum scrolling */
-  -webkit-overflow-scrolling: touch;
-  overflow-scrolling: touch;
-  overscroll-behavior-y: auto;
+  min-height: -webkit-fill-available;
+  margin: 0;
+  padding: 0;
+  /* DO NOT add safe-area padding here - handle it in app containers */
+  /* DO NOT set overflow: hidden - it breaks iOS scroll bounce */
 }
 
-/* App root container - ensure it fills and has proper background */
 #root {
   background-color: var(--app-bg-color);
   min-height: 100%;
-  min-height: 100dvh;
-  /* iOS momentum scrolling */
-  -webkit-overflow-scrolling: touch;
-  overflow-scrolling: touch;
+  min-height: -webkit-fill-available;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Premium mobile scrolling with elastic bounce effect for all scroll containers */
-main,
-[data-radix-scroll-area-viewport],
-.overflow-auto,
-.overflow-y-auto,
-.overflow-x-auto,
-.overflow-scroll,
-.scroll-container {
-  -webkit-overflow-scrolling: touch;
-  overflow-scrolling: touch;
-  overscroll-behavior: auto;
-}
-
-/* Main content area should be the primary scroll container */
+/*
+ * MAIN SCROLL CONTAINER
+ * This is the single scroll container for the app
+ * Momentum scrolling + bounce enabled
+ */
 main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* Ensure background fills the scroll area */
+  overflow-x: hidden;
   background-color: var(--app-bg-color);
+  /* iOS momentum scrolling - critical for native feel */
+  -webkit-overflow-scrolling: touch;
+  /* Allow natural overscroll bounce - DO NOT use 'none' or 'contain' */
+  overscroll-behavior-y: auto;
+  /* Safe area padding for content - prevents content under notch/home indicator */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Enable iOS-style rubber band scrolling */
-@supports (-webkit-touch-callout: none) {
-  body, #root, main {
-    /* iOS already has bounce by default, ensure it's not disabled */
-    overscroll-behavior-y: auto;
-  }
-}
-
-/* For Android/other platforms - smooth scrolling */
-@supports not (-webkit-touch-callout: none) {
-  html, body, #root {
-    overscroll-behavior: contain;
-  }
-  
-  /* Smooth scroll behavior for non-iOS */
-  .scroll-container,
-  main,
-  [data-radix-scroll-area-viewport] {
-    scroll-behavior: smooth;
-  }
+/* 
+ * All scrollable containers get momentum scrolling
+ * But DO NOT disable overscroll behavior
+ */
+[data-radix-scroll-area-viewport],
+.overflow-auto,
+.overflow-y-auto,
+.overflow-scroll,
+.scroll-container,
+.custom-scrollbar {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: auto;
 }
 
 /* Production Portal Premium Design System

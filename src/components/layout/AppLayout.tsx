@@ -28,12 +28,22 @@ export function AppLayout() {
 
   return (
     <SidebarProvider defaultOpen={true} className="w-full overflow-x-hidden">
-      <div className="flex min-h-screen w-full flex-col overflow-x-hidden">
+      {/* 
+        Root container: fills viewport including safe areas
+        Uses min-h-screen with safe-area padding for proper iOS layout
+      */}
+      <div 
+        className="flex w-full flex-col overflow-x-hidden bg-background"
+        style={{
+          minHeight: '100dvh',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+        }}
+      >
         <TrialExpirationBanner />
         <div className="flex flex-1 min-w-0 overflow-x-hidden">
           <AppSidebar />
           <div className="flex flex-1 min-w-0 flex-col overflow-x-hidden">
-            {/* Header */}
+            {/* Header - sticky below safe area */}
             <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 md:px-6">
               <SidebarTrigger className="lg:hidden" />
 
@@ -59,9 +69,12 @@ export function AppLayout() {
               )}
             </header>
 
-            {/* Main content */}
-            <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
-              <div className="w-full px-4 md:px-6">
+            {/* 
+              Main content - single scroll container with momentum scrolling
+              Safe area bottom padding handled in CSS
+            */}
+            <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-background">
+              <div className="w-full px-4 md:px-6 pb-6">
                 <Outlet />
               </div>
             </main>
