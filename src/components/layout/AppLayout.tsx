@@ -30,11 +30,17 @@ export function AppLayout() {
     <SidebarProvider defaultOpen={true} className="w-full overflow-x-hidden">
       {/* 
         Root container: fills viewport including safe areas
-        Uses min-h-screen with safe-area padding for proper iOS layout
+        Background color set explicitly to prevent black areas
       */}
-      <div className="flex w-full flex-col overflow-x-hidden bg-background" style={{ minHeight: '100dvh' }}>
-        {/* Safe-area background filler (prevents black bars behind notch/status bar) */}
-        <div className="w-full bg-background" style={{ height: 'env(safe-area-inset-top, 0px)' }} />
+      <div 
+        className="flex w-full flex-col overflow-x-hidden" 
+        style={{ 
+          minHeight: '100dvh',
+          backgroundColor: '#f1f3f5',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}
+      >
         <TrialExpirationBanner />
         <div className="flex flex-1 min-w-0 overflow-x-hidden">
           <AppSidebar />
@@ -67,7 +73,6 @@ export function AppLayout() {
 
             {/* 
               Main content - single scroll container with momentum scrolling
-              Safe area bottom padding handled in CSS
             */}
             <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-background">
               <div className="w-full px-4 md:px-6 pb-6">
