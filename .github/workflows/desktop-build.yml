@@ -94,6 +94,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Add universal target for macOS (builds for both Intel and Apple Silicon)
       - name: Add macOS universal target
         if: matrix.os == 'macos-latest'
         run: |
@@ -172,15 +173,13 @@ jobs:
             conf["tauri"].setdefault("bundle", {})
             conf["tauri"]["bundle"].setdefault("macOS", {})
             conf["tauri"]["bundle"]["macOS"]["signingIdentity"] = identity
-            where = "tauri.bundle.macOS.signingIdentity"
           else:
             conf.setdefault("bundle", {})
             conf["bundle"].setdefault("macOS", {})
             conf["bundle"]["macOS"]["signingIdentity"] = identity
-            where = "bundle.macOS.signingIdentity"
 
           conf_path.write_text(json.dumps(conf, indent=2) + "\n", encoding="utf-8")
-          print(f"Set {where} = {identity}")
+          print("Set macOS signing identity:", identity)
           PY
 
       ######################################################################
@@ -193,6 +192,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      # Build universal binary for macOS (both Intel and Apple Silicon)
       - name: Build desktop app (Tauri) - macOS Universal
         if: matrix.os == 'macos-latest'
         run: npm run tauri:build -- --target universal-apple-darwin
@@ -201,7 +201,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       ######################################################################
-      # NOTARIZE macOS DMG (ROBUST: retries + UUID parsing)
+      # NOTARIZE macOS DMG (ROBUST)
       ######################################################################
       - name: Notarize + staple macOS DMG
         if: matrix.os == 'macos-latest'
@@ -241,10 +241,10 @@ jobs:
             done
           }
 
-          # Capture submit output to a file (stdout+stderr)
           SUBMIT_OUT="$RUNNER_TEMP/notary_submit.txt"
           : > "$SUBMIT_OUT"
 
+          # Capture submit output (stdout+stderr) into a file
           retry bash -lc "xcrun notarytool submit \"$DMG\" \
             --apple-id \"$APPLE_ID\" \
             --password \"$APPLE_APP_SPECIFIC_PASSWORD\" \
@@ -254,11 +254,12 @@ jobs:
           echo "Submit output:"
           cat "$SUBMIT_OUT"
 
-          # Parse UUID safely; if parsing fails, stop immediately and show the output
-          UUID=$(python3 - <<'PY'
+          # Parse the UUID from the JSON file (fail hard if missing)
+          UUID=$(python3 - "$SUBMIT_OUT" <<'PY'
           import json, re, pathlib, sys
-          p = pathlib.Path(sys.argv[1])
-          s = p.read_text(encoding="utf-8", errors="replace").strip()
+
+          path = sys.argv[1]
+          s = pathlib.Path(path).read_text(encoding="utf-8", errors="replace").strip()
 
           try:
             data = json.loads(s)
@@ -271,9 +272,10 @@ jobs:
           uid = data.get("id", "")
           if not uid or not re.fullmatch(r"[0-9a-fA-F-]{36}", uid):
             raise SystemExit(f"Invalid or missing UUID in submit output: {uid!r}")
+
           print(uid)
           PY
-          "$SUBMIT_OUT")
+          )
 
           echo "Notary submission id: $UUID"
 
@@ -296,7 +298,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-
+          
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1)
           if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
             cp "$APPIMAGE" artifacts/
@@ -306,7 +308,7 @@ jobs:
             fi
             echo "LINUX_ARTIFACT=$(basename $APPIMAGE)" >> $GITHUB_ENV
           fi
-
+          
           find src-tauri/target/release/bundle -name "*.deb" -exec cp {} artifacts/ \;
           find src-tauri/target/release/bundle -name "*.rpm" -exec cp {} artifacts/ \;
 
@@ -315,7 +317,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-
+          
           MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1)
           if [ -n "$MSI" ] && [ -f "$MSI" ]; then
             cp "$MSI" artifacts/
@@ -325,7 +327,7 @@ jobs:
             fi
             echo "WINDOWS_ARTIFACT=$(basename $MSI)" >> $GITHUB_ENV
           fi
-
+          
           find src-tauri/target/release/bundle -name "*.exe" -exec cp {} artifacts/ \;
 
       - name: Collect artifact info (macOS)
@@ -357,6 +359,7 @@ jobs:
             cp "$DMG" artifacts/
           fi
 
+      # Upload installer artifacts
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
@@ -390,13 +393,13 @@ jobs:
           name: Production Portal ${{ github.ref_name }}
           body: |
             ## Desktop installers for Production Portal
-
+            
             | Platform | Download |
             |----------|----------|
             | macOS (Universal) | `.dmg` file below |
             | Windows | `.msi` file below |
             | Linux | `.AppImage`, `.deb`, or `.rpm` files below |
-
+            
             The app will automatically check for updates.
           allowUpdates: true
           replacesArtifacts: true
