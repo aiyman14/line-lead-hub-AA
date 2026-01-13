@@ -28,6 +28,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Ensure the built desktop binaries' version matches the release tag.
       - name: Sync app version from tag
         if: startsWith(github.ref, 'refs/tags/desktop-v')
         shell: bash
@@ -50,13 +51,12 @@ jobs:
           conf_path = Path('src-tauri/tauri.conf.json')
           conf = json.loads(conf_path.read_text(encoding='utf-8'))
 
-          # Try to update version in the most common locations (works across config shapes)
+          # Update version in the most common locations (works across config shapes)
           if isinstance(conf.get("package"), dict) and "version" in conf["package"]:
             conf["package"]["version"] = version
           elif "version" in conf:
             conf["version"] = version
           else:
-            # fallback: create top-level version if nothing else exists
             conf["version"] = version
 
           conf_path.write_text(json.dumps(conf, indent=2) + "\n", encoding='utf-8')
@@ -103,6 +103,7 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      # Write the signing key (stored in GitHub Secrets) to a file for the signer step
       - name: Write signing key to file
         shell: bash
         run: |
@@ -140,8 +141,8 @@ jobs:
 
           echo "Developer ID cert imported."
 
-      # ✅ FIXED: works for both config shapes, and removes invalid top-level `tauri` if present
-      - name: Set macOS signing identity in tauri.conf.json (FIXED)
+      # Works for both config shapes, and removes invalid top-level `tauri` if present
+      - name: Set macOS signing identity in tauri.conf.json
         if: matrix.os == 'macos-latest'
         shell: bash
         env:
@@ -160,8 +161,6 @@ jobs:
           conf = json.loads(conf_path.read_text(encoding="utf-8"))
 
           # If the project is on the newer config shape, top-level "tauri" is invalid.
-          # If it exists (injected earlier), remove it to avoid schema validation failure.
-          # Heuristic: if "app" or "plugins" exists at top-level, it's the newer shape.
           if "tauri" in conf and ("app" in conf or "plugins" in conf):
             conf.pop("tauri", None)
 
@@ -202,7 +201,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       ######################################################################
-      # NOTARIZE macOS DMG
+      # NOTARIZE macOS DMG (ROBUST: retries + UUID parsing)
       ######################################################################
       - name: Notarize + staple macOS DMG
         if: matrix.os == 'macos-latest'
@@ -242,19 +241,39 @@ jobs:
             done
           }
 
-          SUBMIT_JSON=$(retry xcrun notarytool submit "$DMG" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --output-format json)
+          # Capture submit output to a file (stdout+stderr)
+          SUBMIT_OUT="$RUNNER_TEMP/notary_submit.txt"
+          : > "$SUBMIT_OUT"
 
-          echo "$SUBMIT_JSON"
+          retry bash -lc "xcrun notarytool submit \"$DMG\" \
+            --apple-id \"$APPLE_ID\" \
+            --password \"$APPLE_APP_SPECIFIC_PASSWORD\" \
+            --team-id \"$APPLE_TEAM_ID\" \
+            --output-format json" > "$SUBMIT_OUT" 2>&1
 
+          echo "Submit output:"
+          cat "$SUBMIT_OUT"
+
+          # Parse UUID safely; if parsing fails, stop immediately and show the output
           UUID=$(python3 - <<'PY'
-          import json, sys
-          print(json.loads(sys.stdin.read())["id"])
+          import json, re, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text(encoding="utf-8", errors="replace").strip()
+
+          try:
+            data = json.loads(s)
+          except Exception:
+            m = re.search(r'(\{.*\})', s, flags=re.S)
+            if not m:
+              raise SystemExit("Could not find JSON in submit output.")
+            data = json.loads(m.group(1))
+
+          uid = data.get("id", "")
+          if not uid or not re.fullmatch(r"[0-9a-fA-F-]{36}", uid):
+            raise SystemExit(f"Invalid or missing UUID in submit output: {uid!r}")
+          print(uid)
           PY
-          <<< "$SUBMIT_JSON")
+          "$SUBMIT_OUT")
 
           echo "Notary submission id: $UUID"
 
@@ -277,6 +296,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
+
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1)
           if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
             cp "$APPIMAGE" artifacts/
@@ -286,6 +306,7 @@ jobs:
             fi
             echo "LINUX_ARTIFACT=$(basename $APPIMAGE)" >> $GITHUB_ENV
           fi
+
           find src-tauri/target/release/bundle -name "*.deb" -exec cp {} artifacts/ \;
           find src-tauri/target/release/bundle -name "*.rpm" -exec cp {} artifacts/ \;
 
@@ -294,6 +315,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
+
           MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1)
           if [ -n "$MSI" ] && [ -f "$MSI" ]; then
             cp "$MSI" artifacts/
@@ -303,6 +325,7 @@ jobs:
             fi
             echo "WINDOWS_ARTIFACT=$(basename $MSI)" >> $GITHUB_ENV
           fi
+
           find src-tauri/target/release/bundle -name "*.exe" -exec cp {} artifacts/ \;
 
       - name: Collect artifact info (macOS)
@@ -367,13 +390,13 @@ jobs:
           name: Production Portal ${{ github.ref_name }}
           body: |
             ## Desktop installers for Production Portal
-            
+
             | Platform | Download |
             |----------|----------|
             | macOS (Universal) | `.dmg` file below |
             | Windows | `.msi` file below |
             | Linux | `.AppImage`, `.deb`, or `.rpm` files below |
-            
+
             The app will automatically check for updates.
           allowUpdates: true
           replacesArtifacts: true
