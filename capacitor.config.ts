@@ -73,14 +73,15 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchShowDuration: 2000,
       launchAutoHide: true,
-      backgroundColor: '#ffffff',
+      backgroundColor: '#f1f3f5', // Match app background (--background: 220 14% 96%)
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,
     },
     
     StatusBar: {
-      style: 'LIGHT',
-      backgroundColor: '#ffffff',
+      style: 'LIGHT', // Dark icons on light background
+      backgroundColor: '#f1f3f5', // Match app background
+      overlaysWebView: false, // Content does NOT render behind status bar
     },
     
     PushNotifications: {
@@ -90,6 +91,12 @@ const config: CapacitorConfig = {
     // App plugin handles deep linking for Supabase auth
     App: {
       // Deep link URLs configured in AndroidManifest.xml and Info.plist
+    },
+
+    // Keyboard plugin for better keyboard handling
+    Keyboard: {
+      resize: 'body',
+      resizeOnFullScreen: true,
     },
   },
 };
