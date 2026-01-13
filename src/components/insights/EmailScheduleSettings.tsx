@@ -252,10 +252,10 @@ export function EmailScheduleSettings() {
           </div>
           
           {dailySchedule.is_active && (
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="daily-time" className="text-sm">Send at:</Label>
+                <Label htmlFor="daily-time" className="text-sm whitespace-nowrap">Send at:</Label>
                 <Input
                   id="daily-time"
                   type="time"
@@ -264,23 +264,25 @@ export function EmailScheduleSettings() {
                   className="w-28"
                 />
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => saveSchedule(dailySchedule)}
-                disabled={saving}
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => sendTestEmail("daily")}
-                disabled={sending}
-              >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-                Test
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => saveSchedule(dailySchedule)}
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => sendTestEmail("daily")}
+                  disabled={sending}
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                  Test
+                </Button>
+              </div>
             </div>
           )}
           
