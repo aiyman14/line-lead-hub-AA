@@ -35,6 +35,7 @@ export default function ThisWeek() {
     cuttingActual: 0,
     totalUpdates: 0,
     totalBlockers: 0,
+    leftoverYards: 0,
   });
 
   useEffect(() => {
@@ -63,6 +64,7 @@ export default function ThisWeek() {
       let totalCuttingActual = 0;
       let totalUpdates = 0;
       let totalBlockers = 0;
+      let totalLeftoverYards = 0;
 
       for (let i = 0; i <= 6; i++) {
         const date = new Date(weekStart);
@@ -111,7 +113,7 @@ export default function ThisWeek() {
             .eq('production_date', dateStr),
           supabase
             .from('cutting_actuals')
-            .select('day_cutting')
+            .select('day_cutting, leftover_recorded, leftover_quantity, leftover_unit')
             .eq('factory_id', profile.factory_id)
             .eq('production_date', dateStr),
         ]);
@@ -136,6 +138,19 @@ export default function ThisWeek() {
         const dayCuttingTarget = cuttingTargetsData.reduce((sum, t) => sum + (t.cutting_capacity || 0), 0);
         const dayCuttingActual = cuttingActualsData.reduce((sum, a) => sum + (a.day_cutting || 0), 0);
         
+        // Calculate leftover fabric in yards for this day
+        const dayLeftoverYards = cuttingActualsData
+          .filter((a: any) => a.leftover_recorded && a.leftover_quantity && a.leftover_quantity > 0)
+          .reduce((sum: number, a: any) => {
+            const qty = a.leftover_quantity || 0;
+            const unit = a.leftover_unit || "pcs";
+            if (unit === "yard") return sum + qty;
+            if (unit === "meter") return sum + qty * 1.0936;
+            if (unit === "kg") return sum + qty * 3;
+            if (unit === "roll") return sum + qty * 50;
+            return sum + qty;
+          }, 0);
+        
         const dayBlockers = sewingData.filter(u => u.has_blocker).length;
 
         // Calculate sewing targets (per_hour_target * 8 hours as daily estimate)
@@ -148,6 +163,7 @@ export default function ThisWeek() {
         totalCuttingActual += dayCuttingActual;
         totalUpdates += sewingData.length + finishingData.length + cuttingTargetsData.length + cuttingActualsData.length;
         totalBlockers += dayBlockers;
+        totalLeftoverYards += dayLeftoverYards;
 
         days.push({
           date: dateStr,
@@ -175,6 +191,7 @@ export default function ThisWeek() {
         cuttingActual: totalCuttingActual,
         totalUpdates,
         totalBlockers,
+        leftoverYards: Math.round(totalLeftoverYards * 100) / 100,
       });
     } catch (error) {
       console.error('Error fetching week data:', error);
@@ -293,11 +310,11 @@ export default function ThisWeek() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <Scissors className="h-5 w-5 text-warning" />
+                <Package className="h-5 w-5 text-warning" />
               </div>
               <div>
-                <p className="text-2xl font-bold font-mono">{totals.cuttingActual.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Cutting Output</p>
+                <p className="text-2xl font-bold font-mono">{totals.leftoverYards.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">yards</span></p>
+                <p className="text-xs text-muted-foreground">Left Over Fabric</p>
               </div>
             </div>
           </CardContent>
