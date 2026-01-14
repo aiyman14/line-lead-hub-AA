@@ -221,42 +221,53 @@ export function CuttingSubmissionsTable({
                   <TableHead>Line</TableHead>
                   <TableHead>PO</TableHead>
                   <TableHead className="text-right">Order Qty</TableHead>
-                  <TableHead className="text-right">Day Cutting</TableHead>
-                  <TableHead className="text-right">Total Cutting</TableHead>
+                  <TableHead className="text-right">Target</TableHead>
+                  <TableHead className="text-right">Actual</TableHead>
+                  <TableHead className="text-right">%</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredSubmissions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No cutting submissions found
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredSubmissions.map((s) => (
-                    <TableRow
-                      key={s.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedSubmission(s)}
-                    >
-                      <TableCell className="font-mono text-sm">
-                        {format(new Date(s.production_date), "MMM d")}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{s.lines?.name || s.lines?.line_id || "—"}</Badge>
-                      </TableCell>
-                      <TableCell>{s.work_orders?.po_number || s.po_no || "—"}</TableCell>
-                      <TableCell className="text-right">{s.order_qty?.toLocaleString() || "—"}</TableCell>
-                      <TableCell className="text-right font-medium">{s.day_cutting}</TableCell>
-                      <TableCell className="text-right font-medium text-primary">
-                        {s.total_cutting?.toLocaleString() || "—"}
-                      </TableCell>
-                      <TableCell className={`text-right font-medium ${s.balance && s.balance < 0 ? "text-destructive" : ""}`}>
-                        {s.balance?.toLocaleString() || "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredSubmissions.map((s) => {
+                    const percent = s.cutting_capacity > 0 ? (s.day_cutting / s.cutting_capacity) * 100 : null;
+                    return (
+                      <TableRow
+                        key={s.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedSubmission(s)}
+                      >
+                        <TableCell className="font-mono text-sm">
+                          {format(new Date(s.production_date), "MMM d")}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{s.lines?.name || s.lines?.line_id || "—"}</Badge>
+                        </TableCell>
+                        <TableCell>{s.work_orders?.po_number || s.po_no || "—"}</TableCell>
+                        <TableCell className="text-right">{s.order_qty?.toLocaleString() || "—"}</TableCell>
+                        <TableCell className="text-right font-mono text-muted-foreground">
+                          {s.cutting_capacity > 0 ? s.cutting_capacity.toLocaleString() : "—"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-medium">{s.day_cutting.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                          {percent !== null ? (
+                            <span className={`font-medium ${percent >= 100 ? 'text-green-600' : percent >= 80 ? 'text-amber-600' : 'text-red-600'}`}>
+                              {Math.round(percent)}%
+                            </span>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell className={`text-right font-medium ${s.balance && s.balance < 0 ? "text-destructive" : ""}`}>
+                          {s.balance?.toLocaleString() || "—"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
