@@ -98,11 +98,11 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
-      # Write the Tauri updater signing key (stored in GitHub Secrets) to a file
       - name: Write Tauri signing key to file
         shell: bash
         run: |
           mkdir -p ~/.tauri
+          printf '%srel key %s' "" >/dev/null 2>&1 || true
           printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > ~/.tauri/production-portal.key
           chmod 600 ~/.tauri/production-portal.key
 
@@ -132,13 +132,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          DMG=$(find "src-tauri/target/universal-apple-darwin/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1)
+          DMG="$(find "src-tauri/target/universal-apple-darwin/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
           if [ -z "${DMG:-}" ]; then
-            DMG=$(find "src-tauri/target/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1)
+            DMG="$(find "src-tauri/target/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
           fi
 
           if [ -z "${DMG:-}" ] || [ ! -f "$DMG" ]; then
             echo "Could not find DMG to notarize" >&2
+            find src-tauri/target -maxdepth 7 -type f -name "*.dmg" -print || true
             exit 1
           fi
 
@@ -159,7 +160,6 @@ jobs:
           }
 
           echo "Submitting for notarization: $DMG"
-
           SUBMIT_JSON="$(retry xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
@@ -169,13 +169,7 @@ jobs:
           echo "Submit output:"
           echo "$SUBMIT_JSON"
 
-          UUID="$(python3 - <<'PY'
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get("id",""))
-PY
-<<< "$SUBMIT_JSON")"
-
+          UUID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("id",""))' "$SUBMIT_JSON")"
           if [ -z "${UUID:-}" ]; then
             echo "Failed to extract notarization submission UUID." >&2
             exit 1
@@ -183,8 +177,8 @@ PY
 
           echo "Notary submission id: $UUID"
 
-          # ---- Wait until status is Accepted/Invalid ----
-          MAX_WAIT_SECONDS=7200   # 2 hours max
+          # Wait until Accepted/Invalid with a hard cap (45 mins)
+          MAX_WAIT_SECONDS=2700
           SLEEP_SECONDS=45
           elapsed=0
 
@@ -195,15 +189,13 @@ PY
               --team-id "$APPLE_TEAM_ID" \
               --output-format json || true)"
 
-            STATUS="$(python3 - <<'PY'
-import json, sys
+            STATUS="$(python3 -c 'import json,sys; 
 try:
-  data = json.loads(sys.stdin.read())
-  print((data.get("status") or "").strip())
+  d=json.loads(sys.argv[1]); 
+  print((d.get("status") or "").strip())
 except Exception:
   print("")
-PY
-<<< "${INFO_JSON:-}")"
+' "${INFO_JSON:-}")"
 
             echo "Notary status: ${STATUS:-unknown}"
 
@@ -251,13 +243,15 @@ PY
         shell: bash
         run: |
           mkdir -p artifacts
-          APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1)
+
+          APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1 || true)
           if [ -n "${APPIMAGE:-}" ] && [ -f "$APPIMAGE" ]; then
             cp "$APPIMAGE" artifacts/
             if [ -f "$APPIMAGE.sig" ]; then
               cat "$APPIMAGE.sig" > artifacts/linux-x86_64.sig
             fi
           fi
+
           find src-tauri/target/release/bundle -name "*.deb" -exec cp {} artifacts/ \; || true
           find src-tauri/target/release/bundle -name "*.rpm" -exec cp {} artifacts/ \; || true
 
@@ -266,13 +260,15 @@ PY
         shell: bash
         run: |
           mkdir -p artifacts
-          MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1)
+
+          MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1 || true)
           if [ -n "${MSI:-}" ] && [ -f "$MSI" ]; then
             cp "$MSI" artifacts/
             if [ -f "$MSI.sig" ]; then
               cat "$MSI.sig" > artifacts/windows-x86_64.sig
             fi
           fi
+
           find src-tauri/target/release/bundle -name "*.exe" -exec cp {} artifacts/ \; || true
 
       - name: Collect artifact info (macOS)
@@ -281,9 +277,9 @@ PY
         run: |
           mkdir -p artifacts
 
-          MACOS_UPDATE=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
+          MACOS_UPDATE=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
           if [ -z "${MACOS_UPDATE:-}" ]; then
-            MACOS_UPDATE=$(find src-tauri/target/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
+            MACOS_UPDATE=$(find src-tauri/target/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
           fi
 
           if [ -n "${MACOS_UPDATE:-}" ] && [ -f "$MACOS_UPDATE" ]; then
@@ -294,9 +290,9 @@ PY
             fi
           fi
 
-          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
+          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1 || true)
           if [ -z "${DMG:-}" ]; then
-            DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
+            DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1 || true)
           fi
           if [ -n "${DMG:-}" ] && [ -f "$DMG" ]; then
             cp "$DMG" artifacts/
