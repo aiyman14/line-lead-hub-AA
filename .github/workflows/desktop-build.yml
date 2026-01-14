@@ -13,6 +13,7 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -28,7 +29,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Ensure the built desktop binaries' version matches the release tag.
       - name: Sync app version from tag
         if: startsWith(github.ref, 'refs/tags/desktop-v')
         shell: bash
@@ -53,9 +53,7 @@ jobs:
             librsvg2-dev \
             libsoup-3.0-dev \
             patchelf
-
           sudo apt-get install -y libayatana-appindicator3-dev || sudo apt-get install -y libappindicator3-dev
-
           echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
           pkg-config --modversion libsoup-3.0
 
@@ -68,7 +66,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # Add universal targets for macOS (builds for both Intel and Apple Silicon)
       - name: Add macOS universal targets
         if: matrix.os == 'macos-latest'
         shell: bash
@@ -86,7 +83,6 @@ jobs:
           printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > ~/.tauri/production-portal.key
           chmod 600 ~/.tauri/production-portal.key
 
-      # ---------- BUILD ----------
       - name: Build desktop app (Tauri) - Linux/Windows
         if: matrix.os != 'macos-latest'
         run: npm run tauri:build
@@ -101,8 +97,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      # ---------- NOTARIZE (DMG) ----------
-      - name: Notarize + staple macOS DMG
+      - name: Notarize + staple macOS DMG (best-effort staple)
         if: matrix.os == 'macos-latest'
         shell: bash
         env:
@@ -111,17 +106,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-
-          DMG="$(find "src-tauri/target/universal-apple-darwin/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
-          if [ -z "${DMG:-}" ]; then
-            DMG="$(find "src-tauri/target/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
-          fi
-
-          if [ -z "${DMG:-}" ] || [ ! -f "$DMG" ]; then
-            echo "Could not find DMG to notarize" >&2
-            find src-tauri/target -maxdepth 8 -type f -name "*.dmg" -print || true
-            exit 1
-          fi
 
           retry() {
             local n=0
@@ -138,6 +122,17 @@ jobs:
               delay=$((delay*2))
             done
           }
+
+          DMG="$(find "src-tauri/target/universal-apple-darwin/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
+          if [ -z "${DMG:-}" ]; then
+            DMG="$(find "src-tauri/target/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
+          fi
+
+          if [ -z "${DMG:-}" ] || [ ! -f "$DMG" ]; then
+            echo "Could not find DMG to notarize" >&2
+            find src-tauri/target -maxdepth 10 -type f -name "*.dmg" -print || true
+            exit 1
+          fi
 
           echo "Submitting for notarization: $DMG"
           SUBMIT_JSON="$(retry xcrun notarytool submit "$DMG" \
@@ -156,10 +151,11 @@ jobs:
           fi
           echo "Notary submission id: $UUID"
 
-          # Wait until Accepted/Invalid with a hard cap (45 minutes)
+          # Wait for Accepted/Invalid (hard cap 45 minutes)
           MAX_WAIT_SECONDS=2700
           SLEEP_SECONDS=45
           elapsed=0
+          STATUS=""
 
           while [ "$elapsed" -lt "$MAX_WAIT_SECONDS" ]; do
             INFO_JSON="$(retry xcrun notarytool info "$UUID" \
@@ -168,10 +164,9 @@ jobs:
               --team-id "$APPLE_TEAM_ID" \
               --output-format json || true)"
 
-            STATUS="$(python3 -c "import json,sys; 
+            STATUS="$(python3 -c "import json,sys
 try:
-  d=json.loads(sys.argv[1]); 
-  print((d.get('status') or '').strip())
+  d=json.loads(sys.argv[1]); print((d.get('status') or '').strip())
 except Exception:
   print('')" "${INFO_JSON:-}")"
 
@@ -194,8 +189,8 @@ except Exception:
             elapsed=$((elapsed+SLEEP_SECONDS))
           done
 
-          if [ "$elapsed" -ge "$MAX_WAIT_SECONDS" ]; then
-            echo "Notarization still not finished after ${MAX_WAIT_SECONDS}s. Fetching log and failing." >&2
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "Notarization did not reach Accepted within time limit. Fetching log and failing." >&2
             xcrun notarytool log "$UUID" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
@@ -203,25 +198,34 @@ except Exception:
             exit 1
           fi
 
-          echo "Notarization Accepted. Waiting for ticket propagation..."
-          sleep 180
+          echo "Notarization Accepted."
 
-          echo "Stapling notarization ticket..."
-          retry xcrun stapler staple "$DMG"
+          # Ticket propagation: retry stapler up to ~30 minutes (this is the issue you keep hitting)
+          echo "Attempting stapling with extended propagation retries..."
+          STAPLE_OK=0
+          for i in $(seq 1 20); do
+            echo "Staple attempt $i/20..."
+            if xcrun stapler staple "$DMG"; then
+              STAPLE_OK=1
+              break
+            fi
+            sleep 90
+          done
 
-          echo "Stapler validate..."
-          xcrun stapler validate "$DMG" || true
+          if [ "$STAPLE_OK" -eq 1 ]; then
+            echo "Stapling succeeded."
+            xcrun stapler validate "$DMG" || true
+            spctl -a -vv "$DMG" || true
+          else
+            echo "WARNING: Stapling still failing after retries (ticket propagation/Apple CDN)."
+            echo "The DMG is notarized (Accepted), but not stapled. Workflow will continue so you still ship artifacts."
+          fi
 
-          echo "Gatekeeper verification:"
-          spctl -a -vv "$DMG" || true
-
-      # ---------- COLLECT ARTIFACTS ----------
       - name: Collect artifact info (Linux)
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         run: |
           mkdir -p artifacts
-
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1 || true)
           if [ -n "${APPIMAGE:-}" ] && [ -f "$APPIMAGE" ]; then
             cp "$APPIMAGE" artifacts/
@@ -229,7 +233,6 @@ except Exception:
               cat "$APPIMAGE.sig" > artifacts/linux-x86_64.sig
             fi
           fi
-
           find src-tauri/target/release/bundle -name "*.deb" -exec cp {} artifacts/ \; || true
           find src-tauri/target/release/bundle -name "*.rpm" -exec cp {} artifacts/ \; || true
 
@@ -238,7 +241,6 @@ except Exception:
         shell: bash
         run: |
           mkdir -p artifacts
-
           MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1 || true)
           if [ -n "${MSI:-}" ] && [ -f "$MSI" ]; then
             cp "$MSI" artifacts/
@@ -246,7 +248,6 @@ except Exception:
               cat "$MSI.sig" > artifacts/windows-x86_64.sig
             fi
           fi
-
           find src-tauri/target/release/bundle -name "*.exe" -exec cp {} artifacts/ \; || true
 
       - name: Collect artifact info (macOS)
@@ -307,16 +308,6 @@ except Exception:
         with:
           tag: ${{ github.ref_name }}
           name: Production Portal ${{ github.ref_name }}
-          body: |
-            ## Desktop installers for Production Portal
-
-            | Platform | Download |
-            |----------|----------|
-            | macOS (Universal) | `.dmg` file below |
-            | Windows | `.msi` file below |
-            | Linux | `.AppImage`, `.deb`, or `.rpm` files below |
-
-            The app will automatically check for updates.
           allowUpdates: true
           replacesArtifacts: true
           artifacts: |
@@ -347,19 +338,13 @@ except Exception:
             "https://api.github.com/repos/$REPO/releases/tags/$TAG" \
             > dist/release.json
 
-          # Use jq (available on ubuntu-latest) - no heredocs
           LINUX_URL=$(jq -r '.assets[] | select(.name|endswith(".AppImage")) | .browser_download_url' dist/release.json | head -n1)
           WINDOWS_URL=$(jq -r '.assets[] | select(.name|endswith(".msi")) | .browser_download_url' dist/release.json | head -n1)
           MACOS_URL=$(jq -r '.assets[] | select(.name|endswith(".app.tar.gz")) | .browser_download_url' dist/release.json | head -n1)
 
-          if [ -z "${LINUX_URL:-}" ]; then echo "Could not find Linux .AppImage URL" >&2; exit 1; fi
-          if [ -z "${WINDOWS_URL:-}" ]; then echo "Could not find Windows .msi URL" >&2; exit 1; fi
-          if [ -z "${MACOS_URL:-}" ]; then echo "Could not find macOS .app.tar.gz URL" >&2; exit 1; fi
-
-          if [ ! -f "dist/linux-x86_64.sig" ] || [ ! -f "dist/windows-x86_64.sig" ]; then
-            echo "Missing linux-x86_64.sig or windows-x86_64.sig in dist" >&2
-            exit 1
-          fi
+          [ -n "$LINUX_URL" ] || (echo "Missing Linux URL" >&2; exit 1)
+          [ -n "$WINDOWS_URL" ] || (echo "Missing Windows URL" >&2; exit 1)
+          [ -n "$MACOS_URL" ] || (echo "Missing macOS URL" >&2; exit 1)
 
           LINUX_SIG=$(tr -d '\n' < dist/linux-x86_64.sig)
           WINDOWS_SIG=$(tr -d '\n' < dist/windows-x86_64.sig)
@@ -370,11 +355,7 @@ except Exception:
           elif [ -f "dist/darwin-x86_64.sig" ]; then
             DARWIN_SIG=$(tr -d '\n' < dist/darwin-x86_64.sig)
           fi
-
-          if [ -z "$DARWIN_SIG" ]; then
-            echo "Missing macOS signature (darwin-aarch64.sig or darwin-x86_64.sig) in dist" >&2
-            exit 1
-          fi
+          [ -n "$DARWIN_SIG" ] || (echo "Missing macOS sig" >&2; exit 1)
 
           cat > dist/latest.json <<EOF
           {
@@ -389,9 +370,6 @@ except Exception:
             }
           }
           EOF
-
-          echo "Generated latest.json:"
-          cat dist/latest.json
 
       - name: Upload latest.json
         uses: ncipollo/release-action@v1
