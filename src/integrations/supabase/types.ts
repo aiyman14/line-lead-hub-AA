@@ -165,13 +165,17 @@ export type Database = {
           buyer: string | null
           colour: string | null
           created_at: string | null
+          cutting_capacity: number
           cutting_section_id: string | null
           day_cutting: number
           day_input: number
           factory_id: string
           id: string
           is_late: boolean | null
+          lay_capacity: number
           line_id: string
+          man_power: number
+          marker_capacity: number
           order_qty: number | null
           po_no: string | null
           production_date: string
@@ -181,6 +185,7 @@ export type Database = {
           total_cutting: number | null
           total_input: number | null
           transfer_to_line_id: string | null
+          under_qty: number | null
           work_order_id: string
         }
         Insert: {
@@ -191,13 +196,17 @@ export type Database = {
           buyer?: string | null
           colour?: string | null
           created_at?: string | null
+          cutting_capacity?: number
           cutting_section_id?: string | null
           day_cutting?: number
           day_input?: number
           factory_id: string
           id?: string
           is_late?: boolean | null
+          lay_capacity?: number
           line_id: string
+          man_power?: number
+          marker_capacity?: number
           order_qty?: number | null
           po_no?: string | null
           production_date?: string
@@ -207,6 +216,7 @@ export type Database = {
           total_cutting?: number | null
           total_input?: number | null
           transfer_to_line_id?: string | null
+          under_qty?: number | null
           work_order_id: string
         }
         Update: {
@@ -217,13 +227,17 @@ export type Database = {
           buyer?: string | null
           colour?: string | null
           created_at?: string | null
+          cutting_capacity?: number
           cutting_section_id?: string | null
           day_cutting?: number
           day_input?: number
           factory_id?: string
           id?: string
           is_late?: boolean | null
+          lay_capacity?: number
           line_id?: string
+          man_power?: number
+          marker_capacity?: number
           order_qty?: number | null
           po_no?: string | null
           production_date?: string
@@ -233,6 +247,7 @@ export type Database = {
           total_cutting?: number | null
           total_input?: number | null
           transfer_to_line_id?: string | null
+          under_qty?: number | null
           work_order_id?: string
         }
         Relationships: [
@@ -315,6 +330,8 @@ export type Database = {
           created_at: string | null
           cutting_capacity: number
           cutting_section_id: string | null
+          day_cutting: number
+          day_input: number
           factory_id: string
           id: string
           is_late: boolean | null
@@ -337,6 +354,8 @@ export type Database = {
           created_at?: string | null
           cutting_capacity?: number
           cutting_section_id?: string | null
+          day_cutting?: number
+          day_input?: number
           factory_id: string
           id?: string
           is_late?: boolean | null
@@ -359,6 +378,8 @@ export type Database = {
           created_at?: string | null
           cutting_capacity?: number
           cutting_section_id?: string | null
+          day_cutting?: number
+          day_input?: number
           factory_id?: string
           id?: string
           is_late?: boolean | null

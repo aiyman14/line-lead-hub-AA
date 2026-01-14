@@ -48,6 +48,11 @@ interface ExistingActual {
   total_cutting: number | null;
   total_input: number | null;
   balance: number | null;
+  man_power: number;
+  marker_capacity: number;
+  lay_capacity: number;
+  cutting_capacity: number;
+  under_qty: number | null;
 }
 
 export default function CuttingEndOfDay() {
@@ -71,6 +76,13 @@ export default function CuttingEndOfDay() {
   // Daily Actuals fields (same as original form)
   const [dayCutting, setDayCutting] = useState("");
   const [dayInput, setDayInput] = useState("");
+
+  // Actual Capacities fields
+  const [manPower, setManPower] = useState("");
+  const [markerCapacity, setMarkerCapacity] = useState("");
+  const [layCapacity, setLayCapacity] = useState("");
+  const [cuttingCapacity, setCuttingCapacity] = useState("");
+  const [underQty, setUnderQty] = useState("0");
 
   // Computed totals (only for actuals)
   const [totalCutting, setTotalCutting] = useState(0);
@@ -162,7 +174,7 @@ export default function CuttingEndOfDay() {
       // Check for today's actual
       const { data: actualData, error } = await supabase
         .from("cutting_actuals")
-        .select("id, day_cutting, day_input, total_cutting, total_input, balance")
+        .select("id, day_cutting, day_input, total_cutting, total_input, balance, man_power, marker_capacity, lay_capacity, cutting_capacity, under_qty")
         .eq("factory_id", profile.factory_id)
         .eq("line_id", selectedLine.id)
         .eq("work_order_id", selectedWorkOrder.id)
@@ -176,12 +188,22 @@ export default function CuttingEndOfDay() {
         setExistingActual(actualData);
         setDayCutting(String(actualData.day_cutting));
         setDayInput(String(actualData.day_input));
+        setManPower(String(actualData.man_power || 0));
+        setMarkerCapacity(String(actualData.marker_capacity || 0));
+        setLayCapacity(String(actualData.lay_capacity || 0));
+        setCuttingCapacity(String(actualData.cutting_capacity || 0));
+        setUnderQty(String(actualData.under_qty || 0));
       } else {
         setIsEditing(false);
         setExistingActual(null);
         if (!dayCutting && !dayInput) {
           setDayCutting("");
           setDayInput("");
+          setManPower("");
+          setMarkerCapacity("");
+          setLayCapacity("");
+          setCuttingCapacity("");
+          setUnderQty("0");
         }
       }
     } catch (error) {
@@ -233,6 +255,10 @@ export default function CuttingEndOfDay() {
     if (!selectedWorkOrder) newErrors.workOrder = "PO is required";
     if (!dayCutting || parseInt(dayCutting) < 0) newErrors.dayCutting = "Day Cutting is required";
     if (!dayInput || parseInt(dayInput) < 0) newErrors.dayInput = "Day Input is required";
+    if (!manPower || parseInt(manPower) < 0) newErrors.manPower = "Man Power is required";
+    if (!markerCapacity || parseInt(markerCapacity) < 0) newErrors.markerCapacity = "Marker Capacity is required";
+    if (!layCapacity || parseInt(layCapacity) < 0) newErrors.layCapacity = "Lay Capacity is required";
+    if (!cuttingCapacity || parseInt(cuttingCapacity) < 0) newErrors.cuttingCapacity = "Cutting Capacity is required";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -283,6 +309,11 @@ export default function CuttingEndOfDay() {
         total_cutting: totalCutting,
         total_input: totalInput,
         balance: balance,
+        man_power: parseInt(manPower),
+        marker_capacity: parseInt(markerCapacity),
+        lay_capacity: parseInt(layCapacity),
+        cutting_capacity: parseInt(cuttingCapacity),
+        under_qty: parseInt(underQty) || 0,
         is_late: isLate,
         transfer_to_line_id: selectedLine.id,
       };
@@ -523,6 +554,75 @@ export default function CuttingEndOfDay() {
                 className={errors.dayInput ? "border-destructive" : ""}
               />
               {errors.dayInput && <p className="text-sm text-destructive">{errors.dayInput}</p>}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Actual Capacities */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Scissors className="h-4 w-4" />
+              Actual Capacities
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>MAN POWER *</Label>
+              <Input
+                type="number"
+                value={manPower}
+                onChange={(e) => setManPower(e.target.value)}
+                placeholder="0"
+                className={errors.manPower ? "border-destructive" : ""}
+              />
+              {errors.manPower && <p className="text-sm text-destructive">{errors.manPower}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label>MARKER CAPACITY *</Label>
+              <Input
+                type="number"
+                value={markerCapacity}
+                onChange={(e) => setMarkerCapacity(e.target.value)}
+                placeholder="0"
+                className={errors.markerCapacity ? "border-destructive" : ""}
+              />
+              {errors.markerCapacity && <p className="text-sm text-destructive">{errors.markerCapacity}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label>LAY CAPACITY *</Label>
+              <Input
+                type="number"
+                value={layCapacity}
+                onChange={(e) => setLayCapacity(e.target.value)}
+                placeholder="0"
+                className={errors.layCapacity ? "border-destructive" : ""}
+              />
+              {errors.layCapacity && <p className="text-sm text-destructive">{errors.layCapacity}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label>CUTTING CAPACITY *</Label>
+              <Input
+                type="number"
+                value={cuttingCapacity}
+                onChange={(e) => setCuttingCapacity(e.target.value)}
+                placeholder="0"
+                className={errors.cuttingCapacity ? "border-destructive" : ""}
+              />
+              {errors.cuttingCapacity && <p className="text-sm text-destructive">{errors.cuttingCapacity}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label>UNDER QTY</Label>
+              <Input
+                type="number"
+                value={underQty}
+                onChange={(e) => setUnderQty(e.target.value)}
+                placeholder="0"
+              />
             </div>
           </CardContent>
         </Card>
