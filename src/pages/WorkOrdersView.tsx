@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -14,7 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ClipboardList, Search, Calendar, Package } from "lucide-react";
+import { Loader2, ClipboardList, Search, Calendar, Package, TrendingUp } from "lucide-react";
+import { OutputExtrasCard, calculateOutputExtras, getProductionStatus, getStatusBadge, type OutputExtrasData } from "@/components/OutputExtrasCard";
+import { ExtrasLedgerModal } from "@/components/ExtrasLedgerModal";
 
 interface WorkOrder {
   id: string;
@@ -27,8 +30,9 @@ interface WorkOrder {
   status: string | null;
   planned_ex_factory: string | null;
   line_name: string | null;
-  produced_qty: number;
-  qc_pass_qty: number;
+  produced_qty: number; // Sewing output
+  totalCartonOutput: number; // Finishing carton output (single source of truth)
+  extrasConsumed: number; // From ledger
 }
 
 export default function WorkOrdersView() {
@@ -36,6 +40,8 @@ export default function WorkOrdersView() {
   const [loading, setLoading] = useState(true);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
+  const [showLedger, setShowLedger] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -56,38 +62,50 @@ export default function WorkOrdersView() {
         .eq('is_active', true)
         .order('po_number');
 
-      // Fetch production totals for each work order
       const workOrderIds = workOrdersData?.map(wo => wo.id) || [];
       
-      const [sewingRes, finishingRes] = await Promise.all([
+      // Fetch production data in parallel
+      const [sewingRes, finishingLogsRes, ledgerRes] = await Promise.all([
+        // Sewing output (for reference)
         supabase
           .from('production_updates_sewing')
           .select('work_order_id, output_qty')
           .eq('factory_id', profile.factory_id)
           .in('work_order_id', workOrderIds),
+        // Finishing daily logs - OUTPUT type, carton only (single source of truth)
         supabase
-          .from('finishing_daily_sheets')
-          .select('work_order_id, finishing_hourly_logs(poly_actual, carton_actual)')
+          .from('finishing_daily_logs')
+          .select('work_order_id, carton')
+          .eq('factory_id', profile.factory_id)
+          .eq('log_type', 'OUTPUT')
+          .in('work_order_id', workOrderIds),
+        // Extras ledger consumption
+        supabase
+          .from('extras_ledger')
+          .select('work_order_id, quantity')
           .eq('factory_id', profile.factory_id)
           .in('work_order_id', workOrderIds),
       ]);
 
-      // Aggregate production by work order
+      // Aggregate sewing by work order
       const sewingByWo = new Map<string, number>();
       sewingRes.data?.forEach(u => {
         const current = sewingByWo.get(u.work_order_id || '') || 0;
         sewingByWo.set(u.work_order_id || '', current + (u.output_qty || 0));
       });
 
-      // QC Pass = Total Poly + Total Carton from hourly logs
-      const finishingByWo = new Map<string, number>();
-      finishingRes.data?.forEach((sheet: any) => {
-        const logs = sheet.finishing_hourly_logs || [];
-        const totalPoly = logs.reduce((sum: number, l: any) => sum + (l.poly_actual || 0), 0);
-        const totalCarton = logs.reduce((sum: number, l: any) => sum + (l.carton_actual || 0), 0);
-        const qcPass = totalPoly + totalCarton;
-        const current = finishingByWo.get(sheet.work_order_id || '') || 0;
-        finishingByWo.set(sheet.work_order_id || '', current + qcPass);
+      // Aggregate carton output by work order (single source of truth for finished goods)
+      const cartonByWo = new Map<string, number>();
+      finishingLogsRes.data?.forEach((log: any) => {
+        const current = cartonByWo.get(log.work_order_id || '') || 0;
+        cartonByWo.set(log.work_order_id || '', current + (log.carton || 0));
+      });
+
+      // Aggregate ledger consumption by work order
+      const ledgerByWo = new Map<string, number>();
+      ledgerRes.data?.forEach((entry: any) => {
+        const current = ledgerByWo.get(entry.work_order_id || '') || 0;
+        ledgerByWo.set(entry.work_order_id || '', current + (entry.quantity || 0));
       });
 
       const formattedWorkOrders: WorkOrder[] = (workOrdersData || []).map(wo => ({
@@ -102,7 +120,8 @@ export default function WorkOrdersView() {
         planned_ex_factory: wo.planned_ex_factory,
         line_name: wo.lines?.name || wo.lines?.line_id || null,
         produced_qty: sewingByWo.get(wo.id) || 0,
-        qc_pass_qty: finishingByWo.get(wo.id) || 0,
+        totalCartonOutput: cartonByWo.get(wo.id) || 0,
+        extrasConsumed: ledgerByWo.get(wo.id) || 0,
       }));
 
       setWorkOrders(formattedWorkOrders);
@@ -121,7 +140,8 @@ export default function WorkOrdersView() {
 
   const totalOrderQty = workOrders.reduce((sum, wo) => sum + wo.order_qty, 0);
   const totalProduced = workOrders.reduce((sum, wo) => sum + wo.produced_qty, 0);
-  const totalQcPass = workOrders.reduce((sum, wo) => sum + wo.qc_pass_qty, 0);
+  const totalCartonOutput = workOrders.reduce((sum, wo) => sum + wo.totalCartonOutput, 0);
+  const totalExtras = workOrders.reduce((sum, wo) => sum + Math.max(wo.totalCartonOutput - wo.order_qty, 0), 0);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -135,6 +155,11 @@ export default function WorkOrdersView() {
       case 'on_hold': return 'warning';
       default: return 'neutral';
     }
+  };
+
+  const handleViewLedger = (wo: WorkOrder) => {
+    setSelectedWorkOrder(wo);
+    setShowLedger(true);
   };
 
   if (loading) {
@@ -157,7 +182,7 @@ export default function WorkOrdersView() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4">
             <p className="text-3xl font-bold">{workOrders.length}</p>
@@ -173,13 +198,25 @@ export default function WorkOrdersView() {
         <Card>
           <CardContent className="p-4">
             <p className="text-2xl font-bold font-mono text-primary">{totalProduced.toLocaleString()}</p>
-            <p className="text-sm text-muted-foreground">Total Produced</p>
+            <p className="text-sm text-muted-foreground">Sewing Output</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-2xl font-bold font-mono text-success">{totalQcPass.toLocaleString()}</p>
-            <p className="text-sm text-muted-foreground">Total QC Pass</p>
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-success" />
+              <p className="text-2xl font-bold font-mono text-success">{totalCartonOutput.toLocaleString()}</p>
+            </div>
+            <p className="text-sm text-muted-foreground">Finished Output (Carton)</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-warning" />
+              <p className="text-2xl font-bold font-mono text-warning">{totalExtras.toLocaleString()}</p>
+            </div>
+            <p className="text-sm text-muted-foreground">Total Extras</p>
           </CardContent>
         </Card>
       </div>
@@ -205,19 +242,29 @@ export default function WorkOrdersView() {
                   <TableHead>PO Number</TableHead>
                   <TableHead>Buyer / Style</TableHead>
                   <TableHead>Line</TableHead>
-                  <TableHead className="text-right">Order Qty</TableHead>
-                  <TableHead className="text-right">Produced</TableHead>
-                  <TableHead className="text-right">QC Pass</TableHead>
+                  <TableHead className="text-right">PO Qty</TableHead>
+                  <TableHead className="text-right">Finished Output</TableHead>
+                  <TableHead className="text-right">Extras</TableHead>
+                  <TableHead className="text-right">Remaining</TableHead>
                   <TableHead>Progress</TableHead>
-                  <TableHead>Ex-Factory</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Ex-Factory</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredWorkOrders.map((wo) => {
-                  const progressPercent = wo.order_qty > 0 ? Math.min((wo.qc_pass_qty / wo.order_qty) * 100, 100) : 0;
+                  const outputData = calculateOutputExtras(wo.order_qty, wo.totalCartonOutput, wo.extrasConsumed);
+                  const status = getProductionStatus(outputData);
+                  const statusInfo = getStatusBadge(status);
+                  const StatusIcon = statusInfo.icon;
+                  const progressPercent = wo.order_qty > 0 ? Math.min((wo.totalCartonOutput / wo.order_qty) * 100, 100) : 0;
+                  
                   return (
-                    <TableRow key={wo.id}>
+                    <TableRow 
+                      key={wo.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleViewLedger(wo)}
+                    >
                       <TableCell className="font-mono font-medium">{wo.po_number}</TableCell>
                       <TableCell>
                         <div>
@@ -227,8 +274,21 @@ export default function WorkOrdersView() {
                       </TableCell>
                       <TableCell>{wo.line_name || '-'}</TableCell>
                       <TableCell className="text-right font-mono">{wo.order_qty.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-mono text-primary">{wo.produced_qty.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-mono text-success">{wo.qc_pass_qty.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-success font-medium">
+                        {wo.totalCartonOutput.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {outputData.extras > 0 ? (
+                          <Badge variant="warning" className="font-mono">
+                            +{outputData.extras.toLocaleString()}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {outputData.remaining > 0 ? outputData.remaining.toLocaleString() : '-'}
+                      </TableCell>
                       <TableCell>
                         <div className="w-24">
                           <Progress value={progressPercent} className="h-2" />
@@ -236,22 +296,23 @@ export default function WorkOrdersView() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <Badge variant={statusInfo.variant}>
+                          <StatusIcon className="h-3 w-3 mr-1" />
+                          {statusInfo.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-1 text-sm">
                           <Calendar className="h-3 w-3 text-muted-foreground" />
                           {formatDate(wo.planned_ex_factory)}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge variant={getStatusVariant(wo.status) as any} size="sm">
-                          {wo.status || 'active'}
-                        </StatusBadge>
                       </TableCell>
                     </TableRow>
                   );
                 })}
                 {filteredWorkOrders.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       No work orders found
                     </TableCell>
                   </TableRow>
@@ -261,6 +322,20 @@ export default function WorkOrdersView() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Extras Ledger Modal */}
+      {selectedWorkOrder && (
+        <ExtrasLedgerModal
+          open={showLedger}
+          onOpenChange={setShowLedger}
+          workOrderId={selectedWorkOrder.id}
+          poNumber={selectedWorkOrder.po_number}
+          extrasAvailable={
+            Math.max(selectedWorkOrder.totalCartonOutput - selectedWorkOrder.order_qty, 0) - selectedWorkOrder.extrasConsumed
+          }
+          onLedgerChange={fetchWorkOrders}
+        />
+      )}
     </div>
   );
 }
