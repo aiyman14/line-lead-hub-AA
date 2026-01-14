@@ -371,10 +371,10 @@ export default function TodayUpdates() {
 
   const totalOutput = sewingUpdates.reduce((sum, u) => sum + (u.output_qty || 0), 0);
   
-  // Total Finishing Output = Total Poly + Total Carton (from OUTPUT logs)
+  // Total Finishing Output = Total Carton only (from OUTPUT logs)
   const totalFinishingOutput = finishingDailyLogs
     .filter(log => log.log_type === 'OUTPUT')
-    .reduce((sum, log) => sum + (log.poly || 0) + (log.carton || 0), 0);
+    .reduce((sum, log) => sum + (log.carton || 0), 0);
 
   const totalCutting = cuttingActuals.reduce((sum, c) => sum + (c.day_cutting || 0), 0);
   const totalStorageReceived = storageTransactions.reduce((sum, s) => sum + (s.receive_qty || 0), 0);

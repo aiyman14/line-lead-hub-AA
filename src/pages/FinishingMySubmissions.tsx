@@ -181,7 +181,7 @@ export default function FinishingMySubmissions() {
   };
 
   const calculateLogTotal = (log: FinishingDailyLog) => {
-    return (log.poly || 0) + (log.carton || 0);
+    return (log.carton || 0);
   };
 
   if (loading) {
