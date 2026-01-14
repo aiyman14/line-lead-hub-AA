@@ -44,28 +44,23 @@ interface SewingUpdate {
   work_orders: { po_number: string; buyer: string; style: string } | null;
 }
 
-interface FinishingDailySheet {
+interface FinishingDailyLog {
   id: string;
   line_id: string;
   production_date: string;
-  created_at: string;
-  buyer: string | null;
-  style: string | null;
-  po_no: string | null;
+  submitted_at: string;
+  log_type: 'TARGET' | 'OUTPUT';
+  thread_cutting: number | null;
+  inside_check: number | null;
+  top_side_check: number | null;
+  buttoning: number | null;
+  iron: number | null;
+  get_up: number | null;
+  poly: number | null;
+  carton: number | null;
+  remarks: string | null;
   lines: { line_id: string; name: string | null } | null;
   work_orders: { po_number: string; buyer: string; style: string } | null;
-  finishing_hourly_logs: Array<{
-    id: string;
-    hour_slot: string;
-    poly_actual: number | null;
-    carton_actual: number | null;
-    thread_cutting_actual: number | null;
-    inside_check_actual: number | null;
-    top_side_check_actual: number | null;
-    buttoning_actual: number | null;
-    iron_actual: number | null;
-    get_up_actual: number | null;
-  }>;
 }
 
 interface CuttingActual {
@@ -146,7 +141,7 @@ export default function TodayUpdates() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [sewingUpdates, setSewingUpdates] = useState<SewingUpdate[]>([]);
-  const [finishingSheets, setFinishingSheets] = useState<FinishingDailySheet[]>([]);
+  const [finishingDailyLogs, setFinishingDailyLogs] = useState<FinishingDailyLog[]>([]);
   const [cuttingActuals, setCuttingActuals] = useState<CuttingActual[]>([]);
   const [cuttingTargets, setCuttingTargets] = useState<CuttingTarget[]>([]);
   const [storageTransactions, setStorageTransactions] = useState<StorageTransaction[]>([]);
@@ -182,11 +177,11 @@ export default function TodayUpdates() {
           .eq('production_date', today)
           .order('submitted_at', { ascending: false }),
         supabase
-          .from('finishing_daily_sheets')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style), finishing_hourly_logs(*)')
+          .from('finishing_daily_logs')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
           .eq('factory_id', profile.factory_id)
           .eq('production_date', today)
-          .order('created_at', { ascending: false }),
+          .order('submitted_at', { ascending: false }),
         supabase
           .from('cutting_actuals')
           .select('*, lines!cutting_actuals_line_id_fkey(line_id, name), work_orders(po_number, buyer, style, order_qty, color)')
@@ -207,11 +202,7 @@ export default function TodayUpdates() {
       ]);
 
       setSewingUpdates(sewingRes.data || []);
-      // Filter to only include sheets with at least 1 hour logged
-      const sheetsWithLogs = (finishingRes.data || []).filter(
-        (sheet: any) => (sheet.finishing_hourly_logs || []).length > 0
-      );
-      setFinishingSheets(sheetsWithLogs);
+      setFinishingDailyLogs(finishingRes.data as FinishingDailyLog[] || []);
       setCuttingActuals(cuttingRes.data as any || []);
       setCuttingTargets(cuttingTargetsRes.data as any || []);
       setStorageTransactions(storageRes.data as any || []);
@@ -234,9 +225,9 @@ export default function TodayUpdates() {
     (u.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredFinishing = finishingSheets.filter(s =>
+  const filteredFinishing = finishingDailyLogs.filter(s =>
     (s.lines?.name || s.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (s.work_orders?.po_number || s.po_no || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (s.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredCutting = cuttingActuals.filter(c =>
@@ -251,13 +242,10 @@ export default function TodayUpdates() {
 
   const totalOutput = sewingUpdates.reduce((sum, u) => sum + (u.output_qty || 0), 0);
   
-  // Total Finishing Output = Total Poly + Total Carton
-  const totalFinishingOutput = finishingSheets.reduce((sum, s) => {
-    const logs = s.finishing_hourly_logs || [];
-    const poly = logs.reduce((logSum, l) => logSum + (l.poly_actual || 0), 0);
-    const carton = logs.reduce((logSum, l) => logSum + (l.carton_actual || 0), 0);
-    return sum + poly + carton;
-  }, 0);
+  // Total Finishing Output = Total Poly + Total Carton (from OUTPUT logs)
+  const totalFinishingOutput = finishingDailyLogs
+    .filter(log => log.log_type === 'OUTPUT')
+    .reduce((sum, log) => sum + (log.poly || 0) + (log.carton || 0), 0);
 
   const totalCutting = cuttingActuals.reduce((sum, c) => sum + (c.day_cutting || 0), 0);
   const totalStorageReceived = storageTransactions.reduce((sum, s) => sum + (s.receive_qty || 0), 0);
@@ -290,8 +278,12 @@ export default function TodayUpdates() {
     setDetailModalOpen(true);
   };
 
-  const handleFinishingClick = (sheet: FinishingDailySheet) => {
-    navigate(`/finishing/daily-sheet?sheet=${sheet.id}`);
+  const handleFinishingClick = (log: FinishingDailyLog) => {
+    if (log.log_type === 'TARGET') {
+      navigate(`/finishing/daily-target?id=${log.id}`);
+    } else {
+      navigate(`/finishing/daily-output?id=${log.id}`);
+    }
   };
 
   const handleCuttingClick = (cutting: CuttingActual) => {
@@ -431,7 +423,7 @@ export default function TodayUpdates() {
                   <Package className="h-4 w-4 text-info" />
                 </div>
                 <div>
-                  <p className="text-xl font-bold">{finishingSheets.length}</p>
+                  <p className="text-xl font-bold">{finishingDailyLogs.length}</p>
                   <p className="text-xs text-muted-foreground">Finishing</p>
                 </div>
               </div>
@@ -492,11 +484,11 @@ export default function TodayUpdates() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="w-max min-w-full md:w-auto">
-            <TabsTrigger value="all">All ({sewingUpdates.length + finishingSheets.length + cuttingActuals.length + storageTransactions.length})</TabsTrigger>
+            <TabsTrigger value="all">All ({sewingUpdates.length + finishingDailyLogs.length + cuttingActuals.length + storageTransactions.length})</TabsTrigger>
             <TabsTrigger value="storage">Storage ({storageTransactions.length})</TabsTrigger>
             <TabsTrigger value="cutting">Cutting ({cuttingActuals.length})</TabsTrigger>
             <TabsTrigger value="sewing">Sewing ({sewingUpdates.length})</TabsTrigger>
-            <TabsTrigger value="finishing">Finishing ({finishingSheets.length})</TabsTrigger>
+            <TabsTrigger value="finishing">Finishing ({finishingDailyLogs.length})</TabsTrigger>
           </TabsList>
         </div>
 
@@ -574,30 +566,34 @@ export default function TodayUpdates() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Time</TableHead>
+                        <TableHead>Type</TableHead>
                         <TableHead>Line</TableHead>
                         <TableHead>PO</TableHead>
-                        <TableHead className="text-right">Hours Logged</TableHead>
                         <TableHead className="text-right">Poly</TableHead>
                         <TableHead className="text-right">Carton</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredFinishing.map((sheet) => {
-                        const logs = sheet.finishing_hourly_logs || [];
-                        const polyTotal = logs.reduce((s, l) => s + (l.poly_actual || 0), 0);
-                        const cartonTotal = logs.reduce((s, l) => s + (l.carton_actual || 0), 0);
+                      {filteredFinishing.map((log) => {
+                        const total = (log.poly || 0) + (log.carton || 0);
                         return (
                           <TableRow 
-                            key={sheet.id}
+                            key={log.id}
                             className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => handleFinishingClick(sheet)}
+                            onClick={() => handleFinishingClick(log)}
                           >
-                            <TableCell className="font-mono text-sm">{formatTime(sheet.created_at)}</TableCell>
-                            <TableCell className="font-medium">{sheet.lines?.name || sheet.lines?.line_id}</TableCell>
-                            <TableCell>{sheet.work_orders?.po_number || sheet.po_no || '-'}</TableCell>
-                            <TableCell className="text-right font-mono">{logs.length}</TableCell>
-                            <TableCell className="text-right font-mono">{polyTotal.toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-mono">{cartonTotal.toLocaleString()}</TableCell>
+                            <TableCell className="font-mono text-sm">{formatTime(log.submitted_at)}</TableCell>
+                            <TableCell>
+                              <StatusBadge variant={log.log_type === 'TARGET' ? 'info' : 'success'} size="sm">
+                                {log.log_type}
+                              </StatusBadge>
+                            </TableCell>
+                            <TableCell className="font-medium">{log.lines?.name || log.lines?.line_id}</TableCell>
+                            <TableCell>{log.work_orders?.po_number || '-'}</TableCell>
+                            <TableCell className="text-right font-mono">{(log.poly || 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{(log.carton || 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono font-bold">{total.toLocaleString()}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -767,37 +763,41 @@ export default function TodayUpdates() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Time</TableHead>
+                        <TableHead>Type</TableHead>
                         <TableHead>Line</TableHead>
                         <TableHead>PO</TableHead>
-                        <TableHead className="text-right">Hours Logged</TableHead>
                         <TableHead className="text-right">Poly</TableHead>
                         <TableHead className="text-right">Carton</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredFinishing.map((sheet) => {
-                        const logs = sheet.finishing_hourly_logs || [];
-                        const polyTotal = logs.reduce((s, l) => s + (l.poly_actual || 0), 0);
-                        const cartonTotal = logs.reduce((s, l) => s + (l.carton_actual || 0), 0);
+                      {filteredFinishing.map((log) => {
+                        const total = (log.poly || 0) + (log.carton || 0);
                         return (
                           <TableRow 
-                            key={sheet.id}
+                            key={log.id}
                             className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => handleFinishingClick(sheet)}
+                            onClick={() => handleFinishingClick(log)}
                           >
-                            <TableCell className="font-mono text-sm">{formatTime(sheet.created_at)}</TableCell>
-                            <TableCell className="font-medium">{sheet.lines?.name || sheet.lines?.line_id}</TableCell>
-                            <TableCell>{sheet.work_orders?.po_number || sheet.po_no || '-'}</TableCell>
-                            <TableCell className="text-right font-mono font-bold">{logs.length}</TableCell>
-                            <TableCell className="text-right font-mono">{polyTotal.toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-mono">{cartonTotal.toLocaleString()}</TableCell>
+                            <TableCell className="font-mono text-sm">{formatTime(log.submitted_at)}</TableCell>
+                            <TableCell>
+                              <StatusBadge variant={log.log_type === 'TARGET' ? 'info' : 'success'} size="sm">
+                                {log.log_type}
+                              </StatusBadge>
+                            </TableCell>
+                            <TableCell className="font-medium">{log.lines?.name || log.lines?.line_id}</TableCell>
+                            <TableCell>{log.work_orders?.po_number || '-'}</TableCell>
+                            <TableCell className="text-right font-mono">{(log.poly || 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{(log.carton || 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono font-bold">{total.toLocaleString()}</TableCell>
                           </TableRow>
                         );
                       })}
                       {filteredFinishing.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                            No finishing sheets today
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            No finishing logs today
                           </TableCell>
                         </TableRow>
                       )}
@@ -939,13 +939,15 @@ export default function TodayUpdates() {
             actual_stage_progress: u.stage_progress,
             remarks: u.notes,
           })),
-          finishingActuals: finishingSheets.map(s => ({
-            ...s,
-            day_poly: (s.finishing_hourly_logs || []).reduce((sum, l) => sum + (l.poly_actual || 0), 0),
-            day_carton: (s.finishing_hourly_logs || []).reduce((sum, l) => sum + (l.carton_actual || 0), 0),
-            total_poly: (s.finishing_hourly_logs || []).reduce((sum, l) => sum + (l.poly_actual || 0), 0),
-            total_carton: (s.finishing_hourly_logs || []).reduce((sum, l) => sum + (l.carton_actual || 0), 0),
-          })),
+          finishingActuals: finishingDailyLogs
+            .filter(log => log.log_type === 'OUTPUT')
+            .map(log => ({
+              ...log,
+              day_poly: log.poly || 0,
+              day_carton: log.carton || 0,
+              total_poly: log.poly || 0,
+              total_carton: log.carton || 0,
+            })),
           cuttingTargets: [],
           cuttingActuals: cuttingActuals,
           storageBinCards: storageTransactions.map(t => ({

@@ -11,8 +11,8 @@ interface DailyStats {
   dayName: string;
   sewingTarget: number;
   sewingOutput: number;
-  finishingPoly: number;
-  finishingCarton: number;
+  finishingTarget: number;
+  finishingOutput: number;
   sewingUpdates: number;
   finishingUpdates: number;
   blockers: number;
@@ -25,8 +25,8 @@ export default function ThisWeek() {
   const [weekStats, setWeekStats] = useState<DailyStats[]>([]);
   const [totals, setTotals] = useState({
     sewingOutput: 0,
-    finishingPoly: 0,
-    finishingCarton: 0,
+    finishingTarget: 0,
+    finishingOutput: 0,
     totalUpdates: 0,
     totalBlockers: 0,
   });
@@ -51,8 +51,8 @@ export default function ThisWeek() {
       weekStart.setDate(currentWeekStart.getDate() + (weekOffset * 7));
       const days: DailyStats[] = [];
       let totalSewing = 0;
-      let totalPoly = 0;
-      let totalCarton = 0;
+      let totalFinishingTarget = 0;
+      let totalFinishingOutput = 0;
       let totalUpdates = 0;
       let totalBlockers = 0;
 
@@ -67,8 +67,8 @@ export default function ThisWeek() {
             dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
             sewingTarget: 0,
             sewingOutput: 0,
-            finishingPoly: 0,
-            finishingCarton: 0,
+            finishingTarget: 0,
+            finishingOutput: 0,
             sewingUpdates: 0,
             finishingUpdates: 0,
             blockers: 0,
@@ -83,8 +83,8 @@ export default function ThisWeek() {
             .eq('factory_id', profile.factory_id)
             .eq('production_date', dateStr),
           supabase
-            .from('production_updates_finishing')
-            .select('day_poly, day_carton, has_blocker')
+            .from('finishing_daily_logs')
+            .select('log_type, poly, carton')
             .eq('factory_id', profile.factory_id)
             .eq('production_date', dateStr),
           supabase
@@ -99,16 +99,23 @@ export default function ThisWeek() {
         const sewingTargetsData = sewingTargetsRes.data || [];
 
         const daySewingOutput = sewingData.reduce((sum, u) => sum + (u.output_qty || 0), 0);
-        const dayPoly = finishingData.reduce((sum, u) => sum + (u.day_poly || 0), 0);
-        const dayCarton = finishingData.reduce((sum, u) => sum + (u.day_carton || 0), 0);
-        const dayBlockers = sewingData.filter(u => u.has_blocker).length + finishingData.filter(u => u.has_blocker).length;
+        
+        // Finishing target = sum of poly + carton from TARGET logs
+        const finishingTargetLogs = finishingData.filter(f => f.log_type === 'TARGET');
+        const dayFinishingTarget = finishingTargetLogs.reduce((sum, f) => sum + (f.poly || 0) + (f.carton || 0), 0);
+        
+        // Finishing output = sum of poly + carton from OUTPUT logs
+        const finishingOutputLogs = finishingData.filter(f => f.log_type === 'OUTPUT');
+        const dayFinishingOutput = finishingOutputLogs.reduce((sum, f) => sum + (f.poly || 0) + (f.carton || 0), 0);
+        
+        const dayBlockers = sewingData.filter(u => u.has_blocker).length;
 
-        // Calculate targets (per_hour_target * 8 hours as daily estimate)
+        // Calculate sewing targets (per_hour_target * 8 hours as daily estimate)
         const daySewingTarget = sewingTargetsData.reduce((sum, t) => sum + ((t.per_hour_target || 0) * 8), 0);
 
         totalSewing += daySewingOutput;
-        totalPoly += dayPoly;
-        totalCarton += dayCarton;
+        totalFinishingTarget += dayFinishingTarget;
+        totalFinishingOutput += dayFinishingOutput;
         totalUpdates += sewingData.length + finishingData.length;
         totalBlockers += dayBlockers;
 
@@ -117,8 +124,8 @@ export default function ThisWeek() {
           dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
           sewingTarget: daySewingTarget,
           sewingOutput: daySewingOutput,
-          finishingPoly: dayPoly,
-          finishingCarton: dayCarton,
+          finishingTarget: dayFinishingTarget,
+          finishingOutput: dayFinishingOutput,
           sewingUpdates: sewingData.length,
           finishingUpdates: finishingData.length,
           blockers: dayBlockers,
@@ -128,8 +135,8 @@ export default function ThisWeek() {
       setWeekStats(days);
       setTotals({
         sewingOutput: totalSewing,
-        finishingPoly: totalPoly,
-        finishingCarton: totalCarton,
+        finishingTarget: totalFinishingTarget,
+        finishingOutput: totalFinishingOutput,
         totalUpdates,
         totalBlockers,
       });
@@ -141,7 +148,7 @@ export default function ThisWeek() {
   }
 
   const maxSewing = Math.max(...weekStats.map(d => Math.max(d.sewingOutput, d.sewingTarget)), 1);
-  const maxFinishing = Math.max(...weekStats.map(d => Math.max(d.finishingPoly, d.finishingCarton)), 1);
+  const maxFinishing = Math.max(...weekStats.map(d => Math.max(d.finishingTarget, d.finishingOutput)), 1);
 
   const getTrend = (current: number, previous: number) => {
     if (previous === 0) return { icon: Minus, color: 'text-muted-foreground' };
@@ -240,7 +247,7 @@ export default function ThisWeek() {
                 <Package className="h-5 w-5 text-info" />
               </div>
               <div>
-                <p className="text-2xl font-bold font-mono">{(totals.finishingPoly + totals.finishingCarton).toLocaleString()}</p>
+                <p className="text-2xl font-bold font-mono">{totals.finishingOutput.toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground">Finishing Output</p>
               </div>
             </div>
@@ -344,8 +351,9 @@ export default function ThisWeek() {
                     {weekStats.map((day) => {
                       const isToday = day.date === today;
                       const isFuture = new Date(day.date) > new Date();
-                      const polyBarHeight = isFuture ? 0 : Math.max((day.finishingPoly / maxFinishing) * 100, day.finishingPoly > 0 ? 15 : 0);
-                      const cartonBarHeight = isFuture ? 0 : Math.max((day.finishingCarton / maxFinishing) * 100, day.finishingCarton > 0 ? 10 : 0);
+                      const targetBarHeight = isFuture ? 0 : Math.max((day.finishingTarget / maxFinishing) * 100, day.finishingTarget > 0 ? 15 : 0);
+                      const outputBarHeight = isFuture ? 0 : Math.max((day.finishingOutput / maxFinishing) * 100, day.finishingOutput > 0 ? 10 : 0);
+                      const achievement = day.finishingTarget > 0 ? Math.round((day.finishingOutput / day.finishingTarget) * 100) : 0;
                       
                       return (
                         <div key={day.date} className={`text-center p-3 rounded-xl transition-all ${isToday ? 'bg-info/10 ring-2 ring-info/30' : 'bg-muted/30'}`}>
@@ -354,34 +362,35 @@ export default function ThisWeek() {
                           </p>
                           <div className="h-28 flex items-end justify-center gap-1 mb-3">
                             <div
-                              className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : 'bg-info/50'}`}
-                              style={{ height: isFuture ? '8px' : `${Math.max(polyBarHeight, 8)}%` }}
+                              className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : 'bg-muted-foreground/30'}`}
+                              style={{ height: isFuture ? '8px' : `${Math.max(targetBarHeight, 8)}%` }}
                             />
                             <div
-                              className={`w-5 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : isToday ? 'bg-info' : 'bg-info/70'}`}
-                              style={{ height: isFuture ? '8px' : `${Math.max(cartonBarHeight, 8)}%` }}
+                              className={`w-7 rounded-t transition-all ${isFuture ? 'bg-muted h-2' : isToday ? 'bg-info' : 'bg-info/70'}`}
+                              style={{ height: isFuture ? '8px' : `${Math.max(outputBarHeight, 8)}%` }}
                             />
                           </div>
                           <div className={`text-xs ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
-                            <p className="font-mono font-bold">{isFuture ? '-' : day.finishingPoly.toLocaleString()}</p>
-                            <p className="text-muted-foreground text-[10px]">Poly</p>
+                            <p className="font-mono font-bold">{isFuture ? '-' : day.finishingOutput.toLocaleString()}</p>
+                            <p className="text-muted-foreground text-[10px]">Output</p>
                           </div>
-                          <div className={`text-xs mt-1 ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}>
-                            <p className="font-mono font-bold">{isFuture ? '-' : day.finishingCarton.toLocaleString()}</p>
-                            <p className="text-muted-foreground text-[10px]">Carton</p>
-                          </div>
+                          {!isFuture && day.finishingTarget > 0 && (
+                            <p className={`text-xs font-medium mt-1 ${achievement >= 100 ? 'text-success' : achievement >= 80 ? 'text-warning' : 'text-destructive'}`}>
+                              {achievement}% of target
+                            </p>
+                          )}
                         </div>
                       );
                     })}
                   </div>
                   <div className="flex items-center justify-center gap-6 mt-6 pt-4 border-t">
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-info/50" />
-                      <span className="text-sm text-muted-foreground">Poly</span>
+                      <div className="w-4 h-4 rounded bg-muted-foreground/40" />
+                      <span className="text-sm text-muted-foreground">Target</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-4 h-4 rounded bg-info/70" />
-                      <span className="text-sm text-muted-foreground">Carton</span>
+                      <span className="text-sm text-muted-foreground">Output</span>
                     </div>
                   </div>
                 </div>
@@ -403,8 +412,8 @@ export default function ThisWeek() {
                 <tr className="border-b">
                   <th className="text-left py-2 font-medium whitespace-nowrap">Day</th>
                   <th className="text-right py-2 font-medium whitespace-nowrap">Sewing Output</th>
-                  <th className="text-right py-2 font-medium whitespace-nowrap">Poly</th>
-                  <th className="text-right py-2 font-medium whitespace-nowrap">Carton</th>
+                  <th className="text-right py-2 font-medium whitespace-nowrap">Finishing Target</th>
+                  <th className="text-right py-2 font-medium whitespace-nowrap">Finishing Output</th>
                   <th className="text-right py-2 font-medium whitespace-nowrap">Updates</th>
                   <th className="text-right py-2 font-medium whitespace-nowrap">Blockers</th>
                 </tr>
@@ -420,8 +429,8 @@ export default function ThisWeek() {
                         {isToday && <span className="ml-2 text-xs text-primary">(Today)</span>}
                       </td>
                       <td className="text-right font-mono whitespace-nowrap">{isFuture ? '-' : day.sewingOutput.toLocaleString()}</td>
-                      <td className="text-right font-mono whitespace-nowrap">{isFuture ? '-' : day.finishingPoly.toLocaleString()}</td>
-                      <td className="text-right font-mono whitespace-nowrap">{isFuture ? '-' : day.finishingCarton.toLocaleString()}</td>
+                      <td className="text-right font-mono whitespace-nowrap">{isFuture ? '-' : day.finishingTarget.toLocaleString()}</td>
+                      <td className="text-right font-mono whitespace-nowrap">{isFuture ? '-' : day.finishingOutput.toLocaleString()}</td>
                       <td className="text-right whitespace-nowrap">{isFuture ? '-' : day.sewingUpdates + day.finishingUpdates}</td>
                       <td className={`text-right whitespace-nowrap ${day.blockers > 0 ? 'text-warning font-medium' : ''}`}>
                         {isFuture ? '-' : day.blockers}
