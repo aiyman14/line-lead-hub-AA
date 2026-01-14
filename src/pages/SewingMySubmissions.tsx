@@ -442,26 +442,25 @@ export default function SewingMySubmissions() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    disabled={!editCheck.canEdit}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingTarget(target);
-                                    }}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {editCheck.canEdit ? "Edit submission" : editCheck.reason}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            {editCheck.canEdit && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingTarget(target);
+                                      }}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Edit submission</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -559,26 +558,25 @@ export default function SewingMySubmissions() {
                             {actual.cumulative_good_total.toLocaleString()}
                           </TableCell>
                           <TableCell>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    disabled={!editCheck.canEdit}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingActual(actual);
-                                    }}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {editCheck.canEdit ? "Edit submission" : editCheck.reason}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            {editCheck.canEdit && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingActual(actual);
+                                      }}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Edit submission</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
