@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FinishingLogDetailModal } from "@/components/FinishingLogDetailModal";
 import {
   Package,
   Clock,
@@ -55,6 +56,8 @@ export function FinishingDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"targets" | "outputs">("targets");
+  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -237,7 +240,38 @@ export function FinishingDashboard() {
                   {filteredLogs.map((log) => (
                     <div
                       key={log.id}
-                      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                      onClick={() => {
+                        setSelectedLog({
+                          id: log.id,
+                          production_date: new Date().toISOString().split('T')[0],
+                          line_id: log.line_id,
+                          work_order_id: log.work_order_id,
+                          log_type: log.log_type,
+                          shift: null,
+                          thread_cutting: log.thread_cutting,
+                          inside_check: log.inside_check,
+                          top_side_check: log.top_side_check,
+                          buttoning: log.buttoning,
+                          iron: log.iron,
+                          get_up: log.get_up,
+                          poly: log.poly,
+                          carton: log.carton,
+                          remarks: null,
+                          submitted_at: log.submitted_at,
+                          is_locked: false,
+                          line: {
+                            line_id: log.line_id,
+                            name: log.line_name,
+                          },
+                          work_order: log.po_number ? {
+                            po_number: log.po_number,
+                            style: log.style || '',
+                            buyer: '',
+                          } : null,
+                        });
+                        setDetailModalOpen(true);
+                      }}
+                      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-4">
                         <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -294,6 +328,12 @@ export function FinishingDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <FinishingLogDetailModal
+        log={selectedLog}
+        open={detailModalOpen}
+        onOpenChange={setDetailModalOpen}
+      />
     </div>
   );
 }
