@@ -530,6 +530,63 @@ export type Database = {
           },
         ]
       }
+      extras_ledger: {
+        Row: {
+          attachment_url: string | null
+          created_at: string
+          created_by: string
+          factory_id: string
+          id: string
+          is_admin_adjustment: boolean
+          notes: string | null
+          quantity: number
+          reference_number: string | null
+          transaction_type: Database["public"]["Enums"]["extras_transaction_type"]
+          work_order_id: string
+        }
+        Insert: {
+          attachment_url?: string | null
+          created_at?: string
+          created_by: string
+          factory_id: string
+          id?: string
+          is_admin_adjustment?: boolean
+          notes?: string | null
+          quantity: number
+          reference_number?: string | null
+          transaction_type: Database["public"]["Enums"]["extras_transaction_type"]
+          work_order_id: string
+        }
+        Update: {
+          attachment_url?: string | null
+          created_at?: string
+          created_by?: string
+          factory_id?: string
+          id?: string
+          is_admin_adjustment?: boolean
+          notes?: string | null
+          quantity?: number
+          reference_number?: string | null
+          transaction_type?: Database["public"]["Enums"]["extras_transaction_type"]
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "extras_ledger_factory_id_fkey"
+            columns: ["factory_id"]
+            isOneToOne: false
+            referencedRelation: "factory_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extras_ledger_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       factory_accounts: {
         Row: {
           created_at: string | null
@@ -2612,6 +2669,13 @@ export type Database = {
         | "cutting"
       blocker_impact: "low" | "medium" | "high" | "critical"
       blocker_status: "open" | "in_progress" | "resolved"
+      extras_transaction_type:
+        | "sold"
+        | "transferred_to_stock"
+        | "replacement_shipment"
+        | "scrapped"
+        | "donated"
+        | "adjustment"
       finishing_hour_slot:
         | "08-09"
         | "09-10"
@@ -2776,6 +2840,14 @@ export const Constants = {
       ],
       blocker_impact: ["low", "medium", "high", "critical"],
       blocker_status: ["open", "in_progress", "resolved"],
+      extras_transaction_type: [
+        "sold",
+        "transferred_to_stock",
+        "replacement_shipment",
+        "scrapped",
+        "donated",
+        "adjustment",
+      ],
       finishing_hour_slot: [
         "08-09",
         "09-10",
