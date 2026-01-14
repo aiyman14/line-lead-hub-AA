@@ -15,9 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ClipboardList, Search, Calendar, Package, TrendingUp } from "lucide-react";
+import { Loader2, ClipboardList, Search, Calendar, Package, TrendingUp, Archive } from "lucide-react";
 import { OutputExtrasCard, calculateOutputExtras, getProductionStatus, getStatusBadge, type OutputExtrasData } from "@/components/OutputExtrasCard";
 import { ExtrasLedgerModal } from "@/components/ExtrasLedgerModal";
+import { ExtrasOverviewModal } from "@/components/ExtrasOverviewModal";
 
 interface WorkOrder {
   id: string;
@@ -42,6 +43,7 @@ export default function WorkOrdersView() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
   const [showLedger, setShowLedger] = useState(false);
+  const [showExtrasOverview, setShowExtrasOverview] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -221,6 +223,14 @@ export default function WorkOrdersView() {
         </Card>
       </div>
 
+      {/* Extras Overview Button */}
+      <div className="flex gap-3">
+        <Button variant="outline" onClick={() => setShowExtrasOverview(true)} className="gap-2">
+          <Archive className="h-4 w-4" />
+          View All Leftovers
+        </Button>
+      </div>
+
       {/* Search */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -336,6 +346,12 @@ export default function WorkOrdersView() {
           onLedgerChange={fetchWorkOrders}
         />
       )}
+
+      {/* Extras Overview Modal */}
+      <ExtrasOverviewModal
+        open={showExtrasOverview}
+        onOpenChange={setShowExtrasOverview}
+      />
     </div>
   );
 }
