@@ -427,12 +427,12 @@ export default function FinishingDailyTarget() {
 
             <div className="space-y-2">
               <Label>PO Number (Optional)</Label>
-              <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
+              <Select value={selectedWorkOrderId || "none"} onValueChange={(val) => setSelectedWorkOrderId(val === "none" ? "" : val)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select PO (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific PO</SelectItem>
+                  <SelectItem value="none">No specific PO</SelectItem>
                   {filteredWorkOrders.map((wo) => (
                     <SelectItem key={wo.id} value={wo.id}>
                       {wo.po_number} - {wo.style}
