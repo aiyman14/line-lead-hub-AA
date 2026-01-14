@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, isToday, parseISO } from "date-fns";
 import { toast } from "sonner";
-import { Loader2, Download, RefreshCw, Scissors, Target, ClipboardCheck, Pencil } from "lucide-react";
+import { Loader2, Download, RefreshCw, Scissors, Target, ClipboardCheck, Pencil, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -65,6 +65,13 @@ interface CuttingActual {
   lay_capacity: number;
   cutting_capacity: number;
   under_qty: number | null;
+  leftover_recorded: boolean | null;
+  leftover_type: string | null;
+  leftover_unit: string | null;
+  leftover_quantity: number | null;
+  leftover_notes: string | null;
+  leftover_location: string | null;
+  leftover_photo_urls: string[] | null;
   lines?: { line_id: string; name: string | null };
   work_orders?: { po_number: string; buyer: string; style: string };
 }

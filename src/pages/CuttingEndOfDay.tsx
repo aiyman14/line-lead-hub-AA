@@ -4,12 +4,26 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Search, Scissors, ClipboardCheck } from "lucide-react";
+import { Loader2, Search, Scissors, ClipboardCheck, ChevronDown, ChevronRight, X, Upload, ImageIcon, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Command,
   CommandEmpty,
@@ -53,6 +67,13 @@ interface ExistingActual {
   lay_capacity: number;
   cutting_capacity: number;
   under_qty: number | null;
+  leftover_recorded: boolean | null;
+  leftover_type: string | null;
+  leftover_unit: string | null;
+  leftover_quantity: number | null;
+  leftover_notes: string | null;
+  leftover_location: string | null;
+  leftover_photo_urls: string[] | null;
 }
 
 export default function CuttingEndOfDay() {
@@ -92,6 +113,18 @@ export default function CuttingEndOfDay() {
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
   const [existingActual, setExistingActual] = useState<ExistingActual | null>(null);
+
+  // Left Over / Fabric Saved section
+  const [leftoverOpen, setLeftoverOpen] = useState(false);
+  const [leftoverRecorded, setLeftoverRecorded] = useState(false);
+  const [leftoverType, setLeftoverType] = useState("");
+  const [leftoverUnit, setLeftoverUnit] = useState("");
+  const [leftoverQuantity, setLeftoverQuantity] = useState("");
+  const [leftoverNotes, setLeftoverNotes] = useState("");
+  const [leftoverLocation, setLeftoverLocation] = useState("");
+  const [leftoverPhotos, setLeftoverPhotos] = useState<File[]>([]);
+  const [leftoverPhotoUrls, setLeftoverPhotoUrls] = useState<string[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -174,7 +207,7 @@ export default function CuttingEndOfDay() {
       // Check for today's actual
       const { data: actualData, error } = await supabase
         .from("cutting_actuals")
-        .select("id, day_cutting, day_input, total_cutting, total_input, balance, man_power, marker_capacity, lay_capacity, cutting_capacity, under_qty")
+        .select("id, day_cutting, day_input, total_cutting, total_input, balance, man_power, marker_capacity, lay_capacity, cutting_capacity, under_qty, leftover_recorded, leftover_type, leftover_unit, leftover_quantity, leftover_notes, leftover_location, leftover_photo_urls")
         .eq("factory_id", profile.factory_id)
         .eq("line_id", selectedLine.id)
         .eq("work_order_id", selectedWorkOrder.id)
@@ -185,7 +218,7 @@ export default function CuttingEndOfDay() {
 
       if (actualData) {
         setIsEditing(true);
-        setExistingActual(actualData);
+        setExistingActual(actualData as ExistingActual);
         setDayCutting(String(actualData.day_cutting));
         setDayInput(String(actualData.day_input));
         setManPower(String(actualData.man_power || 0));
@@ -193,6 +226,17 @@ export default function CuttingEndOfDay() {
         setLayCapacity(String(actualData.lay_capacity || 0));
         setCuttingCapacity(String(actualData.cutting_capacity || 0));
         setUnderQty(String(actualData.under_qty || 0));
+        // Load leftover data if it exists
+        if (actualData.leftover_recorded) {
+          setLeftoverOpen(true);
+          setLeftoverRecorded(true);
+          setLeftoverType(actualData.leftover_type || "");
+          setLeftoverUnit(actualData.leftover_unit || "");
+          setLeftoverQuantity(actualData.leftover_quantity ? String(actualData.leftover_quantity) : "");
+          setLeftoverNotes(actualData.leftover_notes || "");
+          setLeftoverLocation(actualData.leftover_location || "");
+          setLeftoverPhotoUrls(actualData.leftover_photo_urls || []);
+        }
       } else {
         setIsEditing(false);
         setExistingActual(null);
@@ -205,6 +249,16 @@ export default function CuttingEndOfDay() {
           setCuttingCapacity("");
           setUnderQty("0");
         }
+        // Reset leftover state
+        setLeftoverOpen(false);
+        setLeftoverRecorded(false);
+        setLeftoverType("");
+        setLeftoverUnit("");
+        setLeftoverQuantity("");
+        setLeftoverNotes("");
+        setLeftoverLocation("");
+        setLeftoverPhotos([]);
+        setLeftoverPhotoUrls([]);
       }
     } catch (error) {
       console.error("Error checking existing data:", error);
@@ -260,8 +314,63 @@ export default function CuttingEndOfDay() {
     if (!layCapacity || parseInt(layCapacity) < 0) newErrors.layCapacity = "Lay Capacity is required";
     if (!cuttingCapacity || parseInt(cuttingCapacity) < 0) newErrors.cuttingCapacity = "Cutting Capacity is required";
 
+    // Leftover validation: if leftover is recorded, unit and quantity are required
+    if (leftoverRecorded) {
+      if (!leftoverUnit) newErrors.leftoverUnit = "Unit is required when recording leftover";
+      if (!leftoverQuantity || parseFloat(leftoverQuantity) < 0) newErrors.leftoverQuantity = "Quantity is required when recording leftover";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  }
+
+  async function uploadLeftoverPhotos(): Promise<string[]> {
+    if (leftoverPhotos.length === 0) return leftoverPhotoUrls;
+
+    const uploadedUrls: string[] = [...leftoverPhotoUrls];
+    
+    for (const file of leftoverPhotos) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${profile!.factory_id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      
+      const { data, error } = await supabase.storage
+        .from('cutting-leftover-photos')
+        .upload(fileName, file);
+
+      if (error) {
+        console.error('Error uploading photo:', error);
+        throw new Error('Failed to upload photo');
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('cutting-leftover-photos')
+        .getPublicUrl(data.path);
+
+      uploadedUrls.push(urlData.publicUrl);
+    }
+
+    return uploadedUrls;
+  }
+
+  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+
+    const totalPhotos = leftoverPhotos.length + leftoverPhotoUrls.length + files.length;
+    if (totalPhotos > 3) {
+      toast.error("Maximum 3 photos allowed");
+      return;
+    }
+
+    setLeftoverPhotos(prev => [...prev, ...Array.from(files)]);
+  }
+
+  function removePhoto(index: number, isExisting: boolean) {
+    if (isExisting) {
+      setLeftoverPhotoUrls(prev => prev.filter((_, i) => i !== index));
+    } else {
+      setLeftoverPhotos(prev => prev.filter((_, i) => i !== index));
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -292,6 +401,21 @@ export default function CuttingEndOfDay() {
         isLate = now > cutoffTime;
       }
 
+      // Upload leftover photos if any
+      let finalPhotoUrls: string[] = [];
+      if (leftoverRecorded && (leftoverPhotos.length > 0 || leftoverPhotoUrls.length > 0)) {
+        setUploadingPhotos(true);
+        try {
+          finalPhotoUrls = await uploadLeftoverPhotos();
+        } catch (error) {
+          toast.error("Failed to upload photos");
+          setUploadingPhotos(false);
+          setSubmitting(false);
+          return;
+        }
+        setUploadingPhotos(false);
+      }
+
       const actualData = {
         factory_id: profile.factory_id,
         production_date: today,
@@ -316,6 +440,14 @@ export default function CuttingEndOfDay() {
         under_qty: parseInt(underQty) || 0,
         is_late: isLate,
         transfer_to_line_id: selectedLine.id,
+        // Leftover fields
+        leftover_recorded: leftoverRecorded,
+        leftover_type: leftoverRecorded ? leftoverType || null : null,
+        leftover_unit: leftoverRecorded ? leftoverUnit || null : null,
+        leftover_quantity: leftoverRecorded && leftoverQuantity ? parseFloat(leftoverQuantity) : null,
+        leftover_notes: leftoverRecorded ? leftoverNotes || null : null,
+        leftover_location: leftoverRecorded ? leftoverLocation || null : null,
+        leftover_photo_urls: leftoverRecorded && finalPhotoUrls.length > 0 ? finalPhotoUrls : null,
       };
 
       if (isEditing && existingActual) {
@@ -654,17 +786,180 @@ export default function CuttingEndOfDay() {
           </Card>
         )}
 
+        {/* Left Over / Fabric Saved Section */}
+        <Card>
+          <Collapsible open={leftoverOpen} onOpenChange={setLeftoverOpen}>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="pb-3 cursor-pointer hover:bg-muted/50 transition-colors rounded-t-lg">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Package className="h-4 w-4" />
+                    Add Left Over / Fabric Saved
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    {leftoverRecorded && (
+                      <Badge variant="secondary" className="text-xs">
+                        Recorded
+                      </Badge>
+                    )}
+                    {leftoverOpen ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="space-y-4 pt-0">
+                {/* Left Over Recorded Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <div className="space-y-0.5">
+                    <Label>Left Over Recorded?</Label>
+                    <p className="text-xs text-muted-foreground">Enable to record leftover fabric</p>
+                  </div>
+                  <Switch
+                    checked={leftoverRecorded}
+                    onCheckedChange={setLeftoverRecorded}
+                  />
+                </div>
+
+                {leftoverRecorded && (
+                  <>
+                    {/* Left Over Type */}
+                    <div className="space-y-2">
+                      <Label>Left Over Type *</Label>
+                      <Select value={leftoverType} onValueChange={setLeftoverType}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Left Over Fabric">Left Over Fabric</SelectItem>
+                          <SelectItem value="Saved Fabric">Saved Fabric</SelectItem>
+                          <SelectItem value="Left Over Cutting Panels">Left Over Cutting Panels</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Unit and Quantity */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Unit *</Label>
+                        <Select value={leftoverUnit} onValueChange={setLeftoverUnit}>
+                          <SelectTrigger className={errors.leftoverUnit ? "border-destructive" : ""}>
+                            <SelectValue placeholder="Select unit..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="kg">kg</SelectItem>
+                            <SelectItem value="meter">meter</SelectItem>
+                            <SelectItem value="yard">yard</SelectItem>
+                            <SelectItem value="roll">roll</SelectItem>
+                            <SelectItem value="pcs">pcs</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {errors.leftoverUnit && <p className="text-sm text-destructive">{errors.leftoverUnit}</p>}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Quantity *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={leftoverQuantity}
+                          onChange={(e) => setLeftoverQuantity(e.target.value)}
+                          placeholder="0.00"
+                          className={errors.leftoverQuantity ? "border-destructive" : ""}
+                        />
+                        {errors.leftoverQuantity && <p className="text-sm text-destructive">{errors.leftoverQuantity}</p>}
+                      </div>
+                    </div>
+
+                    {/* Stored Location */}
+                    <div className="space-y-2">
+                      <Label>Stored Location (optional)</Label>
+                      <Input
+                        value={leftoverLocation}
+                        onChange={(e) => setLeftoverLocation(e.target.value)}
+                        placeholder="e.g., Fabric store rack A3"
+                      />
+                    </div>
+
+                    {/* Reason / Notes */}
+                    <div className="space-y-2">
+                      <Label>Reason / Notes (optional)</Label>
+                      <Textarea
+                        value={leftoverNotes}
+                        onChange={(e) => setLeftoverNotes(e.target.value)}
+                        placeholder="Additional notes..."
+                        rows={2}
+                      />
+                    </div>
+
+                    {/* Photo Upload */}
+                    <div className="space-y-2">
+                      <Label>Photos (optional, max 3)</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {/* Existing photos */}
+                        {leftoverPhotoUrls.map((url, index) => (
+                          <div key={`existing-${index}`} className="relative w-20 h-20 rounded-lg overflow-hidden border">
+                            <img src={url} alt={`Leftover ${index + 1}`} className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(index, true)}
+                              className="absolute top-1 right-1 p-1 rounded-full bg-destructive text-destructive-foreground"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        {/* New photos */}
+                        {leftoverPhotos.map((file, index) => (
+                          <div key={`new-${index}`} className="relative w-20 h-20 rounded-lg overflow-hidden border">
+                            <img src={URL.createObjectURL(file)} alt={`New ${index + 1}`} className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(index, false)}
+                              className="absolute top-1 right-1 p-1 rounded-full bg-destructive text-destructive-foreground"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        {/* Upload button */}
+                        {(leftoverPhotos.length + leftoverPhotoUrls.length) < 3 && (
+                          <label className="w-20 h-20 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors">
+                            <Upload className="h-5 w-5 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground mt-1">Add</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handlePhotoSelect}
+                              className="hidden"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
         {/* Submit Button */}
         <Button 
           type="submit" 
           className="w-full" 
           size="lg"
-          disabled={submitting}
+          disabled={submitting || uploadingPhotos}
         >
-          {submitting ? (
+          {submitting || uploadingPhotos ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Submitting...
+              {uploadingPhotos ? "Uploading photos..." : "Submitting..."}
             </>
           ) : isEditing ? (
             "Update End-of-Day Actuals"

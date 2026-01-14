@@ -4,8 +4,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Scissors } from "lucide-react";
+import { Scissors, Package, ImageIcon } from "lucide-react";
 import { format } from "date-fns";
+import { Badge } from "@/components/ui/badge";
 
 interface CuttingDetailModalProps {
   cutting: {
@@ -28,6 +29,13 @@ interface CuttingDetailModalProps {
     total_input: number | null;
     balance: number | null;
     submitted_at: string | null;
+    leftover_recorded?: boolean | null;
+    leftover_type?: string | null;
+    leftover_unit?: string | null;
+    leftover_quantity?: number | null;
+    leftover_notes?: string | null;
+    leftover_location?: string | null;
+    leftover_photo_urls?: string[] | null;
   } | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -149,6 +157,58 @@ export function CuttingDetailModal({ cutting, open, onOpenChange }: CuttingDetai
               <p className="text-xl font-bold">{cutting.balance?.toLocaleString() || "-"}</p>
             </div>
           </div>
+
+          {/* Left Over / Fabric Saved Section */}
+          {cutting.leftover_recorded && (
+            <div className="border-t pt-4">
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Left Over / Fabric Saved
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Type</p>
+                  <p className="font-semibold">{cutting.leftover_type || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Quantity</p>
+                  <p className="font-semibold">
+                    {cutting.leftover_quantity?.toLocaleString() || "-"} {cutting.leftover_unit || ""}
+                  </p>
+                </div>
+                {cutting.leftover_location && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Stored Location</p>
+                    <p className="font-semibold">{cutting.leftover_location}</p>
+                  </div>
+                )}
+                {cutting.leftover_notes && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Notes</p>
+                    <p className="font-semibold text-sm">{cutting.leftover_notes}</p>
+                  </div>
+                )}
+              </div>
+              {cutting.leftover_photo_urls && cutting.leftover_photo_urls.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Photos</p>
+                  <div className="flex flex-wrap gap-2">
+                    {cutting.leftover_photo_urls.map((url, index) => (
+                      <a
+                        key={index}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-16 h-16 rounded-lg overflow-hidden border hover:opacity-80 transition-opacity"
+                      >
+                        <img src={url} alt={`Leftover ${index + 1}`} className="w-full h-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Submitted Info */}
           <p className="text-xs text-muted-foreground">
