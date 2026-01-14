@@ -120,14 +120,6 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Used by your notarize step (below)
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Used for signing by many tooling setups (keep it here for future signing steps/plugins)
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
       # ---------- NOTARIZE (DMG) ----------
       - name: Notarize + staple macOS DMG
@@ -140,9 +132,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
+          DMG=$(find "src-tauri/target/universal-apple-darwin/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1)
           if [ -z "${DMG:-}" ]; then
-            DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
+            DMG=$(find "src-tauri/target/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1)
           fi
 
           if [ -z "${DMG:-}" ] || [ ! -f "$DMG" ]; then
@@ -150,11 +142,9 @@ jobs:
             exit 1
           fi
 
-          echo "Submitting for notarization: $DMG"
-
           retry() {
             local n=0
-            local max=5
+            local max=6
             local delay=20
             until "$@"; do
               n=$((n+1))
@@ -168,49 +158,89 @@ jobs:
             done
           }
 
-          SUBMIT_JSON=$(retry xcrun notarytool submit "$DMG" \
+          echo "Submitting for notarization: $DMG"
+
+          SUBMIT_JSON="$(retry xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --output-format json)
+            --output-format json)"
 
           echo "Submit output:"
           echo "$SUBMIT_JSON"
 
-          UUID=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("id",""))' "$SUBMIT_JSON")
+          UUID="$(python3 - <<'PY'
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get("id",""))
+PY
+<<< "$SUBMIT_JSON")"
+
           if [ -z "${UUID:-}" ]; then
-            echo "Failed to extract notarization submission id from JSON." >&2
+            echo "Failed to extract notarization submission UUID." >&2
             exit 1
           fi
 
           echo "Notary submission id: $UUID"
 
-          # Poll status (prevents an infinite-looking wait loop)
-          # Tries up to 80 times with 30s sleep = ~40 minutes max.
-          for i in $(seq 1 80); do
-            INFO_JSON=$(retry xcrun notarytool info "$UUID" \
+          # ---- Wait until status is Accepted/Invalid ----
+          MAX_WAIT_SECONDS=7200   # 2 hours max
+          SLEEP_SECONDS=45
+          elapsed=0
+
+          while [ "$elapsed" -lt "$MAX_WAIT_SECONDS" ]; do
+            INFO_JSON="$(retry xcrun notarytool info "$UUID" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
               --team-id "$APPLE_TEAM_ID" \
-              --output-format json || true)
+              --output-format json || true)"
 
-            STATUS=$(python3 -c 'import json,sys; print((json.loads(sys.argv[1]).get("status","") if sys.argv[1] else ""))' "${INFO_JSON:-}")
-            echo "Notary status ($i/80): ${STATUS:-unknown}"
+            STATUS="$(python3 - <<'PY'
+import json, sys
+try:
+  data = json.loads(sys.stdin.read())
+  print((data.get("status") or "").strip())
+except Exception:
+  print("")
+PY
+<<< "${INFO_JSON:-}")"
+
+            echo "Notary status: ${STATUS:-unknown}"
 
             if [ "$STATUS" = "Accepted" ]; then
               break
             fi
+
             if [ "$STATUS" = "Invalid" ] || [ "$STATUS" = "Rejected" ]; then
-              echo "Notarization failed. Info JSON:"
-              echo "${INFO_JSON:-}"
+              echo "Notarization failed. Fetching log..." >&2
+              xcrun notarytool log "$UUID" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" || true
               exit 1
             fi
 
-            sleep 30
+            sleep "$SLEEP_SECONDS"
+            elapsed=$((elapsed+SLEEP_SECONDS))
           done
+
+          if [ "$elapsed" -ge "$MAX_WAIT_SECONDS" ]; then
+            echo "Notarization still not finished after ${MAX_WAIT_SECONDS}s. Fetching log and failing." >&2
+            xcrun notarytool log "$UUID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" || true
+            exit 1
+          fi
+
+          echo "Notarization Accepted. Waiting for ticket propagation..."
+          sleep 120
 
           echo "Stapling notarization ticket..."
           retry xcrun stapler staple "$DMG"
+
+          echo "Stapler validate..."
+          xcrun stapler validate "$DMG" || true
 
           echo "Gatekeeper verification:"
           spctl -a -vv "$DMG" || true
@@ -221,15 +251,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1)
-          if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
+          if [ -n "${APPIMAGE:-}" ] && [ -f "$APPIMAGE" ]; then
             cp "$APPIMAGE" artifacts/
             if [ -f "$APPIMAGE.sig" ]; then
               cat "$APPIMAGE.sig" > artifacts/linux-x86_64.sig
             fi
           fi
-
           find src-tauri/target/release/bundle -name "*.deb" -exec cp {} artifacts/ \; || true
           find src-tauri/target/release/bundle -name "*.rpm" -exec cp {} artifacts/ \; || true
 
@@ -238,15 +266,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-
           MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1)
-          if [ -n "$MSI" ] && [ -f "$MSI" ]; then
+          if [ -n "${MSI:-}" ] && [ -f "$MSI" ]; then
             cp "$MSI" artifacts/
             if [ -f "$MSI.sig" ]; then
               cat "$MSI.sig" > artifacts/windows-x86_64.sig
             fi
           fi
-
           find src-tauri/target/release/bundle -name "*.exe" -exec cp {} artifacts/ \; || true
 
       - name: Collect artifact info (macOS)
@@ -255,13 +281,12 @@ jobs:
         run: |
           mkdir -p artifacts
 
-          # Updater bundle for macOS
           MACOS_UPDATE=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
-          if [ -z "$MACOS_UPDATE" ]; then
+          if [ -z "${MACOS_UPDATE:-}" ]; then
             MACOS_UPDATE=$(find src-tauri/target/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
           fi
 
-          if [ -n "$MACOS_UPDATE" ] && [ -f "$MACOS_UPDATE" ]; then
+          if [ -n "${MACOS_UPDATE:-}" ] && [ -f "$MACOS_UPDATE" ]; then
             cp "$MACOS_UPDATE" artifacts/
             if [ -f "$MACOS_UPDATE.sig" ]; then
               cat "$MACOS_UPDATE.sig" > artifacts/darwin-aarch64.sig
@@ -269,12 +294,11 @@ jobs:
             fi
           fi
 
-          # DMG (manual install)
           DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
-          if [ -z "$DMG" ]; then
+          if [ -z "${DMG:-}" ]; then
             DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
           fi
-          if [ -n "$DMG" ] && [ -f "$DMG" ]; then
+          if [ -n "${DMG:-}" ] && [ -f "$DMG" ]; then
             cp "$DMG" artifacts/
           fi
 
@@ -351,23 +375,18 @@ jobs:
 
           python3 - <<'PY' > dist/asset_urls.env
           import json
-
           with open('dist/release.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
-
           assets = data.get('assets', []) or []
-
           def find_url(endswith: str) -> str:
             for a in assets:
               name = a.get('name', '') or ''
               if name.endswith(endswith):
                 return a.get('browser_download_url', '') or ''
             return ''
-
           linux_url = find_url('.AppImage')
           windows_url = find_url('.msi')
           macos_url = find_url('.app.tar.gz')
-
           print(f"LINUX_URL={linux_url}")
           print(f"WINDOWS_URL={windows_url}")
           print(f"MACOS_URL={macos_url}")
