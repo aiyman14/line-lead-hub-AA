@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { format, subDays } from "date-fns";
+import { format, subDays, isToday, parseISO } from "date-fns";
 import { toast } from "sonner";
-import { Loader2, Download, RefreshCw, Scissors, X } from "lucide-react";
+import { Loader2, Download, RefreshCw, Scissors, X, Pencil, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { EditCuttingActualModal } from "@/components/EditCuttingActualModal";
+import { useEditPermission } from "@/hooks/useEditPermission";
 
 interface CuttingSubmission {
   id: string;
@@ -64,10 +67,14 @@ interface Line {
 
 export default function CuttingAllSubmissions() {
   const { profile } = useAuth();
+  const { canEditSubmission, getTimeUntilCutoff } = useEditPermission();
   const [loading, setLoading] = useState(true);
   const [submissions, setSubmissions] = useState<CuttingSubmission[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<CuttingSubmission | null>(null);
+  const [editingSubmission, setEditingSubmission] = useState<CuttingSubmission | null>(null);
+  
+  const timeUntilCutoff = getTimeUntilCutoff();
 
   // Filters
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
@@ -359,44 +366,83 @@ export default function CuttingAllSubmissions() {
                   <TableHead className="text-right">TOTAL CUTTING</TableHead>
                   <TableHead className="text-right">TOTAL INPUT</TableHead>
                   <TableHead className="text-right">BALANCE</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredSubmissions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       No submissions found for selected filters
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredSubmissions.map((s) => (
-                    <TableRow 
-                      key={s.id} 
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedSubmission(s)}
-                    >
-                      <TableCell className="font-medium whitespace-nowrap">
-                        {format(new Date(s.production_date), "MMM d, yyyy")}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{s.lines?.name || s.lines?.line_id || "—"}</Badge>
-                      </TableCell>
-                      <TableCell>{s.work_orders?.po_number || s.po_no || "—"}</TableCell>
-                      <TableCell className="text-right">{s.order_qty?.toLocaleString() || "—"}</TableCell>
-                      <TableCell className="text-right font-medium text-primary">{s.cutting_capacity}</TableCell>
-                      <TableCell className="text-right font-medium">{s.total_cutting?.toLocaleString() || "—"}</TableCell>
-                      <TableCell className="text-right font-medium text-success">{s.total_input?.toLocaleString() || "—"}</TableCell>
-                      <TableCell className={`text-right font-medium ${s.balance && s.balance < 0 ? "text-destructive" : ""}`}>
-                        {s.balance?.toLocaleString() || "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredSubmissions.map((s) => {
+                    const editCheck = canEditSubmission(s.production_date);
+                    return (
+                      <TableRow 
+                        key={s.id} 
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedSubmission(s)}
+                      >
+                        <TableCell className="font-medium whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            {format(new Date(s.production_date), "MMM d, yyyy")}
+                            {isToday(parseISO(s.production_date)) && (
+                              <Badge variant="secondary" className="text-xs">Today</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{s.lines?.name || s.lines?.line_id || "—"}</Badge>
+                        </TableCell>
+                        <TableCell>{s.work_orders?.po_number || s.po_no || "—"}</TableCell>
+                        <TableCell className="text-right">{s.order_qty?.toLocaleString() || "—"}</TableCell>
+                        <TableCell className="text-right font-medium text-primary">{s.cutting_capacity}</TableCell>
+                        <TableCell className="text-right font-medium">{s.total_cutting?.toLocaleString() || "—"}</TableCell>
+                        <TableCell className="text-right font-medium text-success">{s.total_input?.toLocaleString() || "—"}</TableCell>
+                        <TableCell className={`text-right font-medium ${s.balance && s.balance < 0 ? "text-destructive" : ""}`}>
+                          {s.balance?.toLocaleString() || "—"}
+                        </TableCell>
+                        <TableCell>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={!editCheck.canEdit}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingSubmission(s);
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {editCheck.canEdit ? "Edit submission" : editCheck.reason}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit Modal */}
+      <EditCuttingActualModal
+        submission={editingSubmission}
+        open={!!editingSubmission}
+        onOpenChange={(open) => !open && setEditingSubmission(null)}
+        onSaved={fetchData}
+      />
 
       {/* Detail Modal */}
       <Dialog open={!!selectedSubmission} onOpenChange={() => setSelectedSubmission(null)}>

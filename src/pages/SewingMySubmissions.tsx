@@ -23,10 +23,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
-import { FileText, Target, TrendingUp, Search, Users, Crosshair, ClipboardCheck } from "lucide-react";
+import { FileText, Target, TrendingUp, Search, Users, Crosshair, ClipboardCheck, Pencil, Clock } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TargetDetailModal } from "@/components/TargetDetailModal";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
+import { EditSewingTargetModal } from "@/components/EditSewingTargetModal";
+import { EditSewingActualModal } from "@/components/EditSewingActualModal";
+import { useEditPermission } from "@/hooks/useEditPermission";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SewingTarget {
   id: string;
@@ -77,6 +81,7 @@ interface SewingActual {
 export default function SewingMySubmissions() {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
+  const { canEditSubmission, getTimeUntilCutoff } = useEditPermission();
   const [loading, setLoading] = useState(true);
   const [targets, setTargets] = useState<SewingTarget[]>([]);
   const [actuals, setActuals] = useState<SewingActual[]>([]);
@@ -85,6 +90,10 @@ export default function SewingMySubmissions() {
   const [activeTab, setActiveTab] = useState<string>("targets");
   const [selectedTarget, setSelectedTarget] = useState<SewingTarget | null>(null);
   const [selectedActual, setSelectedActual] = useState<SewingActual | null>(null);
+  const [editingTarget, setEditingTarget] = useState<SewingTarget | null>(null);
+  const [editingActual, setEditingActual] = useState<SewingActual | null>(null);
+  
+  const timeUntilCutoff = getTimeUntilCutoff();
 
   useEffect(() => {
     if (profile?.factory_id && user) {
@@ -237,9 +246,17 @@ export default function SewingMySubmissions() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center gap-3">
-        <FileText className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold">My Sewing Submissions</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <FileText className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-bold">My Sewing Submissions</h1>
+        </div>
+        {timeUntilCutoff && (
+          <Badge variant="outline" className="gap-1">
+            <Clock className="h-3 w-3" />
+            Edit window: {timeUntilCutoff}
+          </Badge>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -365,12 +382,14 @@ export default function SewingMySubmissions() {
                       <TableHead className="text-right">Target/Hr</TableHead>
                       <TableHead className="text-right">Manpower</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="w-[60px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredTargets.map((target) => {
                       const date = parseISO(target.production_date);
                       const isTodayItem = isToday(date);
+                      const editCheck = canEditSubmission(target.production_date);
 
                       return (
                         <TableRow 
@@ -422,6 +441,28 @@ export default function SewingMySubmissions() {
                               {target.is_late ? "Late" : "On Time"}
                             </Badge>
                           </TableCell>
+                          <TableCell>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={!editCheck.canEdit}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingTarget(target);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {editCheck.canEdit ? "Edit submission" : editCheck.reason}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -460,12 +501,14 @@ export default function SewingMySubmissions() {
                       <TableHead className="text-right">Reject</TableHead>
                       <TableHead className="text-right">Rework</TableHead>
                       <TableHead className="text-right">Cumulative</TableHead>
+                      <TableHead className="w-[60px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredActuals.map((actual) => {
                       const date = parseISO(actual.production_date);
                       const isTodayItem = isToday(date);
+                      const editCheck = canEditSubmission(actual.production_date);
 
                       return (
                         <TableRow 
@@ -514,6 +557,28 @@ export default function SewingMySubmissions() {
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {actual.cumulative_good_total.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={!editCheck.canEdit}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingActual(actual);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {editCheck.canEdit ? "Edit submission" : editCheck.reason}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </TableCell>
                         </TableRow>
                       );
@@ -574,6 +639,22 @@ export default function SewingMySubmissions() {
         } : null}
         open={!!selectedActual}
         onOpenChange={(open) => !open && setSelectedActual(null)}
+      />
+
+      {/* Edit Target Modal */}
+      <EditSewingTargetModal
+        target={editingTarget}
+        open={!!editingTarget}
+        onOpenChange={(open) => !open && setEditingTarget(null)}
+        onSaved={fetchMySubmissions}
+      />
+
+      {/* Edit Actual Modal */}
+      <EditSewingActualModal
+        submission={editingActual}
+        open={!!editingActual}
+        onOpenChange={(open) => !open && setEditingActual(null)}
+        onSaved={fetchMySubmissions}
       />
     </div>
   );
