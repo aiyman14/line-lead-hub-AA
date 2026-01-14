@@ -971,7 +971,7 @@ export default function Dashboard() {
                 <div className="text-center py-8 text-muted-foreground">
                   <Archive className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No bin cards found</p>
-                  <Link to="/storage/bin-card">
+                  <Link to="/storage">
                     <Button variant="link" size="sm" className="mt-2">
                       Create bin card
                     </Button>
