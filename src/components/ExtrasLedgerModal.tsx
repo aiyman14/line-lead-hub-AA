@@ -157,7 +157,13 @@ export function ExtrasLedgerModal({
     return TRANSACTION_TYPES.find(t => t.value === type) || TRANSACTION_TYPES[0];
   };
 
-  const totalConsumed = entries.reduce((sum, e) => sum + e.quantity, 0);
+  const totalStocked = entries
+    .filter(e => e.transaction_type === 'transferred_to_stock')
+    .reduce((sum, e) => sum + e.quantity, 0);
+
+  const totalConsumed = entries
+    .filter(e => e.transaction_type !== 'transferred_to_stock')
+    .reduce((sum, e) => sum + e.quantity, 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -171,10 +177,14 @@ export function ExtrasLedgerModal({
         </DialogHeader>
 
         {/* Summary */}
-        <div className="grid grid-cols-2 gap-3 p-3 bg-muted/50 rounded-lg">
+        <div className="grid grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
           <div>
             <p className="text-xs text-muted-foreground">Available</p>
             <p className="text-xl font-bold font-mono text-warning">{extrasAvailable.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Stocked</p>
+            <p className="text-xl font-bold font-mono text-primary">{totalStocked.toLocaleString()}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Consumed</p>
