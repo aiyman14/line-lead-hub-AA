@@ -100,7 +100,10 @@
     "storage": "স্টোরেজ",
     "binCardEntry": "বিন কার্ড এন্ট্রি",
     "allBinCards": "সব বিন কার্ড",
-    "cutting": "কাটিং"
+    "cutting": "কাটিং",
+    "cuttingMorningTargets": "কাটিং সকালের টার্গেট",
+    "cuttingEndOfDay": "কাটিং দিনের শেষ",
+    "cuttingSubmissions": "কাটিং জমাসমূহ"
   },
   "roles": {
     "worker": "ম্যানেজার",

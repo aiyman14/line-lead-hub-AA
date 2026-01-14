@@ -100,7 +100,10 @@
     "storage": "Storage",
     "binCardEntry": "Bin Card Entry",
     "allBinCards": "All Bin Cards",
-    "cutting": "Cutting"
+    "cutting": "Cutting",
+    "cuttingMorningTargets": "Cutting Morning Targets",
+    "cuttingEndOfDay": "Cutting End of Day",
+    "cuttingSubmissions": "Cutting Submissions"
   },
   "roles": {
     "worker": "Manager",
