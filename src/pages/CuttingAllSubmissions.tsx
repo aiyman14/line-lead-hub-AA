@@ -33,8 +33,13 @@ interface CuttingTarget {
   po_no: string | null;
   colour: string | null;
   order_qty: number | null;
-  cutting_capacity: number; // Day Cutting Target
-  lay_capacity: number; // Day Input Target
+  man_power: number;
+  marker_capacity: number;
+  lay_capacity: number;
+  cutting_capacity: number;
+  under_qty: number | null;
+  day_cutting: number;
+  day_input: number;
   lines?: { line_id: string; name: string | null };
   work_orders?: { po_number: string; buyer: string; style: string };
 }
@@ -55,6 +60,11 @@ interface CuttingActual {
   total_cutting: number | null;
   total_input: number | null;
   balance: number | null;
+  man_power: number;
+  marker_capacity: number;
+  lay_capacity: number;
+  cutting_capacity: number;
+  under_qty: number | null;
   lines?: { line_id: string; name: string | null };
   work_orders?: { po_number: string; buyer: string; style: string };
 }
@@ -385,13 +395,13 @@ export default function CuttingAllSubmissions() {
                         <span className="text-muted-foreground">PO:</span>
                         <span className="font-medium">{target.work_orders?.po_number || target.po_no || "—"}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Cutting Target:</span>
-                        <span className="font-bold text-primary">{target.cutting_capacity?.toLocaleString()}</span>
+                      <div className="flex justify-between border-t pt-2 mt-2">
+                        <span className="text-muted-foreground">Day Cutting:</span>
+                        <span className="font-bold text-primary">{target.day_cutting?.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Input Target:</span>
-                        <span className="font-bold text-success">{target.lay_capacity?.toLocaleString()}</span>
+                        <span className="text-muted-foreground">Day Input:</span>
+                        <span className="font-bold text-success">{target.day_input?.toLocaleString()}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -511,11 +521,11 @@ export default function CuttingAllSubmissions() {
             po_number: selectedActual.work_orders?.po_number || selectedActual.po_no,
             colour: selectedActual.colour,
             order_qty: selectedActual.order_qty,
-            man_power: null,
-            marker_capacity: null,
-            lay_capacity: null,
-            cutting_capacity: null,
-            under_qty: null,
+            man_power: selectedActual.man_power,
+            marker_capacity: selectedActual.marker_capacity,
+            lay_capacity: selectedActual.lay_capacity,
+            cutting_capacity: selectedActual.cutting_capacity,
+            under_qty: selectedActual.under_qty,
             day_cutting: selectedActual.day_cutting,
             total_cutting: selectedActual.total_cutting,
             day_input: selectedActual.day_input,
@@ -594,17 +604,44 @@ function CuttingTargetDetailModal({
               </div>
             </div>
 
-            {/* Target Values */}
+            {/* Target Capacities */}
             <div>
-              <h4 className="font-semibold text-sm mb-3">Target Values</h4>
+              <h4 className="font-semibold text-sm mb-3">Target Capacities</h4>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Man Power:</span>
+                  <span className="font-medium">{target.man_power?.toLocaleString() || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Marker Capacity:</span>
+                  <span className="font-medium">{target.marker_capacity?.toLocaleString() || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Lay Capacity:</span>
+                  <span className="font-medium">{target.lay_capacity?.toLocaleString() || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Cutting Capacity:</span>
+                  <span className="font-medium">{target.cutting_capacity?.toLocaleString() || 0}</span>
+                </div>
+                <div className="flex justify-between col-span-2">
+                  <span className="text-muted-foreground">Under Qty:</span>
+                  <span className="font-medium">{target.under_qty?.toLocaleString() || 0}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Target Daily Actuals */}
+            <div>
+              <h4 className="font-semibold text-sm mb-3">Target Daily Actuals</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-primary/10 rounded-lg p-4 text-center">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Day Cutting Target</p>
-                  <p className="text-2xl font-bold text-primary">{target.cutting_capacity?.toLocaleString() || 0}</p>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Day Cutting</p>
+                  <p className="text-2xl font-bold text-primary">{target.day_cutting?.toLocaleString() || 0}</p>
                 </div>
                 <div className="bg-success/10 rounded-lg p-4 text-center">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Day Input Target</p>
-                  <p className="text-2xl font-bold text-success">{target.lay_capacity?.toLocaleString() || 0}</p>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Day Input</p>
+                  <p className="text-2xl font-bold text-success">{target.day_input?.toLocaleString() || 0}</p>
                 </div>
               </div>
             </div>
