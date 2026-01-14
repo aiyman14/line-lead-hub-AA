@@ -258,9 +258,9 @@ export default function Dashboard() {
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
 
-      // Fetch sewing end of day (actuals)
+      // Fetch sewing end of day (actuals) - from sewing_actuals table
       const { data: sewingActualsData, count: sewingCount } = await supabase
-        .from('production_updates_sewing')
+        .from('sewing_actuals')
         .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
@@ -290,14 +290,13 @@ export default function Dashboard() {
         .order('updated_at', { ascending: false })
         .limit(20);
 
-      // Blocker counts
+      // Blocker counts from sewing_actuals
       const { count: sewingBlockersCount } = await supabase
-        .from('production_updates_sewing')
+        .from('sewing_actuals')
         .select('*', { count: 'exact', head: true })
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
-        .eq('has_blocker', true)
-        .neq('blocker_status', 'resolved');
+        .eq('has_blocker', true);
 
       // Note: Daily sheets don't have blockers - finishing blockers now only come from legacy data
       const finishingBlockersCount = 0;
@@ -360,12 +359,12 @@ export default function Dashboard() {
       }));
 
       // Format sewing end of day
-      // Filter out blocker-only submissions (output_qty = 0 with has_blocker = true)
+      // Filter out blocker-only submissions (good_today = 0 with has_blocker = true)
       // These are standalone blocker reports and should only appear in the Blockers section
       const formattedSewingEOD: EndOfDaySubmission[] = (sewingActualsData || [])
         .filter(u => {
           // Exclude blocker-only submissions (no actual production data)
-          const isBlockerOnly = u.output_qty === 0 && u.has_blocker === true;
+          const isBlockerOnly = u.good_today === 0 && u.has_blocker === true;
           return !isBlockerOnly;
         })
         .map(u => ({
@@ -374,25 +373,25 @@ export default function Dashboard() {
           line_uuid: u.line_id,
           line_id: u.lines?.line_id || 'Unknown',
           line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
-          output: u.output_qty,
-          submitted_at: u.submitted_at,
+          output: u.good_today,
+          submitted_at: u.submitted_at || '',
           production_date: u.production_date,
           has_blocker: u.has_blocker || false,
           blocker_description: u.blocker_description,
           blocker_impact: u.blocker_impact,
           blocker_owner: u.blocker_owner,
-          blocker_status: u.blocker_status,
+          blocker_status: null, // sewing_actuals doesn't have blocker_status
           po_number: u.work_orders?.po_number || null,
           buyer: u.work_orders?.buyer || null,
           style: u.work_orders?.style || null,
-          target_qty: u.target_qty,
-          manpower: u.manpower,
-          reject_qty: u.reject_qty,
-          rework_qty: u.rework_qty,
-          stage_progress: u.stage_progress,
-          ot_hours: u.ot_hours,
-          ot_manpower: u.ot_manpower,
-          notes: u.notes,
+          target_qty: null, // Not in sewing_actuals
+          manpower: u.manpower_actual,
+          reject_qty: u.reject_today,
+          rework_qty: u.rework_today,
+          stage_progress: u.actual_stage_progress,
+          ot_hours: u.ot_hours_actual,
+          ot_manpower: null, // Not in sewing_actuals
+          notes: u.remarks,
         }));
 
       // Format finishing daily sheets (new structure with hourly logs)
@@ -490,13 +489,12 @@ export default function Dashboard() {
         })
         .filter((b: any) => b.hasTodayTransactions); // Only show bin cards with today's transactions
 
-      // Fetch active blockers
+      // Fetch active blockers from sewing_actuals
       const { data: sewingBlockers } = await supabase
-        .from('production_updates_sewing')
+        .from('sewing_actuals')
         .select('id, blocker_description, blocker_impact, submitted_at, lines(line_id, name)')
         .eq('factory_id', profile.factory_id)
         .eq('has_blocker', true)
-        .neq('blocker_status', 'resolved')
         .order('submitted_at', { ascending: false })
         .limit(5);
 
@@ -511,12 +509,12 @@ export default function Dashboard() {
           description: u.blocker_description || 'No description',
           impact: u.blocker_impact || 'medium',
           line_name: u.lines?.name || u.lines?.line_id || 'Unknown',
-          created_at: u.submitted_at,
+          created_at: u.submitted_at || '',
         });
       });
 
-      // Calculate daily sewing output
-      const daySewingOutput = (sewingActualsData || []).reduce((sum: number, u: any) => sum + (u.output_qty || 0), 0);
+      // Calculate daily sewing output (using good_today from sewing_actuals)
+      const daySewingOutput = (sewingActualsData || []).reduce((sum: number, u: any) => sum + (u.good_today || 0), 0);
 
       // Calculate daily finishing output (total poly from hourly logs)
       const dayFinishingOutput = (finishingDailySheetsData || []).reduce((sum: number, sheet: any) => {
