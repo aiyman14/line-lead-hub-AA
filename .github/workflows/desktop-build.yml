@@ -13,7 +13,6 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -35,11 +34,28 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#desktop-v}"
-          export VERSION
           echo "Building desktop version: $VERSION"
 
-          python3 -c "import json,os; p='src-tauri/tauri.conf.json'; d=json.load(open(p,'r',encoding='utf-8')); d['version']=os.environ['VERSION']; open(p,'w',encoding='utf-8').write(json.dumps(d,indent=2)+'\n')"
-          python3 -c "import os,re,pathlib; v=os.environ['VERSION']; p=pathlib.Path('src-tauri/Cargo.toml'); t=p.read_text(encoding='utf-8'); t=re.sub(r'(?m)^version\\s*=\\s*\"[^\"]+\"\\s*$', f'version = \"{v}\"', t, count=1); p.write_text(t,encoding='utf-8')"
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+
+          version = os.environ.get("VERSION")
+          if not version:
+            raise SystemExit("VERSION env var not set")
+
+          conf_path = Path("src-tauri/tauri.conf.json")
+          conf = json.loads(conf_path.read_text(encoding="utf-8"))
+          conf["version"] = version
+          conf_path.write_text(json.dumps(conf, indent=2) + "\n", encoding="utf-8")
+
+          cargo_path = Path("src-tauri/Cargo.toml")
+          cargo_text = cargo_path.read_text(encoding="utf-8")
+          cargo_text = re.sub(r'(?m)^version\s*=\s*"[^"]+"\s*$', f'version = "{version}"', cargo_text, count=1)
+          cargo_path.write_text(cargo_text, encoding="utf-8")
+          PY
+        env:
+          VERSION: ${{ github.ref_name }}
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -97,7 +113,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Notarize + staple macOS DMG (best-effort staple)
+      - name: Notarize + staple macOS DMG
         if: matrix.os == 'macos-latest'
         shell: bash
         env:
@@ -108,9 +124,7 @@ jobs:
           set -euo pipefail
 
           retry() {
-            local n=0
-            local max=6
-            local delay=20
+            local n=0 max=5 delay=20
             until "$@"; do
               n=$((n+1))
               if [ "$n" -ge "$max" ]; then
@@ -127,70 +141,35 @@ jobs:
           if [ -z "${DMG:-}" ]; then
             DMG="$(find "src-tauri/target/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
           fi
-
           if [ -z "${DMG:-}" ] || [ ! -f "$DMG" ]; then
             echo "Could not find DMG to notarize" >&2
-            find src-tauri/target -maxdepth 10 -type f -name "*.dmg" -print || true
             exit 1
           fi
 
-          echo "Submitting for notarization: $DMG"
+          echo "Submitting for notarization (waits until complete): $DMG"
           SUBMIT_JSON="$(retry xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
+            --wait \
             --output-format json)"
 
           echo "Submit output:"
           echo "$SUBMIT_JSON"
 
-          UUID="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('id',''))" "$SUBMIT_JSON")"
+          UUID="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("id",""))' <<< "$SUBMIT_JSON")"
+          STATUS="$(python3 -c 'import json,sys; print((json.loads(sys.stdin.read()).get("status") or "").strip())' <<< "$SUBMIT_JSON")"
+
           if [ -z "${UUID:-}" ]; then
             echo "Failed to extract notarization submission UUID." >&2
             exit 1
           fi
+
           echo "Notary submission id: $UUID"
+          echo "Notary status: ${STATUS:-unknown}"
 
-          # Wait for Accepted/Invalid (hard cap 45 minutes)
-          MAX_WAIT_SECONDS=2700
-          SLEEP_SECONDS=45
-          elapsed=0
-          STATUS=""
-
-          while [ "$elapsed" -lt "$MAX_WAIT_SECONDS" ]; do
-            INFO_JSON="$(retry xcrun notarytool info "$UUID" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --output-format json || true)"
-
-            STATUS="$(python3 -c "import json,sys
-try:
-  d=json.loads(sys.argv[1]); print((d.get('status') or '').strip())
-except Exception:
-  print('')" "${INFO_JSON:-}")"
-
-            echo "Notary status: ${STATUS:-unknown}"
-
-            if [ "$STATUS" = "Accepted" ]; then
-              break
-            fi
-
-            if [ "$STATUS" = "Invalid" ] || [ "$STATUS" = "Rejected" ]; then
-              echo "Notarization failed. Fetching log..." >&2
-              xcrun notarytool log "$UUID" \
-                --apple-id "$APPLE_ID" \
-                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-                --team-id "$APPLE_TEAM_ID" || true
-              exit 1
-            fi
-
-            sleep "$SLEEP_SECONDS"
-            elapsed=$((elapsed+SLEEP_SECONDS))
-          done
-
-          if [ "$STATUS" != "Accepted" ]; then
-            echo "Notarization did not reach Accepted within time limit. Fetching log and failing." >&2
+          if [ "${STATUS:-}" != "Accepted" ]; then
+            echo "Notarization not accepted. Fetching log..." >&2
             xcrun notarytool log "$UUID" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
@@ -198,35 +177,33 @@ except Exception:
             exit 1
           fi
 
-          echo "Notarization Accepted."
-
-          # Ticket propagation: retry stapler up to ~30 minutes (this is the issue you keep hitting)
-          echo "Attempting stapling with extended propagation retries..."
-          STAPLE_OK=0
-          for i in $(seq 1 20); do
-            echo "Staple attempt $i/20..."
+          # Ticket propagation delay: stapler can fail with "Record not found" for a while.
+          echo "Stapling notarization ticket (may take several minutes to propagate)..."
+          for i in $(seq 1 40); do
             if xcrun stapler staple "$DMG"; then
-              STAPLE_OK=1
+              echo "Staple succeeded."
               break
             fi
-            sleep 90
+            echo "Staple failed (attempt $i/40). Waiting 30s then retry..."
+            sleep 30
+            if [ "$i" -eq 40 ]; then
+              echo "Staple never succeeded after retries." >&2
+              exit 1
+            fi
           done
 
-          if [ "$STAPLE_OK" -eq 1 ]; then
-            echo "Stapling succeeded."
-            xcrun stapler validate "$DMG" || true
-            spctl -a -vv "$DMG" || true
-          else
-            echo "WARNING: Stapling still failing after retries (ticket propagation/Apple CDN)."
-            echo "The DMG is notarized (Accepted), but not stapled. Workflow will continue so you still ship artifacts."
-          fi
+          echo "Stapler validate:"
+          xcrun stapler validate "$DMG" || true
+
+          echo "Gatekeeper verification:"
+          spctl -a -vv "$DMG" || true
 
       - name: Collect artifact info (Linux)
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         run: |
           mkdir -p artifacts
-          APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1 || true)
+          APPIMAGE="$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1 || true)"
           if [ -n "${APPIMAGE:-}" ] && [ -f "$APPIMAGE" ]; then
             cp "$APPIMAGE" artifacts/
             if [ -f "$APPIMAGE.sig" ]; then
@@ -241,7 +218,7 @@ except Exception:
         shell: bash
         run: |
           mkdir -p artifacts
-          MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1 || true)
+          MSI="$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1 || true)"
           if [ -n "${MSI:-}" ] && [ -f "$MSI" ]; then
             cp "$MSI" artifacts/
             if [ -f "$MSI.sig" ]; then
@@ -256,9 +233,9 @@ except Exception:
         run: |
           mkdir -p artifacts
 
-          MACOS_UPDATE=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
+          MACOS_UPDATE="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)"
           if [ -z "${MACOS_UPDATE:-}" ]; then
-            MACOS_UPDATE=$(find src-tauri/target/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
+            MACOS_UPDATE="$(find src-tauri/target/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)"
           fi
 
           if [ -n "${MACOS_UPDATE:-}" ] && [ -f "$MACOS_UPDATE" ]; then
@@ -269,9 +246,9 @@ except Exception:
             fi
           fi
 
-          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1 || true)
+          DMG="$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
           if [ -z "${DMG:-}" ]; then
-            DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1 || true)
+            DMG="$(find src-tauri/target/release/bundle/dmg -name "*.dmg" -type f 2>/dev/null | head -1 || true)"
           fi
           if [ -n "${DMG:-}" ] && [ -f "$DMG" ]; then
             cp "$DMG" artifacts/
@@ -308,6 +285,16 @@ except Exception:
         with:
           tag: ${{ github.ref_name }}
           name: Production Portal ${{ github.ref_name }}
+          body: |
+            ## Desktop installers for Production Portal
+
+            | Platform | Download |
+            |----------|----------|
+            | macOS (Universal) | `.dmg` file below |
+            | Windows | `.msi` file below |
+            | Linux | `.AppImage`, `.deb`, or `.rpm` files below |
+
+            The app will automatically check for updates.
           allowUpdates: true
           replacesArtifacts: true
           artifacts: |
@@ -330,7 +317,7 @@ except Exception:
           TAG="${{ github.ref_name }}"
           VERSION="${TAG#desktop-v}"
           REPO="WovenTexLTD/line-lead-hub"
-          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
           curl -sSL \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -338,24 +325,42 @@ except Exception:
             "https://api.github.com/repos/$REPO/releases/tags/$TAG" \
             > dist/release.json
 
-          LINUX_URL=$(jq -r '.assets[] | select(.name|endswith(".AppImage")) | .browser_download_url' dist/release.json | head -n1)
-          WINDOWS_URL=$(jq -r '.assets[] | select(.name|endswith(".msi")) | .browser_download_url' dist/release.json | head -n1)
-          MACOS_URL=$(jq -r '.assets[] | select(.name|endswith(".app.tar.gz")) | .browser_download_url' dist/release.json | head -n1)
+          python3 - <<'PY' > dist/asset_urls.env
+          import json
+          data = json.load(open("dist/release.json","r",encoding="utf-8"))
+          assets = data.get("assets") or []
 
-          [ -n "$LINUX_URL" ] || (echo "Missing Linux URL" >&2; exit 1)
-          [ -n "$WINDOWS_URL" ] || (echo "Missing Windows URL" >&2; exit 1)
-          [ -n "$MACOS_URL" ] || (echo "Missing macOS URL" >&2; exit 1)
+          def find_url(suffix):
+            for a in assets:
+              name = a.get("name","") or ""
+              if name.endswith(suffix):
+                return a.get("browser_download_url","") or ""
+            return ""
 
-          LINUX_SIG=$(tr -d '\n' < dist/linux-x86_64.sig)
-          WINDOWS_SIG=$(tr -d '\n' < dist/windows-x86_64.sig)
+          print("LINUX_URL=" + find_url(".AppImage"))
+          print("WINDOWS_URL=" + find_url(".msi"))
+          print("MACOS_URL=" + find_url(".app.tar.gz"))
+          PY
+
+          source dist/asset_urls.env
+
+          [ -n "${LINUX_URL:-}" ] || (echo "Missing Linux .AppImage URL" >&2; exit 1)
+          [ -n "${WINDOWS_URL:-}" ] || (echo "Missing Windows .msi URL" >&2; exit 1)
+          [ -n "${MACOS_URL:-}" ] || (echo "Missing macOS .app.tar.gz URL" >&2; exit 1)
+
+          [ -f dist/linux-x86_64.sig ] || (echo "Missing dist/linux-x86_64.sig" >&2; exit 1)
+          [ -f dist/windows-x86_64.sig ] || (echo "Missing dist/windows-x86_64.sig" >&2; exit 1)
+
+          LINUX_SIG="$(tr -d '\n' < dist/linux-x86_64.sig)"
+          WINDOWS_SIG="$(tr -d '\n' < dist/windows-x86_64.sig)"
 
           DARWIN_SIG=""
-          if [ -f "dist/darwin-aarch64.sig" ]; then
-            DARWIN_SIG=$(tr -d '\n' < dist/darwin-aarch64.sig)
-          elif [ -f "dist/darwin-x86_64.sig" ]; then
-            DARWIN_SIG=$(tr -d '\n' < dist/darwin-x86_64.sig)
+          if [ -f dist/darwin-aarch64.sig ]; then
+            DARWIN_SIG="$(tr -d '\n' < dist/darwin-aarch64.sig)"
+          elif [ -f dist/darwin-x86_64.sig ]; then
+            DARWIN_SIG="$(tr -d '\n' < dist/darwin-x86_64.sig)"
           fi
-          [ -n "$DARWIN_SIG" ] || (echo "Missing macOS sig" >&2; exit 1)
+          [ -n "$DARWIN_SIG" ] || (echo "Missing macOS signature" >&2; exit 1)
 
           cat > dist/latest.json <<EOF
           {
@@ -370,6 +375,8 @@ except Exception:
             }
           }
           EOF
+
+          cat dist/latest.json
 
       - name: Upload latest.json
         uses: ncipollo/release-action@v1
