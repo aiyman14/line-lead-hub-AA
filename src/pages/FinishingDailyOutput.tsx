@@ -18,9 +18,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
@@ -81,11 +78,9 @@ export default function FinishingDailyOutput() {
   const [lines, setLines] = useState<Line[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
 
-  // Form state
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // Form state - date is automatically set to today on submission
   const [selectedLineId, setSelectedLineId] = useState("");
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
-  const [shift, setShift] = useState("");
   const [remarks, setRemarks] = useState("");
 
   // Process category values
@@ -118,12 +113,12 @@ export default function FinishingDailyOutput() {
     }
   }, [profile?.factory_id]);
 
-  // Check for existing log and target when line/date/work order changes
+  // Check for existing log and target when line/work order changes
   useEffect(() => {
-    if (selectedLineId && selectedDate && profile?.factory_id) {
+    if (selectedLineId && selectedWorkOrderId && profile?.factory_id) {
       checkExistingLogs();
     }
-  }, [selectedLineId, selectedDate, selectedWorkOrderId, profile?.factory_id]);
+  }, [selectedLineId, selectedWorkOrderId, profile?.factory_id]);
 
   async function fetchFormData() {
     if (!profile?.factory_id) return;
@@ -163,35 +158,29 @@ export default function FinishingDailyOutput() {
   }
 
   async function checkExistingLogs() {
-    if (!profile?.factory_id || !selectedLineId) return;
+    if (!profile?.factory_id || !selectedLineId || !selectedWorkOrderId) return;
 
     try {
-      const dateStr = format(selectedDate, "yyyy-MM-dd");
+      const today = format(new Date(), "yyyy-MM-dd");
       
       // Build query for existing output and target
-      let outputQuery = supabase
+      const outputQuery = supabase
         .from("finishing_daily_logs")
         .select("*")
         .eq("factory_id", profile.factory_id)
-        .eq("production_date", dateStr)
+        .eq("production_date", today)
         .eq("line_id", selectedLineId)
+        .eq("work_order_id", selectedWorkOrderId)
         .eq("log_type", "OUTPUT");
 
-      let targetQuery = supabase
+      const targetQuery = supabase
         .from("finishing_daily_logs")
         .select("*")
         .eq("factory_id", profile.factory_id)
-        .eq("production_date", dateStr)
+        .eq("production_date", today)
         .eq("line_id", selectedLineId)
+        .eq("work_order_id", selectedWorkOrderId)
         .eq("log_type", "TARGET");
-
-      if (selectedWorkOrderId) {
-        outputQuery = outputQuery.eq("work_order_id", selectedWorkOrderId);
-        targetQuery = targetQuery.eq("work_order_id", selectedWorkOrderId);
-      } else {
-        outputQuery = outputQuery.is("work_order_id", null);
-        targetQuery = targetQuery.is("work_order_id", null);
-      }
 
       const [outputRes, targetRes] = await Promise.all([
         outputQuery.maybeSingle(),
@@ -211,7 +200,6 @@ export default function FinishingDailyOutput() {
       if (outputRes.data) {
         setExistingLog(outputRes.data);
         // Pre-fill form with existing data
-        setShift(outputRes.data.shift || "");
         setRemarks(outputRes.data.remarks || "");
         setProcessValues({
           thread_cutting: outputRes.data.thread_cutting?.toString() || "",
@@ -252,6 +240,7 @@ export default function FinishingDailyOutput() {
     const newErrors: Record<string, string> = {};
 
     if (!selectedLineId) newErrors.line = "Line is required";
+    if (!selectedWorkOrderId) newErrors.workOrder = "PO Number is required";
     
     // At least one process value should be entered
     const hasAnyValue = PROCESS_CATEGORIES.some(cat => {
@@ -283,13 +272,14 @@ export default function FinishingDailyOutput() {
     setSubmitting(true);
 
     try {
+      const today = format(new Date(), "yyyy-MM-dd");
       const logData = {
         factory_id: profile.factory_id,
-        production_date: format(selectedDate, "yyyy-MM-dd"),
+        production_date: today,
         line_id: selectedLineId,
-        work_order_id: selectedWorkOrderId || null,
+        work_order_id: selectedWorkOrderId,
         log_type: "OUTPUT" as const,
-        shift: shift || null,
+        shift: null,
         thread_cutting: processValues.thread_cutting ? parseInt(processValues.thread_cutting) : 0,
         inside_check: processValues.inside_check ? parseInt(processValues.inside_check) : 0,
         top_side_check: processValues.top_side_check ? parseInt(processValues.top_side_check) : 0,
@@ -417,59 +407,18 @@ export default function FinishingDailyOutput() {
       {isEditing && existingLog && (
         <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
           <p className="text-sm text-amber-800 dark:text-amber-200">
-            ✏️ Editing existing output for {format(selectedDate, "MMM dd, yyyy")}
+            ✏️ Editing existing output for today
           </p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Date & Line Selection */}
+        {/* Line & PO Selection */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Select Date & Line</CardTitle>
+            <CardTitle className="text-base">Select Line & PO</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Date *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !selectedDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {selectedDate ? format(selectedDate, "MMM dd, yyyy") : "Pick a date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={(date) => date && setSelectedDate(date)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Shift (Optional)</Label>
-                <Select value={shift} onValueChange={setShift}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select shift" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="A">Shift A (Day)</SelectItem>
-                    <SelectItem value="B">Shift B (Night)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
             <div className="space-y-2">
               <Label>Line No. *</Label>
               <Select value={selectedLineId} onValueChange={setSelectedLineId}>
@@ -488,13 +437,12 @@ export default function FinishingDailyOutput() {
             </div>
 
             <div className="space-y-2">
-              <Label>PO Number (Optional)</Label>
-              <Select value={selectedWorkOrderId || "none"} onValueChange={(val) => setSelectedWorkOrderId(val === "none" ? "" : val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select PO (optional)" />
+              <Label>PO Number *</Label>
+              <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
+                <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select PO" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No specific PO</SelectItem>
                   {filteredWorkOrders.map((wo) => (
                     <SelectItem key={wo.id} value={wo.id}>
                       {wo.po_number} - {wo.style}
@@ -502,6 +450,7 @@ export default function FinishingDailyOutput() {
                   ))}
                 </SelectContent>
               </Select>
+              {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
             </div>
           </CardContent>
         </Card>
