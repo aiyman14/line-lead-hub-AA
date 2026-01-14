@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+import { useEditPermission } from "@/hooks/useEditPermission";
 
 interface Line {
   id: string;
@@ -63,6 +64,7 @@ export default function SewingMorningTargets() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { user, profile, factory, isAdminOrHigher } = useAuth();
+  const { canEditSubmission } = useEditPermission();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -206,9 +208,11 @@ export default function SewingMorningTargets() {
         isLate = now > cutoffTime;
       }
 
+      const productionDate = format(new Date(), "yyyy-MM-dd");
+
       const insertData = {
         factory_id: profile.factory_id,
-        production_date: format(new Date(), "yyyy-MM-dd"),
+        production_date: productionDate,
         submitted_by: user.id,
         line_id: selectedLineId,
         work_order_id: selectedWorkOrderId,
@@ -229,16 +233,46 @@ export default function SewingMorningTargets() {
         is_late: isLate,
       };
 
-      const { error } = await supabase.from("sewing_targets").insert(insertData as any);
+      // If a submission already exists for today+line+PO, update it (only if still within edit window)
+      const { data: existing, error: existingError } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from("sewing_targets" as any)
+        .select("id")
+        .eq("factory_id", profile.factory_id)
+        .eq("production_date", productionDate)
+        .eq("line_id", selectedLineId)
+        .eq("work_order_id", selectedWorkOrderId)
+        .maybeSingle();
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error(t("common.submissionFailed"));
-        } else {
-          throw error;
+      if (existingError) throw existingError;
+
+      if (existing?.id) {
+        const { canEdit, reason } = canEditSubmission(productionDate, user.id);
+        if (!canEdit) {
+          toast.error(reason || t("common.submissionFailed"));
+          return;
         }
-        return;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: updateError } = await supabase
+          .from("sewing_targets" as any)
+          .update(insertData as any)
+          .eq("id", existing.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: insertError } = await supabase
+          .from("sewing_targets" as any)
+          .insert(insertData as any);
+
+        if (insertError) throw insertError;
       }
+    } catch (error: any) {
+      console.error("Error submitting targets:", error);
+      toast.error(t("common.submissionFailed"));
+      return;
+    }
 
       toast.success(t("common.submissionSuccess"));
       
