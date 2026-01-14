@@ -112,6 +112,8 @@ function AppRoutes() {
         <Route path="/finishing/overview" element={<SubscriptionGate><FinishingOverview /></SubscriptionGate>} />
         <Route path="/finishing/hourly-archive" element={<SubscriptionGate><FinishingHourlyArchive /></SubscriptionGate>} />
         <Route path="/finishing/daily-summary" element={<SubscriptionGate><FinishingDailySummary /></SubscriptionGate>} />
+        {/* Redirect old route to new daily target */}
+        <Route path="/finishing/daily-sheet" element={<Navigate to="/finishing/daily-target" replace />} />
         <Route path="/morning-targets" element={<SubscriptionGate><MorningTargets /></SubscriptionGate>} />
         <Route path="/end-of-day" element={<SubscriptionGate><EndOfDay /></SubscriptionGate>} />
         <Route path="/report-blocker" element={<SubscriptionGate><ReportBlocker /></SubscriptionGate>} />
