@@ -308,10 +308,9 @@ export default function FinishingDailyTarget() {
   }
 
   const calculateTotal = () => {
-    return PROCESS_CATEGORIES.reduce((sum, cat) => {
-      const val = parseInt(processValues[cat.key]) || 0;
-      return sum + val;
-    }, 0);
+    const poly = parseInt(processValues.poly) || 0;
+    const carton = parseInt(processValues.carton) || 0;
+    return poly + carton;
   };
 
   if (loading) {
