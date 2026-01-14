@@ -266,13 +266,13 @@ export default function Dashboard() {
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
 
-      // Fetch finishing daily sheets (new structure)
-      const { data: finishingDailySheetsData, count: finishingCount } = await supabase
-        .from('finishing_daily_sheets')
-        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style), finishing_hourly_logs(*)', { count: 'exact' })
+      // Fetch finishing daily logs (new structure)
+      const { data: finishingDailyLogsData, count: finishingCount } = await supabase
+        .from('finishing_daily_logs')
+        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style)', { count: 'exact' })
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
-        .order('created_at', { ascending: false });
+        .order('submitted_at', { ascending: false });
 
       // Fetch cutting actuals for today
       const { data: cuttingActualsData } = await supabase
@@ -394,36 +394,34 @@ export default function Dashboard() {
           notes: u.remarks,
         }));
 
-      // Format finishing daily sheets (new structure with hourly logs)
-      const formattedFinishingEOD: EndOfDaySubmission[] = (finishingDailySheetsData || [])
-        .filter((sheet: any) => (sheet.finishing_hourly_logs || []).length > 0)
-        .map((sheet: any) => {
-          const logs = sheet.finishing_hourly_logs || [];
-          const totalPoly = logs.reduce((sum: number, l: any) => sum + (l.poly_actual || 0), 0);
-          const totalCarton = logs.reduce((sum: number, l: any) => sum + (l.carton_actual || 0), 0);
-          
-          return {
-            id: sheet.id,
-            type: 'finishing' as const,
-            line_uuid: sheet.line_id,
-            line_id: sheet.lines?.line_id || 'Unknown',
-            line_name: sheet.lines?.name || sheet.lines?.line_id || 'Unknown',
-            output: totalPoly, // Use total poly as the main output metric
-            submitted_at: sheet.created_at,
-            production_date: sheet.production_date,
-            has_blocker: false,
-            blocker_description: null,
-            blocker_impact: null,
-            blocker_owner: null,
-            blocker_status: null,
-            po_number: sheet.work_orders?.po_number || sheet.po_no || null,
-            buyer: sheet.work_orders?.buyer || sheet.buyer || null,
-            style: sheet.work_orders?.style || sheet.style || null,
-            hours_logged: logs.length,
-            total_poly: totalPoly,
-            total_carton: totalCarton,
-          };
-        });
+      // Format finishing daily logs (OUTPUT type only for end of day)
+      const finishingOutputLogs = (finishingDailyLogsData || []).filter((log: any) => log.log_type === 'OUTPUT');
+      const formattedFinishingEOD: EndOfDaySubmission[] = finishingOutputLogs.map((log: any) => {
+        const totalPoly = log.poly || 0;
+        const totalCarton = log.carton || 0;
+        
+        return {
+          id: log.id,
+          type: 'finishing' as const,
+          line_uuid: log.line_id,
+          line_id: log.lines?.line_id || 'Unknown',
+          line_name: log.lines?.name || log.lines?.line_id || 'Unknown',
+          output: totalPoly + totalCarton, // Total is poly + carton
+          submitted_at: log.submitted_at,
+          production_date: log.production_date,
+          has_blocker: false,
+          blocker_description: null,
+          blocker_impact: null,
+          blocker_owner: null,
+          blocker_status: null,
+          po_number: log.work_orders?.po_number || null,
+          buyer: log.work_orders?.buyer || null,
+          style: log.work_orders?.style || null,
+          hours_logged: 0,
+          total_poly: totalPoly,
+          total_carton: totalCarton,
+        };
+      });
 
       // Format cutting submissions
       const formattedCutting: CuttingSubmission[] = (cuttingActualsData || []).map((c: any) => ({
@@ -516,11 +514,10 @@ export default function Dashboard() {
       // Calculate daily sewing output (using good_today from sewing_actuals)
       const daySewingOutput = (sewingActualsData || []).reduce((sum: number, u: any) => sum + (u.good_today || 0), 0);
 
-      // Calculate daily finishing output (total poly from hourly logs)
-      const dayFinishingOutput = (finishingDailySheetsData || []).reduce((sum: number, sheet: any) => {
-        const logs = sheet.finishing_hourly_logs || [];
-        return sum + logs.reduce((logSum: number, l: any) => logSum + (l.poly_actual || 0), 0);
-      }, 0);
+      // Calculate daily finishing output (poly + carton from OUTPUT logs)
+      const dayFinishingOutput = (finishingDailyLogsData || [])
+        .filter((log: any) => log.log_type === 'OUTPUT')
+        .reduce((sum: number, log: any) => sum + (log.poly || 0) + (log.carton || 0), 0);
 
       setStats({
         updatesToday: (sewingCount || 0) + (finishingCount || 0),
