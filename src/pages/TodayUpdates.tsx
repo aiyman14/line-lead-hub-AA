@@ -676,8 +676,8 @@ export default function TodayUpdates() {
             </Card>
           )}
 
-          {/* Finishing Table */}
-          {filteredFinishing.length > 0 && (
+          {/* Finishing Table - Merged Format */}
+          {mergedFinishingData.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -691,34 +691,50 @@ export default function TodayUpdates() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Time</TableHead>
-                        <TableHead>Type</TableHead>
                         <TableHead>Line</TableHead>
                         <TableHead>PO</TableHead>
-                        <TableHead className="text-right">Poly</TableHead>
-                        <TableHead className="text-right">Carton</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">Output (Poly)</TableHead>
+                        <TableHead className="text-right">Target (Poly)</TableHead>
+                        <TableHead className="text-right">Output (Carton)</TableHead>
+                        <TableHead className="text-right">Target (Carton)</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredFinishing.map((log) => {
-                        const total = (log.poly || 0) + (log.carton || 0);
+                      {mergedFinishingData.map((item, idx) => {
+                        const outputPoly = item.output?.poly || 0;
+                        const outputCarton = item.output?.carton || 0;
+                        const targetPoly = item.target?.poly || 0;
+                        const targetCarton = item.target?.carton || 0;
+                        const totalOutput = outputPoly + outputCarton;
+                        const totalTarget = targetPoly + targetCarton;
+                        const hasOutput = totalOutput > 0;
+                        const hasTarget = totalTarget > 0;
+                        const percent = totalTarget > 0 ? (totalOutput / totalTarget) * 100 : null;
                         return (
                           <TableRow 
-                            key={log.id}
+                            key={`finishing-merged-${idx}`}
                             className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => handleFinishingClick(log)}
+                            onClick={() => item.output && handleFinishingClick(item.output)}
                           >
-                            <TableCell className="font-mono text-sm">{formatTime(log.submitted_at)}</TableCell>
+                            <TableCell className="font-mono text-sm">{formatTime(item.submitted_at)}</TableCell>
+                            <TableCell className="font-medium">{item.line_name}</TableCell>
+                            <TableCell>{item.po_number || '-'}</TableCell>
+                            <TableCell className="text-right font-mono">{outputPoly.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">{targetPoly.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{outputCarton.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">{targetCarton.toLocaleString()}</TableCell>
                             <TableCell>
-                              <StatusBadge variant={log.log_type === 'TARGET' ? 'info' : 'success'} size="sm">
-                                {log.log_type}
-                              </StatusBadge>
+                              {hasOutput && hasTarget ? (
+                                <StatusBadge variant={percent && percent >= 100 ? 'success' : percent && percent >= 80 ? 'warning' : 'danger'} size="sm">
+                                  {Math.round(percent || 0)}%
+                                </StatusBadge>
+                              ) : hasOutput ? (
+                                <StatusBadge variant="success" size="sm">Output</StatusBadge>
+                              ) : (
+                                <StatusBadge variant="info" size="sm">Target</StatusBadge>
+                              )}
                             </TableCell>
-                            <TableCell className="font-medium">{log.lines?.name || log.lines?.line_id}</TableCell>
-                            <TableCell>{log.work_orders?.po_number || '-'}</TableCell>
-                            <TableCell className="text-right font-mono">{(log.poly || 0).toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-mono">{(log.carton || 0).toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-mono font-bold">{total.toLocaleString()}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -729,13 +745,13 @@ export default function TodayUpdates() {
             </Card>
           )}
 
-          {/* Cutting Targets Table */}
-          {filteredCuttingTargets.length > 0 && (
+          {/* Cutting Table - Merged Format */}
+          {mergedCuttingData.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Scissors className="h-4 w-4 text-warning" />
-                  Cutting Morning Targets
+                  Cutting Updates
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -746,72 +762,49 @@ export default function TodayUpdates() {
                         <TableHead>Time</TableHead>
                         <TableHead>Line</TableHead>
                         <TableHead>PO</TableHead>
+                        <TableHead className="text-right">Output</TableHead>
+                        <TableHead className="text-right">Target</TableHead>
                         <TableHead className="text-right">Manpower</TableHead>
-                        <TableHead className="text-right">Marker Cap</TableHead>
-                        <TableHead className="text-right">Lay Cap</TableHead>
-                        <TableHead className="text-right">Cutting Cap</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredCuttingTargets.map((target) => (
-                        <TableRow 
-                          key={target.id} 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleCuttingTargetClick(target)}
-                        >
-                          <TableCell className="font-mono text-sm">{target.submitted_at ? formatTime(target.submitted_at) : '-'}</TableCell>
-                          <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
-                          <TableCell>{target.work_orders?.po_number || target.po_no || '-'}</TableCell>
-                          <TableCell className="text-right font-mono">{target.man_power}</TableCell>
-                          <TableCell className="text-right font-mono">{target.marker_capacity.toLocaleString()}</TableCell>
-                          <TableCell className="text-right font-mono">{target.lay_capacity.toLocaleString()}</TableCell>
-                          <TableCell className="text-right font-mono">{target.cutting_capacity.toLocaleString()}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Cutting Actuals Table */}
-          {filteredCutting.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Scissors className="h-4 w-4 text-warning" />
-                  Cutting End of Day Actuals
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Line</TableHead>
-                        <TableHead>PO</TableHead>
-                        <TableHead className="text-right">Day Cutting</TableHead>
                         <TableHead className="text-right">Day Input</TableHead>
-                        <TableHead className="text-right">Total Cutting</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredCutting.map((cutting) => (
-                        <TableRow 
-                          key={cutting.id} 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleCuttingClick(cutting)}
-                        >
-                          <TableCell className="font-mono text-sm">{cutting.submitted_at ? formatTime(cutting.submitted_at) : '-'}</TableCell>
-                          <TableCell className="font-medium">{cutting.lines?.name || cutting.lines?.line_id}</TableCell>
-                          <TableCell>{cutting.work_orders?.po_number || '-'}</TableCell>
-                          <TableCell className="text-right font-mono">{cutting.day_cutting.toLocaleString()}</TableCell>
-                          <TableCell className="text-right font-mono">{cutting.day_input.toLocaleString()}</TableCell>
-                          <TableCell className="text-right font-mono">{cutting.total_cutting?.toLocaleString() || '-'}</TableCell>
-                        </TableRow>
-                      ))}
+                      {mergedCuttingData.map((item, idx) => {
+                        const dayCutting = item.actual?.day_cutting;
+                        const cuttingCapacity = item.target?.cutting_capacity;
+                        const manpower = item.target?.man_power;
+                        const dayInput = item.actual?.day_input;
+                        const hasActual = dayCutting !== null && dayCutting !== undefined;
+                        const hasTarget = cuttingCapacity !== null && cuttingCapacity !== undefined && cuttingCapacity > 0;
+                        const percent = hasActual && hasTarget ? (dayCutting! / cuttingCapacity!) * 100 : null;
+                        return (
+                          <TableRow 
+                            key={`cutting-merged-${idx}`}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => item.actual && handleCuttingClick(item.actual)}
+                          >
+                            <TableCell className="font-mono text-sm">{item.submitted_at ? formatTime(item.submitted_at) : '-'}</TableCell>
+                            <TableCell className="font-medium">{item.line_name}</TableCell>
+                            <TableCell>{item.po_number || '-'}</TableCell>
+                            <TableCell className="text-right font-mono">{dayCutting?.toLocaleString() || '-'}</TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">{cuttingCapacity?.toLocaleString() || '-'}</TableCell>
+                            <TableCell className="text-right font-mono">{manpower || '-'}</TableCell>
+                            <TableCell className="text-right font-mono">{dayInput?.toLocaleString() || '-'}</TableCell>
+                            <TableCell>
+                              {hasActual && hasTarget ? (
+                                <StatusBadge variant={percent && percent >= 100 ? 'success' : percent && percent >= 80 ? 'warning' : 'danger'} size="sm">
+                                  {Math.round(percent || 0)}%
+                                </StatusBadge>
+                              ) : hasActual ? (
+                                <StatusBadge variant="success" size="sm">Output</StatusBadge>
+                              ) : (
+                                <StatusBadge variant="info" size="sm">Target</StatusBadge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
