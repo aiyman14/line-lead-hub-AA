@@ -53,7 +53,7 @@ export function FinishingLogDetailModal({ log, open, onOpenChange }: FinishingLo
   if (!log) return null;
 
   const calculateTotal = () => {
-    return (log.poly || 0) + (log.carton || 0);
+    return (log.carton || 0);
   };
 
   return (

@@ -439,7 +439,6 @@ export default function Dashboard() {
       // Format finishing daily logs (OUTPUT type only for end of day)
       const finishingOutputLogs = (finishingDailyLogsData || []).filter((log: any) => log.log_type === 'OUTPUT');
       const formattedFinishingEOD: EndOfDaySubmission[] = finishingOutputLogs.map((log: any) => {
-        const totalPoly = log.poly || 0;
         const totalCarton = log.carton || 0;
         
         return {
@@ -448,7 +447,7 @@ export default function Dashboard() {
           line_uuid: log.line_id,
           line_id: log.lines?.line_id || 'Unknown',
           line_name: log.lines?.name || log.lines?.line_id || 'Unknown',
-          output: totalPoly + totalCarton, // Total is poly + carton
+          output: totalCarton, // Total is carton only
           submitted_at: log.submitted_at,
           production_date: log.production_date,
           has_blocker: false,
@@ -460,7 +459,7 @@ export default function Dashboard() {
           buyer: log.work_orders?.buyer || null,
           style: log.work_orders?.style || null,
           hours_logged: 0,
-          total_poly: totalPoly,
+          total_poly: log.poly || 0,
           total_carton: totalCarton,
         };
       });
@@ -586,10 +585,10 @@ export default function Dashboard() {
       // Calculate daily sewing output (using good_today from sewing_actuals)
       const daySewingOutput = (sewingActualsData || []).reduce((sum: number, u: any) => sum + (u.good_today || 0), 0);
 
-      // Calculate daily finishing output (poly + carton from OUTPUT logs)
+      // Calculate daily finishing output (carton only from OUTPUT logs)
       const dayFinishingOutput = (finishingDailyLogsData || [])
         .filter((log: any) => log.log_type === 'OUTPUT')
-        .reduce((sum: number, log: any) => sum + (log.poly || 0) + (log.carton || 0), 0);
+        .reduce((sum: number, log: any) => sum + (log.carton || 0), 0);
 
       setStats({
         updatesToday: (sewingCount || 0) + (finishingCount || 0),

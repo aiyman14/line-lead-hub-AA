@@ -126,13 +126,13 @@ export default function ThisWeek() {
 
         const daySewingOutput = sewingData.reduce((sum, u) => sum + (u.output_qty || 0), 0);
         
-        // Finishing target = sum of poly + carton from TARGET logs
+        // Finishing target = carton only from TARGET logs
         const finishingTargetLogs = finishingData.filter(f => f.log_type === 'TARGET');
-        const dayFinishingTarget = finishingTargetLogs.reduce((sum, f) => sum + (f.poly || 0) + (f.carton || 0), 0);
+        const dayFinishingTarget = finishingTargetLogs.reduce((sum, f) => sum + (f.carton || 0), 0);
         
-        // Finishing output = sum of poly + carton from OUTPUT logs
+        // Finishing output = carton only from OUTPUT logs
         const finishingOutputLogs = finishingData.filter(f => f.log_type === 'OUTPUT');
-        const dayFinishingOutput = finishingOutputLogs.reduce((sum, f) => sum + (f.poly || 0) + (f.carton || 0), 0);
+        const dayFinishingOutput = finishingOutputLogs.reduce((sum, f) => sum + (f.carton || 0), 0);
         
         // Cutting data
         const dayCuttingTarget = cuttingTargetsData.reduce((sum, t) => sum + (t.cutting_capacity || 0), 0);

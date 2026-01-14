@@ -230,8 +230,8 @@ export default function Insights() {
           blockers: 0,
           manpower: 0,
         };
-        // Total Finishing Output = poly + carton
-        existing.finishingQcPass += (u.poly || 0) + (u.carton || 0);
+        // Total Finishing Output = carton only
+        existing.finishingQcPass += (u.carton || 0);
         dailyMap.set(u.production_date, existing);
       });
 
@@ -322,15 +322,15 @@ export default function Insights() {
 
       setWorkOrderProgress(woProgressArray);
 
-      // Calculate summary - Total Finishing Output = poly + carton from finishing_daily_logs
+      // Calculate summary - Total Finishing Output = carton only from finishing_daily_logs
       const totalSewingOutput = sewingData?.reduce((sum, u) => sum + (u.output_qty || 0), 0) || 0;
       const totalSewingTarget = sewingData?.reduce((sum, u) => sum + (u.target_qty || 0), 0) || 0;
-      const totalFinishingQcPass = finishingDailyLogs?.reduce((sum, u) => sum + (u.poly || 0) + (u.carton || 0), 0) || 0;
+      const totalFinishingQcPass = finishingDailyLogs?.reduce((sum, u) => sum + (u.carton || 0), 0) || 0;
       const totalManpower = sewingData?.reduce((sum, u) => sum + (u.manpower || 0), 0) || 0;
       
       const prevTotalOutput = prevSewingData?.reduce((sum, u) => sum + (u.output_qty || 0), 0) || 0;
       const prevTotalTarget = prevSewingData?.reduce((sum, u) => sum + (u.target_qty || 0), 0) || 0;
-      const prevTotalQcPass = prevFinishingDailyLogs?.reduce((sum, u) => sum + (u.poly || 0) + (u.carton || 0), 0) || 0;
+      const prevTotalQcPass = prevFinishingDailyLogs?.reduce((sum, u) => sum + (u.carton || 0), 0) || 0;
       const prevEfficiency = prevTotalTarget > 0 ? (prevTotalOutput / prevTotalTarget) * 100 : 0;
       const prevTotalBlockers = prevSewingData?.filter(u => u.has_blocker).length || 0;
       const prevTotalManpower = prevSewingData?.reduce((sum, u) => sum + (u.manpower || 0), 0) || 0;
