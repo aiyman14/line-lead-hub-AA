@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Scissors, CheckCircle, Shirt, CircleDot, Flame, Package, Box, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,13 +18,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Line {
   id: string;
   line_id: string;
   name: string | null;
-  unit_id: string | null;
-  floor_id: string | null;
 }
 
 interface WorkOrder {
@@ -37,42 +39,52 @@ interface WorkOrder {
   line_id: string | null;
 }
 
-interface Unit {
-  id: string;
-  name: string;
-}
+// Process categories matching the hourly grid
+const PROCESS_CATEGORIES = [
+  { key: "thread_cutting", label: "Thread Cutting", icon: Scissors },
+  { key: "inside_check", label: "Inside Check", icon: CheckCircle },
+  { key: "top_side_check", label: "Top Side Check", icon: Shirt },
+  { key: "buttoning", label: "Buttoning", icon: CircleDot },
+  { key: "iron", label: "Iron", icon: Flame },
+  { key: "get_up", label: "Get-up", icon: Package },
+  { key: "poly", label: "Poly", icon: Box },
+  { key: "carton", label: "Carton", icon: Archive },
+] as const;
 
-interface Floor {
-  id: string;
-  name: string;
-  unit_id: string;
-}
+type ProcessKey = typeof PROCESS_CATEGORIES[number]["key"];
 
 export default function FinishingDailyTarget() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const { user, profile, factory, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [existingLog, setExistingLog] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Master data
   const [lines, setLines] = useState<Line[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [floors, setFloors] = useState<Floor[]>([]);
 
   // Form state
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedLineId, setSelectedLineId] = useState("");
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
-  const [perHourTarget, setPerHourTarget] = useState("");
-  const [mPowerPlanned, setMPowerPlanned] = useState("");
-  const [dayHourPlanned, setDayHourPlanned] = useState("");
-  const [dayOverTimePlanned, setDayOverTimePlanned] = useState("0");
+  const [shift, setShift] = useState("");
   const [remarks, setRemarks] = useState("");
 
-  // Auto-filled
-  const [unitName, setUnitName] = useState("");
-  const [floorName, setFloorName] = useState("");
+  // Process category values
+  const [processValues, setProcessValues] = useState<Record<ProcessKey, string>>({
+    thread_cutting: "",
+    inside_check: "",
+    top_side_check: "",
+    buttoning: "",
+    iron: "",
+    get_up: "",
+    poly: "",
+    carton: "",
+  });
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -92,30 +104,20 @@ export default function FinishingDailyTarget() {
     }
   }, [profile?.factory_id]);
 
+  // Check for existing log when line/date/work order changes
   useEffect(() => {
-    if (selectedLineId) {
-      const line = lines.find(l => l.id === selectedLineId);
-      if (line) {
-        const unit = units.find(u => u.id === line.unit_id);
-        const floor = floors.find(f => f.id === line.floor_id);
-        setUnitName(unit?.name || "");
-        setFloorName(floor?.name || "");
-      }
-    } else {
-      setUnitName("");
-      setFloorName("");
+    if (selectedLineId && selectedDate && profile?.factory_id) {
+      checkExistingLog();
     }
-  }, [selectedLineId, lines, units, floors]);
+  }, [selectedLineId, selectedDate, selectedWorkOrderId, profile?.factory_id]);
 
   async function fetchFormData() {
     if (!profile?.factory_id) return;
 
     try {
-      const [linesRes, workOrdersRes, unitsRes, floorsRes, assignmentsRes] = await Promise.all([
-        supabase.from("lines").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
-        supabase.from("work_orders").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
-        supabase.from("units").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
-        supabase.from("floors").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
+      const [linesRes, workOrdersRes, assignmentsRes] = await Promise.all([
+        supabase.from("lines").select("id, line_id, name").eq("factory_id", profile.factory_id).eq("is_active", true).order("line_id"),
+        supabase.from("work_orders").select("id, po_number, buyer, style, item, order_qty, line_id").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("user_line_assignments").select("line_id").eq("user_id", user?.id || ""),
       ]);
 
@@ -128,8 +130,16 @@ export default function FinishingDailyTarget() {
 
       setLines(availableLines);
       setWorkOrders(workOrdersRes.data || []);
-      setUnits(unitsRes.data || []);
-      setFloors(floorsRes.data || []);
+
+      // Pre-select from URL params
+      const lineParam = searchParams.get("line");
+      const woParam = searchParams.get("wo");
+      if (lineParam && availableLines.find(l => l.id === lineParam)) {
+        setSelectedLineId(lineParam);
+      }
+      if (woParam && (workOrdersRes.data || []).find(w => w.id === woParam)) {
+        setSelectedWorkOrderId(woParam);
+      }
     } catch (error) {
       console.error("Error fetching form data:", error);
       toast.error("Failed to load form data");
@@ -138,15 +148,82 @@ export default function FinishingDailyTarget() {
     }
   }
 
+  async function checkExistingLog() {
+    if (!profile?.factory_id || !selectedLineId) return;
+
+    try {
+      let query = supabase
+        .from("finishing_daily_logs")
+        .select("*")
+        .eq("factory_id", profile.factory_id)
+        .eq("production_date", format(selectedDate, "yyyy-MM-dd"))
+        .eq("line_id", selectedLineId)
+        .eq("log_type", "TARGET");
+
+      if (selectedWorkOrderId) {
+        query = query.eq("work_order_id", selectedWorkOrderId);
+      } else {
+        query = query.is("work_order_id", null);
+      }
+
+      const { data, error } = await query.maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setExistingLog(data);
+        // Pre-fill form with existing data
+        setShift(data.shift || "");
+        setRemarks(data.remarks || "");
+        setProcessValues({
+          thread_cutting: data.thread_cutting?.toString() || "",
+          inside_check: data.inside_check?.toString() || "",
+          top_side_check: data.top_side_check?.toString() || "",
+          buttoning: data.buttoning?.toString() || "",
+          iron: data.iron?.toString() || "",
+          get_up: data.get_up?.toString() || "",
+          poly: data.poly?.toString() || "",
+          carton: data.carton?.toString() || "",
+        });
+        setIsEditing(true);
+      } else {
+        setExistingLog(null);
+        setIsEditing(false);
+        // Reset form
+        setProcessValues({
+          thread_cutting: "",
+          inside_check: "",
+          top_side_check: "",
+          buttoning: "",
+          iron: "",
+          get_up: "",
+          poly: "",
+          carton: "",
+        });
+      }
+    } catch (error) {
+      console.error("Error checking existing log:", error);
+    }
+  }
+
+  function handleProcessValueChange(key: ProcessKey, value: string) {
+    setProcessValues(prev => ({ ...prev, [key]: value }));
+  }
+
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
     if (!selectedLineId) newErrors.line = "Line is required";
-    if (!selectedWorkOrderId) newErrors.workOrder = "PO is required";
-    if (!perHourTarget || parseInt(perHourTarget) <= 0) newErrors.perHourTarget = "Per hour target is required";
-    if (!mPowerPlanned || parseInt(mPowerPlanned) <= 0) newErrors.mPowerPlanned = "M Power is required";
-    if (!dayHourPlanned || parseFloat(dayHourPlanned) < 0) newErrors.dayHourPlanned = "Day hours is required";
-    if (dayOverTimePlanned === "" || parseFloat(dayOverTimePlanned) < 0) newErrors.dayOverTimePlanned = "OT hours must be 0 or more";
+    
+    // At least one process value should be entered
+    const hasAnyValue = PROCESS_CATEGORIES.some(cat => {
+      const val = processValues[cat.key];
+      return val !== "" && parseInt(val) >= 0;
+    });
+    
+    if (!hasAnyValue) {
+      newErrors.processes = "Enter at least one target value";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -156,7 +233,7 @@ export default function FinishingDailyTarget() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error("Please fill in all required fields");
+      toast.error("Please fill in required fields");
       return;
     }
 
@@ -168,47 +245,62 @@ export default function FinishingDailyTarget() {
     setSubmitting(true);
 
     try {
-      let isLate = false;
-      if (factory?.morning_target_cutoff) {
-        const now = new Date();
-        const [cutoffHour, cutoffMinute] = factory.morning_target_cutoff.split(':').map(Number);
-        const cutoffTime = new Date();
-        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
-        isLate = now > cutoffTime;
-      }
-
-      const insertData = {
+      const logData = {
         factory_id: profile.factory_id,
-        production_date: format(new Date(), "yyyy-MM-dd"),
-        submitted_by: user.id,
+        production_date: format(selectedDate, "yyyy-MM-dd"),
         line_id: selectedLineId,
-        work_order_id: selectedWorkOrderId,
-        unit_name: unitName,
-        floor_name: floorName,
-        buyer_name: selectedWorkOrder?.buyer || "",
-        style_no: selectedWorkOrder?.style || "",
-        item_name: selectedWorkOrder?.item || "",
-        order_qty: selectedWorkOrder?.order_qty || 0,
-        per_hour_target: parseInt(perHourTarget),
-        m_power_planned: parseInt(mPowerPlanned),
-        day_hour_planned: parseFloat(dayHourPlanned),
-        day_over_time_planned: parseFloat(dayOverTimePlanned),
+        work_order_id: selectedWorkOrderId || null,
+        log_type: "TARGET" as const,
+        shift: shift || null,
+        thread_cutting: processValues.thread_cutting ? parseInt(processValues.thread_cutting) : 0,
+        inside_check: processValues.inside_check ? parseInt(processValues.inside_check) : 0,
+        top_side_check: processValues.top_side_check ? parseInt(processValues.top_side_check) : 0,
+        buttoning: processValues.buttoning ? parseInt(processValues.buttoning) : 0,
+        iron: processValues.iron ? parseInt(processValues.iron) : 0,
+        get_up: processValues.get_up ? parseInt(processValues.get_up) : 0,
+        poly: processValues.poly ? parseInt(processValues.poly) : 0,
+        carton: processValues.carton ? parseInt(processValues.carton) : 0,
         remarks: remarks || null,
-        is_late: isLate,
+        submitted_by: user.id,
       };
 
-      const { error } = await supabase.from("finishing_targets").insert(insertData as any);
+      if (isEditing && existingLog) {
+        // Save old values to history
+        const historyData = {
+          log_id: existingLog.id,
+          changed_by: user.id,
+          old_values: existingLog,
+          new_values: logData,
+        };
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Target already submitted for this line and PO today");
-        } else {
+        await supabase.from("finishing_daily_log_history").insert(historyData);
+
+        // Update existing log
+        const { error } = await supabase
+          .from("finishing_daily_logs")
+          .update({
+            ...logData,
+            updated_at: new Date().toISOString(),
+            updated_by: user.id,
+          })
+          .eq("id", existingLog.id);
+
+        if (error) throw error;
+        toast.success("Daily targets updated successfully!");
+      } else {
+        // Insert new log
+        const { error } = await supabase.from("finishing_daily_logs").insert(logData);
+
+        if (error) {
+          if (error.code === "23505") {
+            toast.error("Target already submitted for this date and line. You can edit the existing entry.");
+            checkExistingLog();
+            return;
+          }
           throw error;
         }
-        return;
+        toast.success("Daily targets submitted successfully!");
       }
-
-      toast.success("Finishing targets submitted successfully!");
       
       if (isAdminOrHigher()) {
         navigate("/dashboard");
@@ -222,6 +314,13 @@ export default function FinishingDailyTarget() {
       setSubmitting(false);
     }
   }
+
+  const calculateTotal = () => {
+    return PROCESS_CATEGORIES.reduce((sum, cat) => {
+      const val = parseInt(processValues[cat.key]) || 0;
+      return sum + val;
+    }, 0);
+  };
 
   if (loading) {
     return (
@@ -248,18 +347,67 @@ export default function FinishingDailyTarget() {
         <div>
           <h1 className="text-xl font-bold">{t("nav.finishingDailyTarget")}</h1>
           <p className="text-sm text-muted-foreground">
-            {format(new Date(), "EEEE, MMMM d, yyyy")}
+            Set daily production targets for each process
           </p>
         </div>
       </div>
 
+      {isEditing && existingLog && (
+        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            ✏️ Editing existing target for {format(selectedDate, "MMM dd, yyyy")}
+          </p>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Line & PO Selection */}
+        {/* Date & Line Selection */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Select Line & PO</CardTitle>
+            <CardTitle className="text-base">Select Date & Line</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date *</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !selectedDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {selectedDate ? format(selectedDate, "MMM dd, yyyy") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => date && setSelectedDate(date)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Shift (Optional)</Label>
+                <Select value={shift} onValueChange={setShift}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select shift" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A">Shift A (Day)</SelectItem>
+                    <SelectItem value="B">Shift B (Night)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>Line No. *</Label>
               <Select value={selectedLineId} onValueChange={setSelectedLineId}>
@@ -278,12 +426,13 @@ export default function FinishingDailyTarget() {
             </div>
 
             <div className="space-y-2">
-              <Label>PO Number *</Label>
+              <Label>PO Number (Optional)</Label>
               <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-                <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select PO" />
+                <SelectTrigger>
+                  <SelectValue placeholder="Select PO (optional)" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">No specific PO</SelectItem>
                   {filteredWorkOrders.map((wo) => (
                     <SelectItem key={wo.id} value={wo.id}>
                       {wo.po_number} - {wo.style}
@@ -291,16 +440,15 @@ export default function FinishingDailyTarget() {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
             </div>
           </CardContent>
         </Card>
 
-        {/* Auto-filled Details */}
+        {/* Order Details (if PO selected) */}
         {selectedWorkOrder && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Order Details (Auto-filled)</CardTitle>
+              <CardTitle className="text-base">Order Details</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -320,96 +468,60 @@ export default function FinishingDailyTarget() {
                   <span className="text-muted-foreground">Order Qty:</span>
                   <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Unit:</span>
-                  <p className="font-medium">{unitName || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Floor:</span>
-                  <p className="font-medium">{floorName || "-"}</p>
-                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Target Fields */}
+        {/* Process Category Targets */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Today's Targets</CardTitle>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>Daily Target by Process</span>
+              <span className="text-sm font-normal text-muted-foreground">
+                Total: {calculateTotal().toLocaleString()} pcs
+              </span>
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
+            {errors.processes && (
+              <p className="text-sm text-destructive mb-4">{errors.processes}</p>
+            )}
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Per Hour Target *</Label>
-                <Input
-                  type="number"
-                  value={perHourTarget}
-                  onChange={(e) => setPerHourTarget(e.target.value)}
-                  placeholder="0"
-                  className={errors.perHourTarget ? "border-destructive" : ""}
-                />
-                {errors.perHourTarget && <p className="text-sm text-destructive">{errors.perHourTarget}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>M Power Planned *</Label>
-                <Input
-                  type="number"
-                  value={mPowerPlanned}
-                  onChange={(e) => setMPowerPlanned(e.target.value)}
-                  placeholder="0"
-                  className={errors.mPowerPlanned ? "border-destructive" : ""}
-                />
-                {errors.mPowerPlanned && <p className="text-sm text-destructive">{errors.mPowerPlanned}</p>}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Day Hours Planned *</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={dayHourPlanned}
-                  onChange={(e) => setDayHourPlanned(e.target.value)}
-                  placeholder="0"
-                  className={errors.dayHourPlanned ? "border-destructive" : ""}
-                />
-                {errors.dayHourPlanned && <p className="text-sm text-destructive">{errors.dayHourPlanned}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>OT Hours Planned *</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={dayOverTimePlanned}
-                  onChange={(e) => setDayOverTimePlanned(e.target.value)}
-                  placeholder="0"
-                  className={errors.dayOverTimePlanned ? "border-destructive" : ""}
-                />
-                {errors.dayOverTimePlanned && <p className="text-sm text-destructive">{errors.dayOverTimePlanned}</p>}
-              </div>
+              {PROCESS_CATEGORIES.map((cat) => {
+                const Icon = cat.icon;
+                return (
+                  <div key={cat.key} className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      {cat.label}
+                    </Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={processValues[cat.key]}
+                      onChange={(e) => handleProcessValueChange(cat.key, e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
 
-        {/* Optional Fields */}
+        {/* Remarks */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Optional</CardTitle>
+            <CardTitle className="text-base">Notes (Optional)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <Label>Remarks</Label>
-              <Textarea
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Any additional notes..."
-                rows={3}
-              />
-            </div>
+            <Textarea
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              placeholder="Any additional notes or instructions..."
+              rows={3}
+            />
           </CardContent>
         </Card>
 
@@ -419,14 +531,25 @@ export default function FinishingDailyTarget() {
             {submitting ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Submitting...
+                {isEditing ? "Updating..." : "Submitting..."}
               </>
             ) : (
-              "Submit Finishing Targets"
+              isEditing ? "Update Daily Targets" : "Submit Daily Targets"
             )}
           </Button>
         </div>
       </form>
+
+      {/* Link to hourly archive */}
+      <div className="mt-6 text-center">
+        <Button 
+          variant="link" 
+          className="text-muted-foreground"
+          onClick={() => navigate("/finishing/hourly-archive")}
+        >
+          View Hourly Log (Archive)
+        </Button>
+      </div>
     </div>
   );
 }

@@ -715,6 +715,147 @@ export type Database = {
           },
         ]
       }
+      finishing_daily_log_history: {
+        Row: {
+          change_reason: string | null
+          changed_at: string
+          changed_by: string
+          id: string
+          log_id: string
+          new_values: Json
+          old_values: Json | null
+        }
+        Insert: {
+          change_reason?: string | null
+          changed_at?: string
+          changed_by: string
+          id?: string
+          log_id: string
+          new_values: Json
+          old_values?: Json | null
+        }
+        Update: {
+          change_reason?: string | null
+          changed_at?: string
+          changed_by?: string
+          id?: string
+          log_id?: string
+          new_values?: Json
+          old_values?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finishing_daily_log_history_log_id_fkey"
+            columns: ["log_id"]
+            isOneToOne: false
+            referencedRelation: "finishing_daily_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finishing_daily_logs: {
+        Row: {
+          buttoning: number | null
+          carton: number | null
+          created_at: string
+          factory_id: string
+          get_up: number | null
+          id: string
+          inside_check: number | null
+          iron: number | null
+          is_locked: boolean
+          line_id: string
+          locked_at: string | null
+          locked_by: string | null
+          log_type: Database["public"]["Enums"]["finishing_log_type"]
+          poly: number | null
+          production_date: string
+          remarks: string | null
+          shift: string | null
+          submitted_at: string
+          submitted_by: string
+          thread_cutting: number | null
+          top_side_check: number | null
+          updated_at: string | null
+          updated_by: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          buttoning?: number | null
+          carton?: number | null
+          created_at?: string
+          factory_id: string
+          get_up?: number | null
+          id?: string
+          inside_check?: number | null
+          iron?: number | null
+          is_locked?: boolean
+          line_id: string
+          locked_at?: string | null
+          locked_by?: string | null
+          log_type: Database["public"]["Enums"]["finishing_log_type"]
+          poly?: number | null
+          production_date?: string
+          remarks?: string | null
+          shift?: string | null
+          submitted_at?: string
+          submitted_by: string
+          thread_cutting?: number | null
+          top_side_check?: number | null
+          updated_at?: string | null
+          updated_by?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          buttoning?: number | null
+          carton?: number | null
+          created_at?: string
+          factory_id?: string
+          get_up?: number | null
+          id?: string
+          inside_check?: number | null
+          iron?: number | null
+          is_locked?: boolean
+          line_id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          log_type?: Database["public"]["Enums"]["finishing_log_type"]
+          poly?: number | null
+          production_date?: string
+          remarks?: string | null
+          shift?: string | null
+          submitted_at?: string
+          submitted_by?: string
+          thread_cutting?: number | null
+          top_side_check?: number | null
+          updated_at?: string | null
+          updated_by?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finishing_daily_logs_factory_id_fkey"
+            columns: ["factory_id"]
+            isOneToOne: false
+            referencedRelation: "factory_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finishing_daily_logs_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finishing_daily_logs_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       finishing_daily_sheets: {
         Row: {
           buyer: string | null
@@ -2445,6 +2586,7 @@ export type Database = {
         | "OT-3"
         | "OT-4"
         | "OT-5"
+      finishing_log_type: "TARGET" | "OUTPUT"
       subscription_tier:
         | "starter"
         | "professional"
@@ -2609,6 +2751,7 @@ export const Constants = {
         "OT-4",
         "OT-5",
       ],
+      finishing_log_type: ["TARGET", "OUTPUT"],
       subscription_tier: [
         "starter",
         "professional",

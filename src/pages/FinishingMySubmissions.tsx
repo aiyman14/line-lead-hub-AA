@@ -24,54 +24,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
-import { FileText, Eye, Clock, Target, TrendingUp, Search, Package } from "lucide-react";
+import { FileText, Clock, Target, TrendingUp, Search, Package, Edit2, Eye } from "lucide-react";
 
-interface FinishingTarget {
+interface FinishingDailyLog {
   id: string;
   production_date: string;
   line_id: string;
-  work_order_id: string;
-  buyer_name: string | null;
-  style_no: string | null;
-  item_name: string | null;
-  order_qty: number | null;
-  per_hour_target: number;
-  m_power_planned: number;
-  day_hour_planned: number;
-  day_over_time_planned: number;
+  work_order_id: string | null;
+  log_type: "TARGET" | "OUTPUT";
+  shift: string | null;
+  thread_cutting: number;
+  inside_check: number;
+  top_side_check: number;
+  buttoning: number;
+  iron: number;
+  get_up: number;
+  poly: number;
+  carton: number;
   remarks: string | null;
-  submitted_at: string | null;
-  line: {
-    line_id: string;
-    name: string | null;
-  } | null;
-  work_order: {
-    po_number: string;
-    style: string;
-    buyer: string;
-  } | null;
-}
-
-interface FinishingActual {
-  id: string;
-  production_date: string;
-  line_id: string;
-  work_order_id: string;
-  buyer_name: string | null;
-  style_no: string | null;
-  item_name: string | null;
-  order_qty: number | null;
-  day_qc_pass: number;
-  total_qc_pass: number;
-  day_poly: number;
-  total_poly: number;
-  day_carton: number;
-  total_carton: number;
-  m_power_actual: number;
-  day_hour_actual: number;
-  day_over_time_actual: number;
-  remarks: string | null;
-  submitted_at: string | null;
+  submitted_at: string;
+  is_locked: boolean;
   line: {
     line_id: string;
     name: string | null;
@@ -87,8 +59,7 @@ export default function FinishingMySubmissions() {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [targets, setTargets] = useState<FinishingTarget[]>([]);
-  const [actuals, setActuals] = useState<FinishingActual[]>([]);
+  const [logs, setLogs] = useState<FinishingDailyLog[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"targets" | "outputs">("targets");
@@ -101,36 +72,20 @@ export default function FinishingMySubmissions() {
 
   const fetchMySubmissions = async () => {
     try {
-      const [targetsRes, actualsRes] = await Promise.all([
-        supabase
-          .from("finishing_targets")
-          .select(`
-            *,
-            line:lines(line_id, name),
-            work_order:work_orders(po_number, style, buyer)
-          `)
-          .eq("factory_id", profile!.factory_id!)
-          .eq("submitted_by", user!.id)
-          .order("production_date", { ascending: false })
-          .order("submitted_at", { ascending: false }),
-        supabase
-          .from("finishing_actuals")
-          .select(`
-            *,
-            line:lines(line_id, name),
-            work_order:work_orders(po_number, style, buyer)
-          `)
-          .eq("factory_id", profile!.factory_id!)
-          .eq("submitted_by", user!.id)
-          .order("production_date", { ascending: false })
-          .order("submitted_at", { ascending: false }),
-      ]);
+      const { data, error } = await supabase
+        .from("finishing_daily_logs")
+        .select(`
+          *,
+          line:lines(line_id, name),
+          work_order:work_orders(po_number, style, buyer)
+        `)
+        .eq("factory_id", profile!.factory_id!)
+        .eq("submitted_by", user!.id)
+        .order("production_date", { ascending: false })
+        .order("submitted_at", { ascending: false });
 
-      if (targetsRes.error) throw targetsRes.error;
-      if (actualsRes.error) throw actualsRes.error;
-
-      setTargets(targetsRes.data as FinishingTarget[]);
-      setActuals(actualsRes.data as FinishingActual[]);
+      if (error) throw error;
+      setLogs(data as FinishingDailyLog[]);
     } catch (error) {
       console.error("Error fetching submissions:", error);
     } finally {
@@ -138,71 +93,42 @@ export default function FinishingMySubmissions() {
     }
   };
 
+  // Split logs by type
+  const targets = useMemo(() => logs.filter(l => l.log_type === "TARGET"), [logs]);
+  const outputs = useMemo(() => logs.filter(l => l.log_type === "OUTPUT"), [logs]);
+
   // Calculate stats
   const stats = useMemo(() => {
+    const currentLogs = activeTab === "targets" ? targets : outputs;
     const now = new Date();
     const weekStart = startOfWeek(now, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
-    const targetsThisWeek = targets.filter((t) => {
-      const date = parseISO(t.production_date);
+    const logsThisWeek = currentLogs.filter((log) => {
+      const date = parseISO(log.production_date);
       return isWithinInterval(date, { start: weekStart, end: weekEnd });
     });
 
-    const actualsThisWeek = actuals.filter((a) => {
-      const date = parseISO(a.production_date);
-      return isWithinInterval(date, { start: weekStart, end: weekEnd });
-    });
+    const totalPcs = logsThisWeek.reduce((sum, log) => {
+      return sum + log.thread_cutting + log.inside_check + log.top_side_check + 
+             log.buttoning + log.iron + log.get_up + log.poly + log.carton;
+    }, 0);
 
-    const totalOTPlanned = targetsThisWeek.reduce((sum, t) => sum + (t.day_over_time_planned || 0), 0);
-    const totalOTActual = actualsThisWeek.reduce((sum, a) => sum + (a.day_over_time_actual || 0), 0);
-    const avgTarget = targetsThisWeek.length > 0 
-      ? Math.round(targetsThisWeek.reduce((sum, t) => sum + t.per_hour_target, 0) / targetsThisWeek.length)
-      : 0;
-    const avgQcPass = actualsThisWeek.length > 0
-      ? Math.round(actualsThisWeek.reduce((sum, a) => sum + a.day_qc_pass, 0) / actualsThisWeek.length)
+    const avgPerDay = logsThisWeek.length > 0 
+      ? Math.round(totalPcs / logsThisWeek.length)
       : 0;
 
     return {
-      submissionsThisWeek: activeTab === "targets" ? targetsThisWeek.length : actualsThisWeek.length,
-      otHoursThisWeek: activeTab === "targets" ? totalOTPlanned : totalOTActual,
-      avgPerHour: activeTab === "targets" ? avgTarget : avgQcPass,
+      submissionsThisWeek: logsThisWeek.length,
+      totalPcsThisWeek: totalPcs,
+      avgPerDay,
     };
-  }, [targets, actuals, activeTab]);
+  }, [targets, outputs, activeTab]);
 
-  // Filter targets
-  const filteredTargets = useMemo(() => {
-    let result = targets;
-
-    if (dateFilter === "today") {
-      result = result.filter((item) => isToday(parseISO(item.production_date)));
-    } else if (dateFilter === "week") {
-      const now = new Date();
-      const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-      const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-      result = result.filter((item) =>
-        isWithinInterval(parseISO(item.production_date), { start: weekStart, end: weekEnd })
-      );
-    }
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (item) =>
-          item.work_order?.po_number?.toLowerCase().includes(query) ||
-          item.style_no?.toLowerCase().includes(query) ||
-          item.buyer_name?.toLowerCase().includes(query) ||
-          item.line?.line_id?.toLowerCase().includes(query) ||
-          item.line?.name?.toLowerCase().includes(query)
-      );
-    }
-
-    return result;
-  }, [targets, dateFilter, searchQuery]);
-
-  // Filter actuals
-  const filteredActuals = useMemo(() => {
-    let result = actuals;
+  // Filter logs
+  const filteredLogs = useMemo(() => {
+    const currentLogs = activeTab === "targets" ? targets : outputs;
+    let result = currentLogs;
 
     if (dateFilter === "today") {
       result = result.filter((item) => isToday(parseISO(item.production_date)));
@@ -220,15 +146,15 @@ export default function FinishingMySubmissions() {
       result = result.filter(
         (item) =>
           item.work_order?.po_number?.toLowerCase().includes(query) ||
-          item.style_no?.toLowerCase().includes(query) ||
-          item.buyer_name?.toLowerCase().includes(query) ||
+          item.work_order?.style?.toLowerCase().includes(query) ||
+          item.work_order?.buyer?.toLowerCase().includes(query) ||
           item.line?.line_id?.toLowerCase().includes(query) ||
           item.line?.name?.toLowerCase().includes(query)
       );
     }
 
     return result;
-  }, [actuals, dateFilter, searchQuery]);
+  }, [targets, outputs, activeTab, dateFilter, searchQuery]);
 
   const handleNewSubmission = () => {
     if (activeTab === "targets") {
@@ -236,6 +162,19 @@ export default function FinishingMySubmissions() {
     } else {
       navigate("/finishing/daily-output");
     }
+  };
+
+  const handleEdit = (log: FinishingDailyLog) => {
+    const path = log.log_type === "TARGET" ? "/finishing/daily-target" : "/finishing/daily-output";
+    const params = new URLSearchParams();
+    params.set("line", log.line_id);
+    if (log.work_order_id) params.set("wo", log.work_order_id);
+    navigate(`${path}?${params.toString()}`);
+  };
+
+  const calculateLogTotal = (log: FinishingDailyLog) => {
+    return log.thread_cutting + log.inside_check + log.top_side_check + 
+           log.buttoning + log.iron + log.get_up + log.poly + log.carton;
   };
 
   if (loading) {
@@ -277,11 +216,11 @@ export default function FinishingMySubmissions() {
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="targets" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
-            Daily Targets
+            Daily Targets ({targets.length})
           </TabsTrigger>
           <TabsTrigger value="outputs" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
-            Daily Outputs
+            Daily Outputs ({outputs.length})
           </TabsTrigger>
         </TabsList>
 
@@ -309,10 +248,8 @@ export default function FinishingMySubmissions() {
                     <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">
-                      {activeTab === "targets" ? "OT Planned" : "OT Actual"} (Week)
-                    </p>
-                    <p className="text-2xl font-bold">{stats.otHoursThisWeek}h</p>
+                    <p className="text-sm text-muted-foreground">Total Pcs (Week)</p>
+                    <p className="text-2xl font-bold">{stats.totalPcsThisWeek.toLocaleString()}</p>
                   </div>
                 </div>
               </CardContent>
@@ -325,10 +262,8 @@ export default function FinishingMySubmissions() {
                     <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">
-                      {activeTab === "targets" ? "Avg Target/hr" : "Avg QC Pass/day"}
-                    </p>
-                    <p className="text-2xl font-bold">{stats.avgPerHour.toLocaleString()}</p>
+                    <p className="text-sm text-muted-foreground">Avg Per Day</p>
+                    <p className="text-2xl font-bold">{stats.avgPerDay.toLocaleString()} pcs</p>
                   </div>
                 </div>
               </CardContent>
@@ -365,7 +300,7 @@ export default function FinishingMySubmissions() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {(activeTab === "targets" ? filteredTargets : filteredActuals).length === 0 ? (
+              {filteredLogs.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No {activeTab === "targets" ? "target" : "output"} submissions found</p>
@@ -375,167 +310,106 @@ export default function FinishingMySubmissions() {
                       : `Create a new ${activeTab === "targets" ? "target" : "output"} to start`}
                   </p>
                 </div>
-              ) : activeTab === "targets" && filteredTargets.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Line</TableHead>
-                      <TableHead>PO / Style</TableHead>
-                      <TableHead>Buyer</TableHead>
-                      <TableHead className="text-right">Target/hr</TableHead>
-                      <TableHead className="text-right">M Power</TableHead>
-                      <TableHead className="text-right">Hours</TableHead>
-                      <TableHead className="text-right">OT</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTargets.map((target) => {
-                      const date = parseISO(target.production_date);
-                      const isTodaySubmission = isToday(date);
-
-                      return (
-                        <TableRow key={target.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span>{format(date, "MMM dd, yyyy")}</span>
-                              {isTodaySubmission && (
-                                <Badge variant="secondary" className="text-xs">
-                                  Today
-                                </Badge>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-medium">
-                              {target.line?.line_id || "—"}
-                            </span>
-                            {target.line?.name && (
-                              <span className="text-muted-foreground ml-1">
-                                ({target.line.name})
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">
-                                {target.work_order?.po_number || "—"}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {target.style_no || target.work_order?.style || "—"}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {target.buyer_name || target.work_order?.buyer || "—"}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {target.per_hour_target.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {target.m_power_planned}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {target.day_hour_planned}h
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {target.day_over_time_planned}h
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Line</TableHead>
-                      <TableHead>PO / Style</TableHead>
-                      <TableHead className="text-right">QC Pass</TableHead>
-                      <TableHead className="text-right">Poly</TableHead>
-                      <TableHead className="text-right">Carton</TableHead>
-                      <TableHead className="text-right">M Power</TableHead>
-                      <TableHead className="text-right">Hours</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredActuals.map((actual) => {
-                      const date = parseISO(actual.production_date);
-                      const isTodaySubmission = isToday(date);
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Line</TableHead>
+                        <TableHead>PO / Style</TableHead>
+                        <TableHead>Shift</TableHead>
+                        <TableHead className="text-right">Total Pcs</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredLogs.map((log) => {
+                        const date = parseISO(log.production_date);
+                        const isTodaySubmission = isToday(date);
+                        const total = calculateLogTotal(log);
 
-                      return (
-                        <TableRow key={actual.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span>{format(date, "MMM dd, yyyy")}</span>
-                              {isTodaySubmission && (
-                                <Badge variant="secondary" className="text-xs">
-                                  Today
-                                </Badge>
+                        return (
+                          <TableRow key={log.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span>{format(date, "MMM dd, yyyy")}</span>
+                                {isTodaySubmission && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Today
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium">
+                                {log.line?.line_id || "—"}
+                              </span>
+                              {log.line?.name && (
+                                <span className="text-muted-foreground ml-1">
+                                  ({log.line.name})
+                                </span>
                               )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-medium">
-                              {actual.line?.line_id || "—"}
-                            </span>
-                            {actual.line?.name && (
-                              <span className="text-muted-foreground ml-1">
-                                ({actual.line.name})
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">
-                                {actual.work_order?.po_number || "—"}
+                            </TableCell>
+                            <TableCell>
+                              {log.work_order ? (
+                                <div>
+                                  <div className="font-medium">
+                                    {log.work_order.po_number}
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {log.work_order.style}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">No PO</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {log.shift ? (
+                                <Badge variant="outline">{log.shift}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {total.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleEdit(log)}
+                                  disabled={log.is_locked}
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
                               </div>
-                              <div className="text-sm text-muted-foreground">
-                                {actual.style_no || actual.work_order?.style || "—"}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="font-medium">{actual.day_qc_pass.toLocaleString()}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Total: {actual.total_qc_pass.toLocaleString()}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div>{actual.day_poly.toLocaleString()}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Total: {actual.total_poly.toLocaleString()}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div>{actual.day_carton.toLocaleString()}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Total: {actual.total_carton.toLocaleString()}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {actual.m_power_actual}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {actual.day_hour_actual}h
-                            {actual.day_over_time_actual > 0 && (
-                              <span className="text-muted-foreground ml-1">
-                                (+{actual.day_over_time_actual}h OT)
-                              </span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Link to hourly archive */}
+      <div className="text-center">
+        <Button 
+          variant="link" 
+          className="text-muted-foreground"
+          onClick={() => navigate("/finishing/hourly-archive")}
+        >
+          View Hourly Log (Archive)
+        </Button>
+      </div>
     </div>
   );
 }
