@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, isToday, parseISO } from "date-fns";
 import { toast } from "sonner";
-import { Loader2, Download, RefreshCw, Scissors, Target, ClipboardCheck, Pencil, Package } from "lucide-react";
+import { Loader2, Download, RefreshCw, Scissors, Target, ClipboardCheck, Pencil, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -178,6 +178,66 @@ export default function CuttingAllSubmissions() {
     });
   }, [actuals, selectedLine, selectedPO]);
 
+  // Aggregate leftover data by PO
+  const leftoverByPO = useMemo(() => {
+    const map = new Map<string, {
+      po_number: string;
+      buyer: string;
+      style: string;
+      entries: CuttingActual[];
+      totalQuantity: number;
+      unit: string;
+    }>();
+
+    actuals
+      .filter(a => a.leftover_recorded && a.leftover_quantity && a.leftover_quantity > 0)
+      .forEach(actual => {
+        const po = actual.work_orders?.po_number || actual.po_no || "Unknown PO";
+        const existing = map.get(po);
+        if (existing) {
+          existing.entries.push(actual);
+          existing.totalQuantity += actual.leftover_quantity || 0;
+        } else {
+          map.set(po, {
+            po_number: po,
+            buyer: actual.work_orders?.buyer || actual.buyer || "—",
+            style: actual.work_orders?.style || actual.style || "—",
+            entries: [actual],
+            totalQuantity: actual.leftover_quantity || 0,
+            unit: actual.leftover_unit || "pcs",
+          });
+        }
+      });
+
+    return Array.from(map.values()).sort((a, b) => a.po_number.localeCompare(b.po_number));
+  }, [actuals]);
+
+  async function markLeftoverAsUsed(actualId: string) {
+    if (!profile?.factory_id) return;
+    
+    try {
+      const { error } = await supabase
+        .from("cutting_actuals")
+        .update({
+          leftover_recorded: false,
+          leftover_type: null,
+          leftover_unit: null,
+          leftover_quantity: null,
+          leftover_notes: null,
+          leftover_location: null,
+        })
+        .eq("id", actualId)
+        .eq("factory_id", profile.factory_id);
+
+      if (error) throw error;
+      toast.success("Left over marked as used");
+      fetchData();
+    } catch (error) {
+      console.error("Error marking leftover as used:", error);
+      toast.error("Failed to update leftover status");
+    }
+  }
+
   const stats = useMemo(() => {
     const today = format(new Date(), "yyyy-MM-dd");
     const todayTargets = targets.filter(s => s.production_date === today);
@@ -351,7 +411,7 @@ export default function CuttingAllSubmissions() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-lg">
           <TabsTrigger value="targets" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
             Targets ({filteredTargets.length})
@@ -359,6 +419,10 @@ export default function CuttingAllSubmissions() {
           <TabsTrigger value="actuals" className="flex items-center gap-2">
             <ClipboardCheck className="h-4 w-4" />
             Actuals ({filteredActuals.length})
+          </TabsTrigger>
+          <TabsTrigger value="leftover" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Left Over ({leftoverByPO.length})
           </TabsTrigger>
         </TabsList>
 
@@ -510,6 +574,100 @@ export default function CuttingAllSubmissions() {
                   </Card>
                 );
               })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Left Over Tab */}
+        <TabsContent value="leftover" className="mt-6">
+          {leftoverByPO.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                No leftover fabric records found
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {leftoverByPO.map((poData) => (
+                <Card key={poData.po_number}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
+                          <Package className="h-3 w-3 mr-1" />
+                          Left Over
+                        </Badge>
+                        <CardTitle className="text-base">{poData.po_number}</CardTitle>
+                      </div>
+                      <Badge className="bg-amber-500 text-white">
+                        Total: {poData.totalQuantity} {poData.unit}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {poData.buyer} • {poData.style}
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {poData.entries.map((entry) => (
+                        <div 
+                          key={entry.id} 
+                          className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-medium">
+                                {entry.lines?.name || entry.lines?.line_id || "—"}
+                              </span>
+                              <span className="text-muted-foreground">•</span>
+                              <span className="text-muted-foreground">
+                                {format(parseISO(entry.production_date), "MMM d, yyyy")}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-4 mt-1 text-sm">
+                              <span className="text-amber-600 font-semibold">
+                                {entry.leftover_quantity} {entry.leftover_unit}
+                              </span>
+                              {entry.leftover_type && (
+                                <span className="text-muted-foreground">
+                                  {entry.leftover_type}
+                                </span>
+                              )}
+                              {entry.leftover_location && (
+                                <span className="text-muted-foreground">
+                                  📍 {entry.leftover_location}
+                                </span>
+                              )}
+                            </div>
+                            {entry.leftover_notes && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {entry.leftover_notes}
+                              </p>
+                            )}
+                          </div>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => markLeftoverAsUsed(entry.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Mark as used / Remove
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </TabsContent>
