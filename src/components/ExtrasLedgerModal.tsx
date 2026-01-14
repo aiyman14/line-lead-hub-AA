@@ -38,8 +38,8 @@ interface ExtrasLedgerModalProps {
 }
 
 const TRANSACTION_TYPES: { value: ExtrasTransactionType; label: string; icon: typeof ShoppingCart; description: string }[] = [
-  { value: 'sold', label: 'Sold', icon: ShoppingCart, description: 'Sold to buyer or customer' },
   { value: 'transferred_to_stock', label: 'Transferred to Stock', icon: Package, description: 'Moved to inventory/stock' },
+  { value: 'sold', label: 'Sold', icon: ShoppingCart, description: 'Sold to buyer or customer' },
   { value: 'replacement_shipment', label: 'Replacement Shipment', icon: Truck, description: 'Sent as replacement for defects' },
   { value: 'scrapped', label: 'Scrapped', icon: Trash2, description: 'Defective or unusable' },
   { value: 'donated', label: 'Donated', icon: Gift, description: 'Given away' },
