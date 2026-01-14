@@ -287,7 +287,11 @@ export default function CuttingForm() {
 
       toast.success("Cutting report submitted successfully!");
       
-      navigate("/cutting/submissions");
+      if (isAdminOrHigher()) {
+        navigate("/dashboard");
+      } else {
+        navigate("/cutting/submissions");
+      }
     } catch (error: any) {
       console.error("Error submitting:", error);
       toast.error("Submission failed");
