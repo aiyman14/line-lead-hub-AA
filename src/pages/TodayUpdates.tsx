@@ -18,6 +18,7 @@ import {
 import { Loader2, Factory, Package, Search, Download, RefreshCw, Scissors, Archive, CalendarDays } from "lucide-react";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
 import { CuttingDetailModal } from "@/components/CuttingDetailModal";
+import { CuttingTargetDetailModal } from "@/components/CuttingTargetDetailModal";
 import { StorageBinCardDetailModal } from "@/components/StorageBinCardDetailModal";
 import { FinishingLogDetailModal } from "@/components/FinishingLogDetailModal";
 import { ExportSubmissionsDialog } from "@/components/ExportSubmissionsDialog";
@@ -81,7 +82,7 @@ interface CuttingActual {
   work_orders: { po_number: string; buyer: string; style: string } | null;
 }
 
-interface CuttingTarget {
+interface CuttingTargetFull {
   id: string;
   line_id: string;
   work_order_id: string;
@@ -91,6 +92,16 @@ interface CuttingTarget {
   lay_capacity: number;
   cutting_capacity: number;
   under_qty: number | null;
+  day_cutting: number;
+  day_input: number;
+  order_qty: number | null;
+  buyer: string | null;
+  style: string | null;
+  po_no: string | null;
+  colour: string | null;
+  submitted_at: string | null;
+  lines: { line_id: string; name: string | null } | null;
+  work_orders: { po_number: string; buyer: string; style: string } | null;
 }
 
 interface StorageTransaction {
@@ -144,8 +155,10 @@ export default function TodayUpdates() {
   const [sewingUpdates, setSewingUpdates] = useState<SewingUpdate[]>([]);
   const [finishingDailyLogs, setFinishingDailyLogs] = useState<FinishingDailyLog[]>([]);
   const [cuttingActuals, setCuttingActuals] = useState<CuttingActual[]>([]);
-  const [cuttingTargets, setCuttingTargets] = useState<CuttingTarget[]>([]);
-  const [storageTransactions, setStorageTransactions] = useState<StorageTransaction[]>([]);
+  const [cuttingTargets, setCuttingTargets] = useState<CuttingTargetFull[]>([]);
+  const [storageTransactions, setStorageTransactions] = useState<StorageTransaction[]>();
+  const [selectedCuttingTarget, setSelectedCuttingTarget] = useState<CuttingTargetFull | null>(null);
+  const [cuttingTargetModalOpen, setCuttingTargetModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [selectedSubmission, setSelectedSubmission] = useState<ModalSubmission | null>(null);
@@ -193,9 +206,10 @@ export default function TodayUpdates() {
           .order('submitted_at', { ascending: false }),
         supabase
           .from('cutting_targets')
-          .select('id, line_id, work_order_id, production_date, man_power, marker_capacity, lay_capacity, cutting_capacity, under_qty')
+          .select('*, lines!cutting_targets_line_id_fkey(line_id, name), work_orders(po_number, buyer, style, order_qty, color)')
           .eq('factory_id', profile.factory_id)
-          .eq('production_date', today),
+          .eq('production_date', today)
+          .order('submitted_at', { ascending: false }),
         supabase
           .from('storage_bin_card_transactions')
           .select('*, storage_bin_cards(id, buyer, style, work_orders(po_number))')
@@ -206,9 +220,9 @@ export default function TodayUpdates() {
 
       setSewingUpdates(sewingRes.data || []);
       setFinishingDailyLogs(finishingRes.data as FinishingDailyLog[] || []);
-      setCuttingActuals(cuttingRes.data as any || []);
-      setCuttingTargets(cuttingTargetsRes.data as any || []);
-      setStorageTransactions(storageRes.data as any || []);
+      setCuttingActuals(cuttingRes.data as CuttingActual[] || []);
+      setCuttingTargets(cuttingTargetsRes.data as CuttingTargetFull[] || []);
+      setStorageTransactions(storageRes.data as StorageTransaction[] || []);
     } catch (error) {
       console.error('Error fetching updates:', error);
     } finally {
@@ -238,7 +252,12 @@ export default function TodayUpdates() {
     (c.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredStorage = storageTransactions.filter(s =>
+  const filteredCuttingTargets = cuttingTargets.filter(t =>
+    (t.lines?.name || t.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (t.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredStorage = (storageTransactions || []).filter(s =>
     (s.storage_bin_cards?.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.storage_bin_cards?.style || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -314,6 +333,11 @@ export default function TodayUpdates() {
       submitted_at: cutting.submitted_at,
     });
     setCuttingModalOpen(true);
+  };
+
+  const handleCuttingTargetClick = (target: CuttingTargetFull) => {
+    setSelectedCuttingTarget(target);
+    setCuttingTargetModalOpen(true);
   };
 
   const handleStorageClick = async (txn: StorageTransaction) => {
@@ -432,7 +456,7 @@ export default function TodayUpdates() {
                   <Scissors className="h-4 w-4 text-warning" />
                 </div>
                 <div>
-                  <p className="text-xl font-bold">{cuttingActuals.length}</p>
+                  <p className="text-xl font-bold">{cuttingTargets.length + cuttingActuals.length}</p>
                   <p className="text-xs text-muted-foreground">Cutting</p>
                 </div>
               </div>
@@ -441,7 +465,7 @@ export default function TodayUpdates() {
                   <Archive className="h-4 w-4 text-success" />
                 </div>
                 <div>
-                  <p className="text-xl font-bold">{storageTransactions.length}</p>
+                  <p className="text-xl font-bold">{(storageTransactions || []).length}</p>
                   <p className="text-xs text-muted-foreground">Storage</p>
                 </div>
               </div>
@@ -484,9 +508,9 @@ export default function TodayUpdates() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="w-max min-w-full md:w-auto">
-            <TabsTrigger value="all">All ({sewingUpdates.length + finishingDailyLogs.length + cuttingActuals.length + storageTransactions.length})</TabsTrigger>
-            <TabsTrigger value="storage">Storage ({storageTransactions.length})</TabsTrigger>
-            <TabsTrigger value="cutting">Cutting ({cuttingActuals.length})</TabsTrigger>
+            <TabsTrigger value="all">All ({sewingUpdates.length + finishingDailyLogs.length + cuttingTargets.length + cuttingActuals.length + (storageTransactions || []).length})</TabsTrigger>
+            <TabsTrigger value="storage">Storage ({(storageTransactions || []).length})</TabsTrigger>
+            <TabsTrigger value="cutting">Cutting ({cuttingTargets.length + cuttingActuals.length})</TabsTrigger>
             <TabsTrigger value="sewing">Sewing ({sewingUpdates.length})</TabsTrigger>
             <TabsTrigger value="finishing">Finishing ({finishingDailyLogs.length})</TabsTrigger>
           </TabsList>
@@ -604,13 +628,59 @@ export default function TodayUpdates() {
             </Card>
           )}
 
-          {/* Cutting Table */}
+          {/* Cutting Targets Table */}
+          {filteredCuttingTargets.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Scissors className="h-4 w-4 text-warning" />
+                  Cutting Morning Targets
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Line</TableHead>
+                        <TableHead>PO</TableHead>
+                        <TableHead className="text-right">Manpower</TableHead>
+                        <TableHead className="text-right">Marker Cap</TableHead>
+                        <TableHead className="text-right">Lay Cap</TableHead>
+                        <TableHead className="text-right">Cutting Cap</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredCuttingTargets.map((target) => (
+                        <TableRow 
+                          key={target.id} 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleCuttingTargetClick(target)}
+                        >
+                          <TableCell className="font-mono text-sm">{target.submitted_at ? formatTime(target.submitted_at) : '-'}</TableCell>
+                          <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
+                          <TableCell>{target.work_orders?.po_number || target.po_no || '-'}</TableCell>
+                          <TableCell className="text-right font-mono">{target.man_power}</TableCell>
+                          <TableCell className="text-right font-mono">{target.marker_capacity.toLocaleString()}</TableCell>
+                          <TableCell className="text-right font-mono">{target.lay_capacity.toLocaleString()}</TableCell>
+                          <TableCell className="text-right font-mono">{target.cutting_capacity.toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Cutting Actuals Table */}
           {filteredCutting.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Scissors className="h-4 w-4 text-warning" />
-                  Cutting Updates
+                  Cutting End of Day Actuals
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -808,8 +878,66 @@ export default function TodayUpdates() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="cutting" className="mt-4">
+        <TabsContent value="cutting" className="mt-4 space-y-4">
+          {/* Cutting Morning Targets */}
           <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Scissors className="h-4 w-4 text-warning" />
+                Morning Targets ({filteredCuttingTargets.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Line</TableHead>
+                      <TableHead>PO</TableHead>
+                      <TableHead className="text-right">Manpower</TableHead>
+                      <TableHead className="text-right">Marker Cap</TableHead>
+                      <TableHead className="text-right">Lay Cap</TableHead>
+                      <TableHead className="text-right">Cutting Cap</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredCuttingTargets.map((target) => (
+                      <TableRow 
+                        key={target.id} 
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleCuttingTargetClick(target)}
+                      >
+                        <TableCell className="font-mono text-sm">{target.submitted_at ? formatTime(target.submitted_at) : '-'}</TableCell>
+                        <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
+                        <TableCell>{target.work_orders?.po_number || target.po_no || '-'}</TableCell>
+                        <TableCell className="text-right font-mono">{target.man_power}</TableCell>
+                        <TableCell className="text-right font-mono">{target.marker_capacity.toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-mono">{target.lay_capacity.toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-mono">{target.cutting_capacity.toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                    {filteredCuttingTargets.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          No cutting targets submitted today
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Cutting End of Day Actuals */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Scissors className="h-4 w-4 text-warning" />
+                End of Day Actuals ({filteredCutting.length})
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
@@ -841,7 +969,7 @@ export default function TodayUpdates() {
                     {filteredCutting.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          No cutting updates today
+                          No cutting actuals submitted today
                         </TableCell>
                       </TableRow>
                     )}
@@ -951,6 +1079,30 @@ export default function TodayUpdates() {
         onOpenChange={setFinishingLogModalOpen}
       />
 
+      {/* Cutting Target Detail Modal */}
+      <CuttingTargetDetailModal
+        target={selectedCuttingTarget ? {
+          id: selectedCuttingTarget.id,
+          production_date: selectedCuttingTarget.production_date,
+          line_name: selectedCuttingTarget.lines?.name || selectedCuttingTarget.lines?.line_id || 'Unknown',
+          buyer: selectedCuttingTarget.work_orders?.buyer || selectedCuttingTarget.buyer || null,
+          style: selectedCuttingTarget.work_orders?.style || selectedCuttingTarget.style || null,
+          po_number: selectedCuttingTarget.work_orders?.po_number || selectedCuttingTarget.po_no || null,
+          colour: selectedCuttingTarget.colour || null,
+          order_qty: selectedCuttingTarget.order_qty || null,
+          man_power: selectedCuttingTarget.man_power,
+          marker_capacity: selectedCuttingTarget.marker_capacity,
+          lay_capacity: selectedCuttingTarget.lay_capacity,
+          cutting_capacity: selectedCuttingTarget.cutting_capacity,
+          under_qty: selectedCuttingTarget.under_qty,
+          day_cutting: selectedCuttingTarget.day_cutting,
+          day_input: selectedCuttingTarget.day_input,
+          submitted_at: selectedCuttingTarget.submitted_at,
+        } : null}
+        open={cuttingTargetModalOpen}
+        onOpenChange={setCuttingTargetModalOpen}
+      />
+
       {/* Export Dialog */}
       <ExportSubmissionsDialog
         open={exportDialogOpen}
@@ -978,9 +1130,9 @@ export default function TodayUpdates() {
               total_poly: log.poly || 0,
               total_carton: log.carton || 0,
             })),
-          cuttingTargets: [],
+          cuttingTargets: cuttingTargets,
           cuttingActuals: cuttingActuals,
-          storageBinCards: storageTransactions.map(t => ({
+          storageBinCards: (storageTransactions || []).map(t => ({
             id: t.storage_bin_cards?.id,
             created_at: t.created_at,
             buyer: t.storage_bin_cards?.buyer,

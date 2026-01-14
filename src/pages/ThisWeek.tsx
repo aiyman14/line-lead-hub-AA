@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, TrendingUp, TrendingDown, Minus, Factory, Package, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Calendar, TrendingUp, TrendingDown, Minus, Factory, Package, ChevronLeft, ChevronRight, Scissors } from "lucide-react";
 
 interface DailyStats {
   date: string;
@@ -13,8 +13,12 @@ interface DailyStats {
   sewingOutput: number;
   finishingTarget: number;
   finishingOutput: number;
+  cuttingTarget: number;
+  cuttingActual: number;
   sewingUpdates: number;
   finishingUpdates: number;
+  cuttingTargetCount: number;
+  cuttingActualCount: number;
   blockers: number;
 }
 
@@ -27,6 +31,8 @@ export default function ThisWeek() {
     sewingOutput: 0,
     finishingTarget: 0,
     finishingOutput: 0,
+    cuttingTarget: 0,
+    cuttingActual: 0,
     totalUpdates: 0,
     totalBlockers: 0,
   });
@@ -53,6 +59,8 @@ export default function ThisWeek() {
       let totalSewing = 0;
       let totalFinishingTarget = 0;
       let totalFinishingOutput = 0;
+      let totalCuttingTarget = 0;
+      let totalCuttingActual = 0;
       let totalUpdates = 0;
       let totalBlockers = 0;
 
@@ -69,14 +77,18 @@ export default function ThisWeek() {
             sewingOutput: 0,
             finishingTarget: 0,
             finishingOutput: 0,
+            cuttingTarget: 0,
+            cuttingActual: 0,
             sewingUpdates: 0,
             finishingUpdates: 0,
+            cuttingTargetCount: 0,
+            cuttingActualCount: 0,
             blockers: 0,
           });
           continue;
         }
 
-        const [sewingRes, finishingRes, sewingTargetsRes] = await Promise.all([
+        const [sewingRes, finishingRes, sewingTargetsRes, cuttingTargetsRes, cuttingActualsRes] = await Promise.all([
           supabase
             .from('production_updates_sewing')
             .select('output_qty, has_blocker')
@@ -92,11 +104,23 @@ export default function ThisWeek() {
             .select('per_hour_target, manpower_planned')
             .eq('factory_id', profile.factory_id)
             .eq('production_date', dateStr),
+          supabase
+            .from('cutting_targets')
+            .select('cutting_capacity')
+            .eq('factory_id', profile.factory_id)
+            .eq('production_date', dateStr),
+          supabase
+            .from('cutting_actuals')
+            .select('day_cutting')
+            .eq('factory_id', profile.factory_id)
+            .eq('production_date', dateStr),
         ]);
 
         const sewingData = sewingRes.data || [];
         const finishingData = finishingRes.data || [];
         const sewingTargetsData = sewingTargetsRes.data || [];
+        const cuttingTargetsData = cuttingTargetsRes.data || [];
+        const cuttingActualsData = cuttingActualsRes.data || [];
 
         const daySewingOutput = sewingData.reduce((sum, u) => sum + (u.output_qty || 0), 0);
         
@@ -108,6 +132,10 @@ export default function ThisWeek() {
         const finishingOutputLogs = finishingData.filter(f => f.log_type === 'OUTPUT');
         const dayFinishingOutput = finishingOutputLogs.reduce((sum, f) => sum + (f.poly || 0) + (f.carton || 0), 0);
         
+        // Cutting data
+        const dayCuttingTarget = cuttingTargetsData.reduce((sum, t) => sum + (t.cutting_capacity || 0), 0);
+        const dayCuttingActual = cuttingActualsData.reduce((sum, a) => sum + (a.day_cutting || 0), 0);
+        
         const dayBlockers = sewingData.filter(u => u.has_blocker).length;
 
         // Calculate sewing targets (per_hour_target * 8 hours as daily estimate)
@@ -116,7 +144,9 @@ export default function ThisWeek() {
         totalSewing += daySewingOutput;
         totalFinishingTarget += dayFinishingTarget;
         totalFinishingOutput += dayFinishingOutput;
-        totalUpdates += sewingData.length + finishingData.length;
+        totalCuttingTarget += dayCuttingTarget;
+        totalCuttingActual += dayCuttingActual;
+        totalUpdates += sewingData.length + finishingData.length + cuttingTargetsData.length + cuttingActualsData.length;
         totalBlockers += dayBlockers;
 
         days.push({
@@ -126,8 +156,12 @@ export default function ThisWeek() {
           sewingOutput: daySewingOutput,
           finishingTarget: dayFinishingTarget,
           finishingOutput: dayFinishingOutput,
+          cuttingTarget: dayCuttingTarget,
+          cuttingActual: dayCuttingActual,
           sewingUpdates: sewingData.length,
           finishingUpdates: finishingData.length,
+          cuttingTargetCount: cuttingTargetsData.length,
+          cuttingActualCount: cuttingActualsData.length,
           blockers: dayBlockers,
         });
       }
@@ -137,6 +171,8 @@ export default function ThisWeek() {
         sewingOutput: totalSewing,
         finishingTarget: totalFinishingTarget,
         finishingOutput: totalFinishingOutput,
+        cuttingTarget: totalCuttingTarget,
+        cuttingActual: totalCuttingActual,
         totalUpdates,
         totalBlockers,
       });
@@ -255,8 +291,21 @@ export default function ThisWeek() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-2xl font-bold">{totals.totalUpdates}</p>
-            <p className="text-xs text-muted-foreground">Total Updates</p>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
+                <Scissors className="h-5 w-5 text-warning" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold font-mono">{totals.cuttingActual.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Cutting Output</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={totals.totalBlockers > 0 ? 'border-warning/30' : ''}>
+          <CardContent className="p-4">
+            <p className={`text-2xl font-bold ${totals.totalBlockers > 0 ? 'text-warning' : ''}`}>{totals.totalBlockers}</p>
+            <p className="text-xs text-muted-foreground">Total Blockers</p>
           </CardContent>
         </Card>
         <Card className={totals.totalBlockers > 0 ? 'border-warning/30' : ''}>
