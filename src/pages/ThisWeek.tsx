@@ -308,12 +308,6 @@ export default function ThisWeek() {
             <p className="text-xs text-muted-foreground">Total Blockers</p>
           </CardContent>
         </Card>
-        <Card className={totals.totalBlockers > 0 ? 'border-warning/30' : ''}>
-          <CardContent className="p-4">
-            <p className={`text-2xl font-bold ${totals.totalBlockers > 0 ? 'text-warning' : ''}`}>{totals.totalBlockers}</p>
-            <p className="text-xs text-muted-foreground">Total Blockers</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Daily Breakdown */}
