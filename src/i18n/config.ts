@@ -3,7 +3,10 @@ import { initReactI18next } from 'react-i18next';
 import en from './locales/en.json';
 import bn from './locales/bn.json';
 
-const savedLanguage = localStorage.getItem('app-language') || 'en';
+// Only use saved language if it's a valid option, default to English
+const savedLanguage = localStorage.getItem('app-language');
+const validLanguages = ['en', 'bn'];
+const initialLanguage = savedLanguage && validLanguages.includes(savedLanguage) ? savedLanguage : 'en';
 
 i18n
   .use(initReactI18next)
@@ -12,7 +15,7 @@ i18n
       en: { translation: en },
       bn: { translation: bn },
     },
-    lng: savedLanguage,
+    lng: initialLanguage,
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false,
