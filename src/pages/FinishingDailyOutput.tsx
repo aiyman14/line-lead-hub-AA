@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Plus, Lock, Unlock, CheckCircle2, Edit2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -15,16 +17,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
-import { FinishingOutputEntryDialog } from "@/components/finishing/FinishingOutputEntryDialog";
-import { FinishingOutputGrid } from "@/components/finishing/FinishingOutputGrid";
-import { cn } from "@/lib/utils";
 
 interface Line {
   id: string;
   line_id: string;
   name: string | null;
+  unit_id: string | null;
+  floor_id: string | null;
 }
 
 interface WorkOrder {
@@ -33,198 +33,99 @@ interface WorkOrder {
   buyer: string;
   style: string;
   item: string | null;
-  color: string | null;
   order_qty: number;
   line_id: string | null;
 }
 
-interface DailySheet {
+interface Unit {
   id: string;
-  production_date: string;
-  line_id: string;
-  work_order_id: string;
-  buyer: string | null;
-  style: string | null;
-  po_no: string | null;
-  item: string | null;
-  color: string | null;
-  finishing_no: string | null;
+  name: string;
 }
 
-interface HourlyLog {
+interface Floor {
   id: string;
-  sheet_id: string;
-  hour_slot: string;
-  thread_cutting_target: number;
-  thread_cutting_actual: number;
-  inside_check_target: number;
-  inside_check_actual: number;
-  top_side_check_target: number;
-  top_side_check_actual: number;
-  buttoning_target: number;
-  buttoning_actual: number;
-  iron_target: number;
-  iron_actual: number;
-  get_up_target: number;
-  get_up_actual: number;
-  poly_target: number;
-  poly_actual: number;
-  carton_target: number;
-  carton_actual: number;
-  remarks: string | null;
-  is_locked: boolean;
-  submitted_at: string;
-  submitted_by: string;
+  name: string;
+  unit_id: string;
 }
-
-const REGULAR_HOUR_SLOTS = [
-  "08-09", "09-10", "10-11", "11-12", "12-01",
-  "02-03", "03-04", "04-05", "05-06", "06-07"
-];
-
-const OT_SLOTS = ["OT-1", "OT-2", "OT-3", "OT-4", "OT-5"];
 
 export default function FinishingDailyOutput() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const { user, profile, isAdminOrHigher } = useAuth();
-  
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Master data
   const [lines, setLines] = useState<Line[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [selectedLineId, setSelectedLineId] = useState(searchParams.get("line") || "");
-  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState(searchParams.get("po") || "");
-  const sheetIdFromUrl = searchParams.get("sheet");
-  
-  const [currentSheet, setCurrentSheet] = useState<DailySheet | null>(null);
-  const [hourlyLogs, setHourlyLogs] = useState<HourlyLog[]>([]);
-  const [loadingSheet, setLoadingSheet] = useState(false);
-  const [loadingExistingSheet, setLoadingExistingSheet] = useState(!!sheetIdFromUrl);
-  
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingSlot, setEditingSlot] = useState<string | null>(null);
-  const [editingLog, setEditingLog] = useState<HourlyLog | null>(null);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [floors, setFloors] = useState<Floor[]>([]);
 
-  const selectedWorkOrder = useMemo(() => {
-    return workOrders.find(wo => wo.id === selectedWorkOrderId);
-  }, [workOrders, selectedWorkOrderId]);
+  // Form state
+  const [selectedLineId, setSelectedLineId] = useState("");
+  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
+  const [dayQcPass, setDayQcPass] = useState("");
+  const [totalQcPass, setTotalQcPass] = useState("");
+  const [dayPoly, setDayPoly] = useState("");
+  const [totalPoly, setTotalPoly] = useState("");
+  const [dayCarton, setDayCarton] = useState("");
+  const [totalCarton, setTotalCarton] = useState("");
+  const [averageProduction, setAverageProduction] = useState("");
+  const [mPowerActual, setMPowerActual] = useState("");
+  const [dayHourActual, setDayHourActual] = useState("");
+  const [dayOverTimeActual, setDayOverTimeActual] = useState("0");
+  const [totalHour, setTotalHour] = useState("");
+  const [totalOverTime, setTotalOverTime] = useState("");
+  const [remarks, setRemarks] = useState("");
+
+  // Auto-filled
+  const [unitName, setUnitName] = useState("");
+  const [floorName, setFloorName] = useState("");
+
+  // Validation
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const filteredWorkOrders = useMemo(() => {
     if (!selectedLineId) return workOrders;
     return workOrders.filter(wo => wo.line_id === selectedLineId || !wo.line_id);
   }, [workOrders, selectedLineId]);
 
-  // Only show slots that have targets set (for output entry)
-  const slotsWithTargets = useMemo(() => {
-    return hourlyLogs.filter(log => 
-      log.thread_cutting_target > 0 || log.inside_check_target > 0 || 
-      log.top_side_check_target > 0 || log.buttoning_target > 0 ||
-      log.iron_target > 0 || log.get_up_target > 0 ||
-      log.poly_target > 0 || log.carton_target > 0
-    ).map(log => log.hour_slot);
-  }, [hourlyLogs]);
-
-  const submittedOutputSlots = useMemo(() => {
-    return hourlyLogs.filter(log => 
-      log.thread_cutting_actual > 0 || log.inside_check_actual > 0 || 
-      log.top_side_check_actual > 0 || log.buttoning_actual > 0 ||
-      log.iron_actual > 0 || log.get_up_actual > 0 ||
-      log.poly_actual > 0 || log.carton_actual > 0
-    ).map(log => log.hour_slot);
-  }, [hourlyLogs]);
-
-  const visibleOTSlots = useMemo(() => {
-    const submittedOTSlots = hourlyLogs
-      .filter(log => log.hour_slot.startsWith("OT-"))
-      .map(log => log.hour_slot);
-    
-    const nextOTIndex = submittedOTSlots.length;
-    if (nextOTIndex < OT_SLOTS.length) {
-      return [...submittedOTSlots, OT_SLOTS[nextOTIndex]];
-    }
-    return submittedOTSlots;
-  }, [hourlyLogs]);
-
-  const allVisibleSlots = useMemo(() => {
-    // Show all regular slots + any OT slots that have data
-    return [...REGULAR_HOUR_SLOTS, ...visibleOTSlots];
-  }, [visibleOTSlots]);
-
-  const currentHourSlot = useMemo(() => {
-    const now = new Date();
-    const hour = now.getHours();
-    
-    if (hour >= 8 && hour < 9) return "08-09";
-    if (hour >= 9 && hour < 10) return "09-10";
-    if (hour >= 10 && hour < 11) return "10-11";
-    if (hour >= 11 && hour < 12) return "11-12";
-    if (hour >= 12 && hour < 13) return "12-01";
-    if (hour >= 14 && hour < 15) return "02-03";
-    if (hour >= 15 && hour < 16) return "03-04";
-    if (hour >= 16 && hour < 17) return "04-05";
-    if (hour >= 17 && hour < 18) return "05-06";
-    if (hour >= 18 && hour < 19) return "06-07";
-    
-    return null;
-  }, []);
-
-  useEffect(() => {
-    if (sheetIdFromUrl && profile?.factory_id) {
-      loadExistingSheet(sheetIdFromUrl);
-    }
-  }, [sheetIdFromUrl, profile?.factory_id]);
+  const selectedWorkOrder = useMemo(() => {
+    return workOrders.find(wo => wo.id === selectedWorkOrderId);
+  }, [workOrders, selectedWorkOrderId]);
 
   useEffect(() => {
     if (profile?.factory_id) {
-      fetchInitialData();
+      fetchFormData();
     }
   }, [profile?.factory_id]);
 
   useEffect(() => {
-    if (!sheetIdFromUrl && selectedLineId && selectedWorkOrderId && profile?.factory_id) {
-      loadSheet();
-    } else if (!sheetIdFromUrl && (!selectedLineId || !selectedWorkOrderId)) {
-      setCurrentSheet(null);
-      setHourlyLogs([]);
-    }
-  }, [selectedLineId, selectedWorkOrderId, profile?.factory_id, sheetIdFromUrl]);
-
-  async function loadExistingSheet(sheetId: string) {
-    if (!profile?.factory_id) return;
-    
-    setLoadingExistingSheet(true);
-    try {
-      const { data: sheet, error } = await supabase
-        .from("finishing_daily_sheets")
-        .select("*")
-        .eq("id", sheetId)
-        .eq("factory_id", profile.factory_id)
-        .single();
-
-      if (error) throw error;
-      
-      if (sheet) {
-        setCurrentSheet(sheet);
-        setSelectedLineId(sheet.line_id);
-        setSelectedWorkOrderId(sheet.work_order_id);
-        await fetchHourlyLogs(sheet.id);
+    if (selectedLineId) {
+      const line = lines.find(l => l.id === selectedLineId);
+      if (line) {
+        const unit = units.find(u => u.id === line.unit_id);
+        const floor = floors.find(f => f.id === line.floor_id);
+        setUnitName(unit?.name || "");
+        setFloorName(floor?.name || "");
       }
-    } catch (error) {
-      console.error("Error loading sheet:", error);
-      toast.error("Failed to load sheet");
-    } finally {
-      setLoadingExistingSheet(false);
+    } else {
+      setUnitName("");
+      setFloorName("");
     }
-  }
+  }, [selectedLineId, lines, units, floors]);
 
-  async function fetchInitialData() {
+  async function fetchFormData() {
     if (!profile?.factory_id) return;
 
     try {
-      const [linesRes, workOrdersRes, assignmentsRes] = await Promise.all([
-        supabase.from("lines").select("id, line_id, name").eq("factory_id", profile.factory_id).eq("is_active", true),
+      const [
+        linesRes, workOrdersRes, unitsRes, floorsRes, assignmentsRes
+      ] = await Promise.all([
+        supabase.from("lines").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("work_orders").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
+        supabase.from("units").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
+        supabase.from("floors").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("user_line_assignments").select("line_id").eq("user_id", user?.id || ""),
       ]);
 
@@ -237,134 +138,105 @@ export default function FinishingDailyOutput() {
 
       setLines(availableLines);
       setWorkOrders(workOrdersRes.data || []);
+      setUnits(unitsRes.data || []);
+      setFloors(floorsRes.data || []);
     } catch (error) {
-      console.error("Error fetching data:", error);
-      toast.error("Failed to load data");
+      console.error("Error fetching form data:", error);
+      toast.error(t("common.submissionFailed"));
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadSheet() {
-    if (!profile?.factory_id || !user?.id || !selectedLineId || !selectedWorkOrderId) return;
-    
-    setLoadingSheet(true);
-    const today = format(new Date(), "yyyy-MM-dd");
+  function validateForm(): boolean {
+    const newErrors: Record<string, string> = {};
+
+    if (!selectedLineId) newErrors.line = "Line is required";
+    if (!selectedWorkOrderId) newErrors.workOrder = "PO is required";
+    if (!dayQcPass || parseInt(dayQcPass) < 0) newErrors.dayQcPass = "Day QC Pass is required";
+    if (!totalQcPass || parseInt(totalQcPass) < 0) newErrors.totalQcPass = "Total QC Pass is required";
+    if (!dayPoly || parseInt(dayPoly) < 0) newErrors.dayPoly = "Day Poly is required";
+    if (!totalPoly || parseInt(totalPoly) < 0) newErrors.totalPoly = "Total Poly is required";
+    if (!dayCarton || parseInt(dayCarton) < 0) newErrors.dayCarton = "Day Carton is required";
+    if (!totalCarton || parseInt(totalCarton) < 0) newErrors.totalCarton = "Total Carton is required";
+    if (!mPowerActual || parseInt(mPowerActual) <= 0) newErrors.mPowerActual = "M Power is required";
+    if (!dayHourActual || parseFloat(dayHourActual) < 0) newErrors.dayHourActual = "Day hours is required";
+    if (dayOverTimeActual === "" || parseFloat(dayOverTimeActual) < 0) newErrors.dayOverTimeActual = "OT hours must be 0 or more";
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!validateForm()) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    if (!profile?.factory_id || !user?.id) {
+      toast.error("Missing user or factory information");
+      return;
+    }
+
+    setSubmitting(true);
 
     try {
-      const { data: existingSheet, error: fetchError } = await supabase
-        .from("finishing_daily_sheets")
-        .select("*")
-        .eq("factory_id", profile.factory_id)
-        .eq("production_date", today)
-        .eq("line_id", selectedLineId)
-        .eq("work_order_id", selectedWorkOrderId)
-        .maybeSingle();
+      const insertData = {
+        factory_id: profile.factory_id,
+        production_date: format(new Date(), "yyyy-MM-dd"),
+        submitted_by: user.id,
+        line_id: selectedLineId,
+        work_order_id: selectedWorkOrderId,
+        unit_name: unitName,
+        floor_name: floorName,
+        buyer_name: selectedWorkOrder?.buyer || "",
+        style_no: selectedWorkOrder?.style || "",
+        item_name: selectedWorkOrder?.item || "",
+        order_qty: selectedWorkOrder?.order_qty || 0,
+        day_qc_pass: parseInt(dayQcPass),
+        total_qc_pass: parseInt(totalQcPass),
+        day_poly: parseInt(dayPoly),
+        total_poly: parseInt(totalPoly),
+        day_carton: parseInt(dayCarton),
+        total_carton: parseInt(totalCarton),
+        average_production: averageProduction ? parseInt(averageProduction) : 0,
+        m_power_actual: parseInt(mPowerActual),
+        day_hour_actual: parseFloat(dayHourActual),
+        day_over_time_actual: parseFloat(dayOverTimeActual),
+        total_hour: totalHour ? parseFloat(totalHour) : 0,
+        total_over_time: totalOverTime ? parseFloat(totalOverTime) : 0,
+        remarks: remarks || null,
+      };
 
-      if (fetchError) throw fetchError;
+      const { error } = await supabase.from("finishing_actuals").insert(insertData as any);
 
-      if (existingSheet) {
-        setCurrentSheet(existingSheet);
-        await fetchHourlyLogs(existingSheet.id);
-      } else {
-        // No sheet exists - user should set targets first
-        setCurrentSheet(null);
-        setHourlyLogs([]);
-        toast.info("No targets set for this line/PO. Please set targets first.");
+      if (error) {
+        if (error.code === "23505") {
+          toast.error("Output already submitted for this line and PO today");
+        } else {
+          throw error;
+        }
+        return;
       }
-    } catch (error: any) {
-      console.error("Error loading sheet:", error);
-      toast.error("Failed to load daily sheet");
-    } finally {
-      setLoadingSheet(false);
-    }
-  }
 
-  async function fetchHourlyLogs(sheetId: string) {
-    const { data, error } = await supabase
-      .from("finishing_hourly_logs")
-      .select("*")
-      .eq("sheet_id", sheetId)
-      .order("hour_slot");
-
-    if (error) {
-      console.error("Error fetching hourly logs:", error);
-      return;
-    }
-
-    setHourlyLogs(data || []);
-  }
-
-  function handleAddOutput(slot: string) {
-    const existingLog = hourlyLogs.find(log => log.hour_slot === slot);
-    if (!existingLog) {
-      toast.error("Please set targets first before entering output");
-      return;
-    }
-    setEditingSlot(slot);
-    setEditingLog(existingLog);
-    setDialogOpen(true);
-  }
-
-  async function handleSaveOutput(data: Partial<HourlyLog>) {
-    if (!currentSheet || !user?.id || !editingSlot || !editingLog) return;
-
-    try {
-      const { error } = await supabase
-        .from("finishing_hourly_logs")
-        .update({
-          thread_cutting_actual: data.thread_cutting_actual || 0,
-          inside_check_actual: data.inside_check_actual || 0,
-          top_side_check_actual: data.top_side_check_actual || 0,
-          buttoning_actual: data.buttoning_actual || 0,
-          iron_actual: data.iron_actual || 0,
-          get_up_actual: data.get_up_actual || 0,
-          poly_actual: data.poly_actual || 0,
-          carton_actual: data.carton_actual || 0,
-          remarks: data.remarks || null,
-          updated_at: new Date().toISOString(),
-          updated_by: user.id,
-        })
-        .eq("id", editingLog.id);
-
-      if (error) throw error;
-      toast.success("Output updated successfully");
-
-      await fetchHourlyLogs(currentSheet.id);
-      setDialogOpen(false);
-      setEditingSlot(null);
-      setEditingLog(null);
-    } catch (error: any) {
-      console.error("Error saving output:", error);
-      toast.error("Failed to save output");
-    }
-  }
-
-  async function handleToggleLock(log: HourlyLog) {
-    if (!isAdminOrHigher()) {
-      toast.error("Only admins can lock/unlock hours");
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from("finishing_hourly_logs")
-        .update({ is_locked: !log.is_locked })
-        .eq("id", log.id);
-
-      if (error) throw error;
+      toast.success("Finishing output submitted successfully!");
       
-      toast.success(log.is_locked ? "Hour unlocked" : "Hour locked");
-      if (currentSheet) {
-        await fetchHourlyLogs(currentSheet.id);
+      if (isAdminOrHigher()) {
+        navigate("/dashboard");
+      } else {
+        navigate("/finishing/my-submissions");
       }
-    } catch (error) {
-      console.error("Error toggling lock:", error);
-      toast.error("Failed to update lock status");
+    } catch (error: any) {
+      console.error("Error submitting output:", error);
+      toast.error(error.message || "Failed to submit output");
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  if (loading || loadingExistingSheet) {
+  if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -375,37 +247,37 @@ export default function FinishingDailyOutput() {
   if (!profile?.factory_id) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-4">
-        <p className="text-muted-foreground">No factory assigned</p>
+        <p className="text-muted-foreground">No factory assigned to your account.</p>
       </div>
     );
   }
 
   return (
-    <div className="container max-w-6xl py-4 px-4 pb-8">
+    <div className="container max-w-2xl py-4 px-4 pb-8">
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-bold">Finishing Daily Output</h1>
+          <h1 className="text-xl font-bold">{t("nav.finishingDailyOutput")}</h1>
           <p className="text-sm text-muted-foreground">
             {format(new Date(), "EEEE, MMMM d, yyyy")}
           </p>
         </div>
       </div>
 
-      {/* Line & PO Selection */}
-      <Card className="mb-6">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Select Line & PO</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Line & PO Selection */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Select Line & PO</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Line *</Label>
+              <Label>Line No. *</Label>
               <Select value={selectedLineId} onValueChange={setSelectedLineId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Line" />
+                <SelectTrigger className={errors.line ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select line" />
                 </SelectTrigger>
                 <SelectContent>
                   {lines.map((line) => (
@@ -415,12 +287,13 @@ export default function FinishingDailyOutput() {
                   ))}
                 </SelectContent>
               </Select>
+              {errors.line && <p className="text-sm text-destructive">{errors.line}</p>}
             </div>
 
             <div className="space-y-2">
-              <Label>PO / Work Order *</Label>
+              <Label>PO Number *</Label>
               <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-                <SelectTrigger>
+                <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
                   <SelectValue placeholder="Select PO" />
                 </SelectTrigger>
                 <SelectContent>
@@ -431,113 +304,248 @@ export default function FinishingDailyOutput() {
                   ))}
                 </SelectContent>
               </Select>
+              {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Sheet Header Info */}
-      {loadingSheet ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
-      ) : currentSheet && selectedWorkOrder ? (
-        <>
-          <Card className="mb-6">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Order Details</CardTitle>
-                <Badge variant="outline">
-                  {submittedOutputSlots.length} Outputs Logged
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">BUYER:</span>
-                  <p className="font-medium">{currentSheet.buyer || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">STYLE:</span>
-                  <p className="font-medium">{currentSheet.style || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">P/O:</span>
-                  <p className="font-medium">{currentSheet.po_no || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">ITEM:</span>
-                  <p className="font-medium">{currentSheet.item || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">COLOR:</span>
-                  <p className="font-medium">{currentSheet.color || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">ORDER QTY:</span>
-                  <p className="font-medium">{selectedWorkOrder.order_qty?.toLocaleString() || "-"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Output Grid */}
+        {/* Auto-filled Details */}
+        {selectedWorkOrder && (
           <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Hourly Output (vs Target)</CardTitle>
-                {currentHourSlot && slotsWithTargets.includes(currentHourSlot) && !submittedOutputSlots.includes(currentHourSlot) && (
-                  <Button size="sm" onClick={() => handleAddOutput(currentHourSlot)}>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Log Output ({currentHourSlot})
-                  </Button>
-                )}
-              </div>
+              <CardTitle className="text-base">Order Details (Auto-filled)</CardTitle>
             </CardHeader>
-            <CardContent className="p-0 overflow-x-auto">
-              <FinishingOutputGrid
-                hourSlots={allVisibleSlots}
-                hourlyLogs={hourlyLogs}
-                currentHourSlot={currentHourSlot}
-                isAdmin={isAdminOrHigher()}
-                userId={user?.id || ""}
-                onAddOutput={handleAddOutput}
-                onToggleLock={handleToggleLock}
-              />
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Buyer:</span>
+                  <p className="font-medium">{selectedWorkOrder.buyer}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Style:</span>
+                  <p className="font-medium">{selectedWorkOrder.style}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Item:</span>
+                  <p className="font-medium">{selectedWorkOrder.item || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Order Qty:</span>
+                  <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Unit:</span>
+                  <p className="font-medium">{unitName || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Floor:</span>
+                  <p className="font-medium">{floorName || "-"}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
-        </>
-      ) : selectedLineId && selectedWorkOrderId ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground mb-4">
-              No targets set for this Line and PO today.
-            </p>
-            <Button onClick={() => navigate(`/finishing/daily-target?line=${selectedLineId}&po=${selectedWorkOrderId}`)}>
-              Set Targets First
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              Select a Line and PO to log today's hourly output
-            </p>
-          </CardContent>
-        </Card>
-      )}
+        )}
 
-      {/* Output Entry Dialog */}
-      <FinishingOutputEntryDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        hourSlot={editingSlot || ""}
-        existingLog={editingLog}
-        onSave={handleSaveOutput}
-        isAdmin={isAdminOrHigher()}
-      />
+        {/* QC & Production Output */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">QC & Production Output</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Day QC Pass *</Label>
+                <Input
+                  type="number"
+                  value={dayQcPass}
+                  onChange={(e) => setDayQcPass(e.target.value)}
+                  placeholder="0"
+                  className={errors.dayQcPass ? "border-destructive" : ""}
+                />
+                {errors.dayQcPass && <p className="text-sm text-destructive">{errors.dayQcPass}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Total QC Pass *</Label>
+                <Input
+                  type="number"
+                  value={totalQcPass}
+                  onChange={(e) => setTotalQcPass(e.target.value)}
+                  placeholder="0"
+                  className={errors.totalQcPass ? "border-destructive" : ""}
+                />
+                {errors.totalQcPass && <p className="text-sm text-destructive">{errors.totalQcPass}</p>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Day Poly *</Label>
+                <Input
+                  type="number"
+                  value={dayPoly}
+                  onChange={(e) => setDayPoly(e.target.value)}
+                  placeholder="0"
+                  className={errors.dayPoly ? "border-destructive" : ""}
+                />
+                {errors.dayPoly && <p className="text-sm text-destructive">{errors.dayPoly}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Total Poly *</Label>
+                <Input
+                  type="number"
+                  value={totalPoly}
+                  onChange={(e) => setTotalPoly(e.target.value)}
+                  placeholder="0"
+                  className={errors.totalPoly ? "border-destructive" : ""}
+                />
+                {errors.totalPoly && <p className="text-sm text-destructive">{errors.totalPoly}</p>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Day Carton *</Label>
+                <Input
+                  type="number"
+                  value={dayCarton}
+                  onChange={(e) => setDayCarton(e.target.value)}
+                  placeholder="0"
+                  className={errors.dayCarton ? "border-destructive" : ""}
+                />
+                {errors.dayCarton && <p className="text-sm text-destructive">{errors.dayCarton}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Total Carton *</Label>
+                <Input
+                  type="number"
+                  value={totalCarton}
+                  onChange={(e) => setTotalCarton(e.target.value)}
+                  placeholder="0"
+                  className={errors.totalCarton ? "border-destructive" : ""}
+                />
+                {errors.totalCarton && <p className="text-sm text-destructive">{errors.totalCarton}</p>}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Average Production</Label>
+              <Input
+                type="number"
+                value={averageProduction}
+                onChange={(e) => setAverageProduction(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Manpower & Hours */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Manpower & Hours</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>M Power Actual *</Label>
+                <Input
+                  type="number"
+                  value={mPowerActual}
+                  onChange={(e) => setMPowerActual(e.target.value)}
+                  placeholder="0"
+                  className={errors.mPowerActual ? "border-destructive" : ""}
+                />
+                {errors.mPowerActual && <p className="text-sm text-destructive">{errors.mPowerActual}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Day Hours Actual *</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  value={dayHourActual}
+                  onChange={(e) => setDayHourActual(e.target.value)}
+                  placeholder="0"
+                  className={errors.dayHourActual ? "border-destructive" : ""}
+                />
+                {errors.dayHourActual && <p className="text-sm text-destructive">{errors.dayHourActual}</p>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>OT Hours Actual *</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  value={dayOverTimeActual}
+                  onChange={(e) => setDayOverTimeActual(e.target.value)}
+                  placeholder="0"
+                  className={errors.dayOverTimeActual ? "border-destructive" : ""}
+                />
+                {errors.dayOverTimeActual && <p className="text-sm text-destructive">{errors.dayOverTimeActual}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Total Hours</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  value={totalHour}
+                  onChange={(e) => setTotalHour(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Total OT Hours</Label>
+              <Input
+                type="number"
+                step="0.5"
+                value={totalOverTime}
+                onChange={(e) => setTotalOverTime(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Optional Fields */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Optional</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label>Remarks</Label>
+              <Textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                placeholder="Any additional notes..."
+                rows={3}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Submit Button */}
+        <div className="mt-6 pb-2">
+          <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
+            {submitting ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit Finishing Output"
+            )}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }

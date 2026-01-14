@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Plus, Lock, Unlock, CheckCircle2, Edit2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -15,16 +17,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
-import { FinishingTargetEntryDialog } from "@/components/finishing/FinishingTargetEntryDialog";
-import { FinishingTargetGrid } from "@/components/finishing/FinishingTargetGrid";
-import { cn } from "@/lib/utils";
 
 interface Line {
   id: string;
   line_id: string;
   name: string | null;
+  unit_id: string | null;
+  floor_id: string | null;
 }
 
 interface WorkOrder {
@@ -33,179 +33,89 @@ interface WorkOrder {
   buyer: string;
   style: string;
   item: string | null;
-  color: string | null;
   order_qty: number;
   line_id: string | null;
 }
 
-interface DailySheet {
+interface Unit {
   id: string;
-  production_date: string;
-  line_id: string;
-  work_order_id: string;
-  buyer: string | null;
-  style: string | null;
-  po_no: string | null;
-  item: string | null;
-  color: string | null;
-  finishing_no: string | null;
+  name: string;
 }
 
-interface HourlyLog {
+interface Floor {
   id: string;
-  sheet_id: string;
-  hour_slot: string;
-  thread_cutting_target: number;
-  inside_check_target: number;
-  top_side_check_target: number;
-  buttoning_target: number;
-  iron_target: number;
-  get_up_target: number;
-  poly_target: number;
-  carton_target: number;
-  remarks: string | null;
-  is_locked: boolean;
-  submitted_at: string;
-  submitted_by: string;
+  name: string;
+  unit_id: string;
 }
-
-const REGULAR_HOUR_SLOTS = [
-  "08-09", "09-10", "10-11", "11-12", "12-01",
-  "02-03", "03-04", "04-05", "05-06", "06-07"
-];
-
-const OT_SLOTS = ["OT-1", "OT-2", "OT-3", "OT-4", "OT-5"];
 
 export default function FinishingDailyTarget() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
-  const { user, profile, isAdminOrHigher } = useAuth();
-  
+  const { user, profile, factory, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Master data
   const [lines, setLines] = useState<Line[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [selectedLineId, setSelectedLineId] = useState(searchParams.get("line") || "");
-  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState(searchParams.get("po") || "");
-  const sheetIdFromUrl = searchParams.get("sheet");
-  
-  const [currentSheet, setCurrentSheet] = useState<DailySheet | null>(null);
-  const [hourlyLogs, setHourlyLogs] = useState<HourlyLog[]>([]);
-  const [loadingSheet, setLoadingSheet] = useState(false);
-  const [loadingExistingSheet, setLoadingExistingSheet] = useState(!!sheetIdFromUrl);
-  
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingSlot, setEditingSlot] = useState<string | null>(null);
-  const [editingLog, setEditingLog] = useState<HourlyLog | null>(null);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [floors, setFloors] = useState<Floor[]>([]);
 
-  const selectedWorkOrder = useMemo(() => {
-    return workOrders.find(wo => wo.id === selectedWorkOrderId);
-  }, [workOrders, selectedWorkOrderId]);
+  // Form state
+  const [selectedLineId, setSelectedLineId] = useState("");
+  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
+  const [perHourTarget, setPerHourTarget] = useState("");
+  const [mPowerPlanned, setMPowerPlanned] = useState("");
+  const [dayHourPlanned, setDayHourPlanned] = useState("");
+  const [dayOverTimePlanned, setDayOverTimePlanned] = useState("0");
+  const [remarks, setRemarks] = useState("");
+
+  // Auto-filled
+  const [unitName, setUnitName] = useState("");
+  const [floorName, setFloorName] = useState("");
+
+  // Validation
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const filteredWorkOrders = useMemo(() => {
     if (!selectedLineId) return workOrders;
     return workOrders.filter(wo => wo.line_id === selectedLineId || !wo.line_id);
   }, [workOrders, selectedLineId]);
 
-  const submittedSlots = useMemo(() => {
-    return hourlyLogs.filter(log => 
-      log.thread_cutting_target > 0 || log.inside_check_target > 0 || 
-      log.top_side_check_target > 0 || log.buttoning_target > 0 ||
-      log.iron_target > 0 || log.get_up_target > 0 ||
-      log.poly_target > 0 || log.carton_target > 0
-    ).map(log => log.hour_slot);
-  }, [hourlyLogs]);
-
-  const visibleOTSlots = useMemo(() => {
-    const submittedOTSlots = hourlyLogs
-      .filter(log => log.hour_slot.startsWith("OT-"))
-      .map(log => log.hour_slot);
-    
-    const nextOTIndex = submittedOTSlots.length;
-    if (nextOTIndex < OT_SLOTS.length) {
-      return [...submittedOTSlots, OT_SLOTS[nextOTIndex]];
-    }
-    return submittedOTSlots;
-  }, [hourlyLogs]);
-
-  const allVisibleSlots = useMemo(() => {
-    return [...REGULAR_HOUR_SLOTS, ...visibleOTSlots];
-  }, [visibleOTSlots]);
-
-  const currentHourSlot = useMemo(() => {
-    const now = new Date();
-    const hour = now.getHours();
-    
-    if (hour >= 8 && hour < 9) return "08-09";
-    if (hour >= 9 && hour < 10) return "09-10";
-    if (hour >= 10 && hour < 11) return "10-11";
-    if (hour >= 11 && hour < 12) return "11-12";
-    if (hour >= 12 && hour < 13) return "12-01";
-    if (hour >= 14 && hour < 15) return "02-03";
-    if (hour >= 15 && hour < 16) return "03-04";
-    if (hour >= 16 && hour < 17) return "04-05";
-    if (hour >= 17 && hour < 18) return "05-06";
-    if (hour >= 18 && hour < 19) return "06-07";
-    
-    return null;
-  }, []);
-
-  useEffect(() => {
-    if (sheetIdFromUrl && profile?.factory_id) {
-      loadExistingSheet(sheetIdFromUrl);
-    }
-  }, [sheetIdFromUrl, profile?.factory_id]);
+  const selectedWorkOrder = useMemo(() => {
+    return workOrders.find(wo => wo.id === selectedWorkOrderId);
+  }, [workOrders, selectedWorkOrderId]);
 
   useEffect(() => {
     if (profile?.factory_id) {
-      fetchInitialData();
+      fetchFormData();
     }
   }, [profile?.factory_id]);
 
   useEffect(() => {
-    if (!sheetIdFromUrl && selectedLineId && selectedWorkOrderId && profile?.factory_id) {
-      loadOrCreateSheet();
-    } else if (!sheetIdFromUrl && (!selectedLineId || !selectedWorkOrderId)) {
-      setCurrentSheet(null);
-      setHourlyLogs([]);
-    }
-  }, [selectedLineId, selectedWorkOrderId, profile?.factory_id, sheetIdFromUrl]);
-
-  async function loadExistingSheet(sheetId: string) {
-    if (!profile?.factory_id) return;
-    
-    setLoadingExistingSheet(true);
-    try {
-      const { data: sheet, error } = await supabase
-        .from("finishing_daily_sheets")
-        .select("*")
-        .eq("id", sheetId)
-        .eq("factory_id", profile.factory_id)
-        .single();
-
-      if (error) throw error;
-      
-      if (sheet) {
-        setCurrentSheet(sheet);
-        setSelectedLineId(sheet.line_id);
-        setSelectedWorkOrderId(sheet.work_order_id);
-        await fetchHourlyLogs(sheet.id);
+    if (selectedLineId) {
+      const line = lines.find(l => l.id === selectedLineId);
+      if (line) {
+        const unit = units.find(u => u.id === line.unit_id);
+        const floor = floors.find(f => f.id === line.floor_id);
+        setUnitName(unit?.name || "");
+        setFloorName(floor?.name || "");
       }
-    } catch (error) {
-      console.error("Error loading sheet:", error);
-      toast.error("Failed to load sheet");
-    } finally {
-      setLoadingExistingSheet(false);
+    } else {
+      setUnitName("");
+      setFloorName("");
     }
-  }
+  }, [selectedLineId, lines, units, floors]);
 
-  async function fetchInitialData() {
+  async function fetchFormData() {
     if (!profile?.factory_id) return;
 
     try {
-      const [linesRes, workOrdersRes, assignmentsRes] = await Promise.all([
-        supabase.from("lines").select("id, line_id, name").eq("factory_id", profile.factory_id).eq("is_active", true),
+      const [linesRes, workOrdersRes, unitsRes, floorsRes, assignmentsRes] = await Promise.all([
+        supabase.from("lines").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("work_orders").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
+        supabase.from("units").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
+        supabase.from("floors").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("user_line_assignments").select("line_id").eq("user_id", user?.id || ""),
       ]);
 
@@ -218,177 +128,102 @@ export default function FinishingDailyTarget() {
 
       setLines(availableLines);
       setWorkOrders(workOrdersRes.data || []);
+      setUnits(unitsRes.data || []);
+      setFloors(floorsRes.data || []);
     } catch (error) {
-      console.error("Error fetching data:", error);
-      toast.error("Failed to load data");
+      console.error("Error fetching form data:", error);
+      toast.error("Failed to load form data");
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadOrCreateSheet() {
-    if (!profile?.factory_id || !user?.id || !selectedLineId || !selectedWorkOrderId) return;
-    
-    setLoadingSheet(true);
-    const today = format(new Date(), "yyyy-MM-dd");
+  function validateForm(): boolean {
+    const newErrors: Record<string, string> = {};
 
-    try {
-      const { data: existingSheet, error: fetchError } = await supabase
-        .from("finishing_daily_sheets")
-        .select("*")
-        .eq("factory_id", profile.factory_id)
-        .eq("production_date", today)
-        .eq("line_id", selectedLineId)
-        .eq("work_order_id", selectedWorkOrderId)
-        .maybeSingle();
+    if (!selectedLineId) newErrors.line = "Line is required";
+    if (!selectedWorkOrderId) newErrors.workOrder = "PO is required";
+    if (!perHourTarget || parseInt(perHourTarget) <= 0) newErrors.perHourTarget = "Per hour target is required";
+    if (!mPowerPlanned || parseInt(mPowerPlanned) <= 0) newErrors.mPowerPlanned = "M Power is required";
+    if (!dayHourPlanned || parseFloat(dayHourPlanned) < 0) newErrors.dayHourPlanned = "Day hours is required";
+    if (dayOverTimePlanned === "" || parseFloat(dayOverTimePlanned) < 0) newErrors.dayOverTimePlanned = "OT hours must be 0 or more";
 
-      if (fetchError) throw fetchError;
-
-      if (existingSheet) {
-        setCurrentSheet(existingSheet);
-        await fetchHourlyLogs(existingSheet.id);
-      } else {
-        const wo = workOrders.find(w => w.id === selectedWorkOrderId);
-        const { data: newSheet, error: insertError } = await supabase
-          .from("finishing_daily_sheets")
-          .insert({
-            factory_id: profile.factory_id,
-            production_date: today,
-            line_id: selectedLineId,
-            work_order_id: selectedWorkOrderId,
-            buyer: wo?.buyer || null,
-            style: wo?.style || null,
-            po_no: wo?.po_number || null,
-            item: wo?.item || null,
-            color: wo?.color || null,
-            created_by: user.id,
-          })
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        setCurrentSheet(newSheet);
-        setHourlyLogs([]);
-      }
-    } catch (error: any) {
-      console.error("Error loading/creating sheet:", error);
-      toast.error("Failed to load daily sheet");
-    } finally {
-      setLoadingSheet(false);
-    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   }
 
-  async function fetchHourlyLogs(sheetId: string) {
-    const { data, error } = await supabase
-      .from("finishing_hourly_logs")
-      .select("*")
-      .eq("sheet_id", sheetId)
-      .order("hour_slot");
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
 
-    if (error) {
-      console.error("Error fetching hourly logs:", error);
+    if (!validateForm()) {
+      toast.error("Please fill in all required fields");
       return;
     }
 
-    setHourlyLogs(data || []);
-  }
-
-  function handleAddHour(slot: string) {
-    const existingLog = hourlyLogs.find(log => log.hour_slot === slot);
-    setEditingSlot(slot);
-    setEditingLog(existingLog || null);
-    setDialogOpen(true);
-  }
-
-  async function handleSaveTarget(data: Partial<HourlyLog>) {
-    if (!currentSheet || !user?.id || !editingSlot) return;
-
-    try {
-      if (editingLog) {
-        const { error } = await supabase
-          .from("finishing_hourly_logs")
-          .update({
-            thread_cutting_target: data.thread_cutting_target || 0,
-            inside_check_target: data.inside_check_target || 0,
-            top_side_check_target: data.top_side_check_target || 0,
-            buttoning_target: data.buttoning_target || 0,
-            iron_target: data.iron_target || 0,
-            get_up_target: data.get_up_target || 0,
-            poly_target: data.poly_target || 0,
-            carton_target: data.carton_target || 0,
-            remarks: data.remarks || null,
-            updated_at: new Date().toISOString(),
-            updated_by: user.id,
-          })
-          .eq("id", editingLog.id);
-
-        if (error) throw error;
-        toast.success("Target updated successfully");
-      } else {
-        const { error } = await supabase
-          .from("finishing_hourly_logs")
-          .insert({
-            sheet_id: currentSheet.id,
-            hour_slot: editingSlot as any,
-            thread_cutting_target: data.thread_cutting_target || 0,
-            thread_cutting_actual: 0,
-            inside_check_target: data.inside_check_target || 0,
-            inside_check_actual: 0,
-            top_side_check_target: data.top_side_check_target || 0,
-            top_side_check_actual: 0,
-            buttoning_target: data.buttoning_target || 0,
-            buttoning_actual: 0,
-            iron_target: data.iron_target || 0,
-            iron_actual: 0,
-            get_up_target: data.get_up_target || 0,
-            get_up_actual: 0,
-            poly_target: data.poly_target || 0,
-            poly_actual: 0,
-            carton_target: data.carton_target || 0,
-            carton_actual: 0,
-            remarks: data.remarks || null,
-            submitted_by: user.id,
-          });
-
-        if (error) throw error;
-        toast.success("Target logged successfully");
-      }
-
-      await fetchHourlyLogs(currentSheet.id);
-      setDialogOpen(false);
-      setEditingSlot(null);
-      setEditingLog(null);
-    } catch (error: any) {
-      console.error("Error saving target:", error);
-      toast.error("Failed to save target");
-    }
-  }
-
-  async function handleToggleLock(log: HourlyLog) {
-    if (!isAdminOrHigher()) {
-      toast.error("Only admins can lock/unlock hours");
+    if (!profile?.factory_id || !user?.id) {
+      toast.error("Missing user or factory information");
       return;
     }
 
-    try {
-      const { error } = await supabase
-        .from("finishing_hourly_logs")
-        .update({ is_locked: !log.is_locked })
-        .eq("id", log.id);
+    setSubmitting(true);
 
-      if (error) throw error;
+    try {
+      let isLate = false;
+      if (factory?.morning_target_cutoff) {
+        const now = new Date();
+        const [cutoffHour, cutoffMinute] = factory.morning_target_cutoff.split(':').map(Number);
+        const cutoffTime = new Date();
+        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
+        isLate = now > cutoffTime;
+      }
+
+      const insertData = {
+        factory_id: profile.factory_id,
+        production_date: format(new Date(), "yyyy-MM-dd"),
+        submitted_by: user.id,
+        line_id: selectedLineId,
+        work_order_id: selectedWorkOrderId,
+        unit_name: unitName,
+        floor_name: floorName,
+        buyer_name: selectedWorkOrder?.buyer || "",
+        style_no: selectedWorkOrder?.style || "",
+        item_name: selectedWorkOrder?.item || "",
+        order_qty: selectedWorkOrder?.order_qty || 0,
+        per_hour_target: parseInt(perHourTarget),
+        m_power_planned: parseInt(mPowerPlanned),
+        day_hour_planned: parseFloat(dayHourPlanned),
+        day_over_time_planned: parseFloat(dayOverTimePlanned),
+        remarks: remarks || null,
+        is_late: isLate,
+      };
+
+      const { error } = await supabase.from("finishing_targets").insert(insertData as any);
+
+      if (error) {
+        if (error.code === "23505") {
+          toast.error("Target already submitted for this line and PO today");
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      toast.success("Finishing targets submitted successfully!");
       
-      toast.success(log.is_locked ? "Hour unlocked" : "Hour locked");
-      if (currentSheet) {
-        await fetchHourlyLogs(currentSheet.id);
+      if (isAdminOrHigher()) {
+        navigate("/dashboard");
+      } else {
+        navigate("/finishing/my-submissions");
       }
-    } catch (error) {
-      console.error("Error toggling lock:", error);
-      toast.error("Failed to update lock status");
+    } catch (error: any) {
+      console.error("Error submitting targets:", error);
+      toast.error(error.message || "Failed to submit targets");
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  if (loading || loadingExistingSheet) {
+  if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -399,37 +234,37 @@ export default function FinishingDailyTarget() {
   if (!profile?.factory_id) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-4">
-        <p className="text-muted-foreground">No factory assigned</p>
+        <p className="text-muted-foreground">No factory assigned to your account.</p>
       </div>
     );
   }
 
   return (
-    <div className="container max-w-6xl py-4 px-4 pb-8">
+    <div className="container max-w-2xl py-4 px-4 pb-8">
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-bold">Finishing Daily Target</h1>
+          <h1 className="text-xl font-bold">{t("nav.finishingDailyTarget")}</h1>
           <p className="text-sm text-muted-foreground">
             {format(new Date(), "EEEE, MMMM d, yyyy")}
           </p>
         </div>
       </div>
 
-      {/* Line & PO Selection */}
-      <Card className="mb-6">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Select Line & PO</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Line & PO Selection */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Select Line & PO</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Line *</Label>
+              <Label>Line No. *</Label>
               <Select value={selectedLineId} onValueChange={setSelectedLineId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Line" />
+                <SelectTrigger className={errors.line ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select line" />
                 </SelectTrigger>
                 <SelectContent>
                   {lines.map((line) => (
@@ -439,12 +274,13 @@ export default function FinishingDailyTarget() {
                   ))}
                 </SelectContent>
               </Select>
+              {errors.line && <p className="text-sm text-destructive">{errors.line}</p>}
             </div>
 
             <div className="space-y-2">
-              <Label>PO / Work Order *</Label>
+              <Label>PO Number *</Label>
               <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-                <SelectTrigger>
+                <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
                   <SelectValue placeholder="Select PO" />
                 </SelectTrigger>
                 <SelectContent>
@@ -455,106 +291,142 @@ export default function FinishingDailyTarget() {
                   ))}
                 </SelectContent>
               </Select>
+              {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sheet Header Info */}
-      {loadingSheet ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
-      ) : currentSheet && selectedWorkOrder ? (
-        <>
-          <Card className="mb-6">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Order Details</CardTitle>
-                <Badge variant="outline">
-                  {submittedSlots.length} Targets Set
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">BUYER:</span>
-                  <p className="font-medium">{currentSheet.buyer || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">STYLE:</span>
-                  <p className="font-medium">{currentSheet.style || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">P/O:</span>
-                  <p className="font-medium">{currentSheet.po_no || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">ITEM:</span>
-                  <p className="font-medium">{currentSheet.item || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">COLOR:</span>
-                  <p className="font-medium">{currentSheet.color || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">ORDER QTY:</span>
-                  <p className="font-medium">{selectedWorkOrder.order_qty?.toLocaleString() || "-"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Target Grid */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Hourly Targets</CardTitle>
-                {currentHourSlot && !submittedSlots.includes(currentHourSlot) && (
-                  <Button size="sm" onClick={() => handleAddHour(currentHourSlot)}>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Set Target ({currentHourSlot})
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="p-0 overflow-x-auto">
-              <FinishingTargetGrid
-                hourSlots={allVisibleSlots}
-                hourlyLogs={hourlyLogs}
-                currentHourSlot={currentHourSlot}
-                isAdmin={isAdminOrHigher()}
-                userId={user?.id || ""}
-                onAddHour={handleAddHour}
-                onToggleLock={handleToggleLock}
-              />
-            </CardContent>
-          </Card>
-        </>
-      ) : selectedLineId && selectedWorkOrderId ? (
-        <div className="flex items-center justify-center py-12">
-          <p className="text-muted-foreground">Loading sheet...</p>
-        </div>
-      ) : (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              Select a Line and PO to set today's hourly targets
-            </p>
           </CardContent>
         </Card>
-      )}
 
-      {/* Target Entry Dialog */}
-      <FinishingTargetEntryDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        hourSlot={editingSlot || ""}
-        existingLog={editingLog}
-        onSave={handleSaveTarget}
-        isAdmin={isAdminOrHigher()}
-      />
+        {/* Auto-filled Details */}
+        {selectedWorkOrder && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Order Details (Auto-filled)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Buyer:</span>
+                  <p className="font-medium">{selectedWorkOrder.buyer}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Style:</span>
+                  <p className="font-medium">{selectedWorkOrder.style}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Item:</span>
+                  <p className="font-medium">{selectedWorkOrder.item || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Order Qty:</span>
+                  <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Unit:</span>
+                  <p className="font-medium">{unitName || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Floor:</span>
+                  <p className="font-medium">{floorName || "-"}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Target Fields */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Today's Targets</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Per Hour Target *</Label>
+                <Input
+                  type="number"
+                  value={perHourTarget}
+                  onChange={(e) => setPerHourTarget(e.target.value)}
+                  placeholder="0"
+                  className={errors.perHourTarget ? "border-destructive" : ""}
+                />
+                {errors.perHourTarget && <p className="text-sm text-destructive">{errors.perHourTarget}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>M Power Planned *</Label>
+                <Input
+                  type="number"
+                  value={mPowerPlanned}
+                  onChange={(e) => setMPowerPlanned(e.target.value)}
+                  placeholder="0"
+                  className={errors.mPowerPlanned ? "border-destructive" : ""}
+                />
+                {errors.mPowerPlanned && <p className="text-sm text-destructive">{errors.mPowerPlanned}</p>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Day Hours Planned *</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  value={dayHourPlanned}
+                  onChange={(e) => setDayHourPlanned(e.target.value)}
+                  placeholder="0"
+                  className={errors.dayHourPlanned ? "border-destructive" : ""}
+                />
+                {errors.dayHourPlanned && <p className="text-sm text-destructive">{errors.dayHourPlanned}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>OT Hours Planned *</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  value={dayOverTimePlanned}
+                  onChange={(e) => setDayOverTimePlanned(e.target.value)}
+                  placeholder="0"
+                  className={errors.dayOverTimePlanned ? "border-destructive" : ""}
+                />
+                {errors.dayOverTimePlanned && <p className="text-sm text-destructive">{errors.dayOverTimePlanned}</p>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Optional Fields */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Optional</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label>Remarks</Label>
+              <Textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                placeholder="Any additional notes..."
+                rows={3}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Submit Button */}
+        <div className="mt-6 pb-2">
+          <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
+            {submitting ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit Finishing Targets"
+            )}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
