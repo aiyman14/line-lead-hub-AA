@@ -173,6 +173,13 @@ export type Database = {
           id: string
           is_late: boolean | null
           lay_capacity: number
+          leftover_location: string | null
+          leftover_notes: string | null
+          leftover_photo_urls: string[] | null
+          leftover_quantity: number | null
+          leftover_recorded: boolean | null
+          leftover_type: string | null
+          leftover_unit: string | null
           line_id: string
           man_power: number
           marker_capacity: number
@@ -204,6 +211,13 @@ export type Database = {
           id?: string
           is_late?: boolean | null
           lay_capacity?: number
+          leftover_location?: string | null
+          leftover_notes?: string | null
+          leftover_photo_urls?: string[] | null
+          leftover_quantity?: number | null
+          leftover_recorded?: boolean | null
+          leftover_type?: string | null
+          leftover_unit?: string | null
           line_id: string
           man_power?: number
           marker_capacity?: number
@@ -235,6 +249,13 @@ export type Database = {
           id?: string
           is_late?: boolean | null
           lay_capacity?: number
+          leftover_location?: string | null
+          leftover_notes?: string | null
+          leftover_photo_urls?: string[] | null
+          leftover_quantity?: number | null
+          leftover_recorded?: boolean | null
+          leftover_type?: string | null
+          leftover_unit?: string | null
           line_id?: string
           man_power?: number
           marker_capacity?: number
