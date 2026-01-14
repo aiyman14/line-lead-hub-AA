@@ -1,5 +1,7 @@
 import { useContext, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
+import FinishingHourlyArchive from "./pages/FinishingHourlyArchive";
+import FinishingDailySummary from "./pages/FinishingDailySummary";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

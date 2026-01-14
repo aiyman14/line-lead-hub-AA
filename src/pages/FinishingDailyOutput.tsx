@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Scissors, CheckCircle, Shirt, CircleDot, Flame, Package, Box, Archive, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,13 +18,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 interface Line {
   id: string;
   line_id: string;
   name: string | null;
-  unit_id: string | null;
-  floor_id: string | null;
 }
 
 interface WorkOrder {
@@ -37,50 +40,65 @@ interface WorkOrder {
   line_id: string | null;
 }
 
-interface Unit {
+interface TargetLog {
   id: string;
-  name: string;
+  thread_cutting: number;
+  inside_check: number;
+  top_side_check: number;
+  buttoning: number;
+  iron: number;
+  get_up: number;
+  poly: number;
+  carton: number;
 }
 
-interface Floor {
-  id: string;
-  name: string;
-  unit_id: string;
-}
+// Process categories matching the hourly grid
+const PROCESS_CATEGORIES = [
+  { key: "thread_cutting", label: "Thread Cutting", icon: Scissors },
+  { key: "inside_check", label: "Inside Check", icon: CheckCircle },
+  { key: "top_side_check", label: "Top Side Check", icon: Shirt },
+  { key: "buttoning", label: "Buttoning", icon: CircleDot },
+  { key: "iron", label: "Iron", icon: Flame },
+  { key: "get_up", label: "Get-up", icon: Package },
+  { key: "poly", label: "Poly", icon: Box },
+  { key: "carton", label: "Carton", icon: Archive },
+] as const;
+
+type ProcessKey = typeof PROCESS_CATEGORIES[number]["key"];
 
 export default function FinishingDailyOutput() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const { user, profile, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [existingLog, setExistingLog] = useState<any>(null);
+  const [targetLog, setTargetLog] = useState<TargetLog | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Master data
   const [lines, setLines] = useState<Line[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [floors, setFloors] = useState<Floor[]>([]);
 
   // Form state
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedLineId, setSelectedLineId] = useState("");
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
-  const [dayQcPass, setDayQcPass] = useState("");
-  const [totalQcPass, setTotalQcPass] = useState("");
-  const [dayPoly, setDayPoly] = useState("");
-  const [totalPoly, setTotalPoly] = useState("");
-  const [dayCarton, setDayCarton] = useState("");
-  const [totalCarton, setTotalCarton] = useState("");
-  const [averageProduction, setAverageProduction] = useState("");
-  const [mPowerActual, setMPowerActual] = useState("");
-  const [dayHourActual, setDayHourActual] = useState("");
-  const [dayOverTimeActual, setDayOverTimeActual] = useState("0");
-  const [totalHour, setTotalHour] = useState("");
-  const [totalOverTime, setTotalOverTime] = useState("");
+  const [shift, setShift] = useState("");
   const [remarks, setRemarks] = useState("");
 
-  // Auto-filled
-  const [unitName, setUnitName] = useState("");
-  const [floorName, setFloorName] = useState("");
+  // Process category values
+  const [processValues, setProcessValues] = useState<Record<ProcessKey, string>>({
+    thread_cutting: "",
+    inside_check: "",
+    top_side_check: "",
+    buttoning: "",
+    iron: "",
+    get_up: "",
+    poly: "",
+    carton: "",
+  });
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -100,32 +118,20 @@ export default function FinishingDailyOutput() {
     }
   }, [profile?.factory_id]);
 
+  // Check for existing log and target when line/date/work order changes
   useEffect(() => {
-    if (selectedLineId) {
-      const line = lines.find(l => l.id === selectedLineId);
-      if (line) {
-        const unit = units.find(u => u.id === line.unit_id);
-        const floor = floors.find(f => f.id === line.floor_id);
-        setUnitName(unit?.name || "");
-        setFloorName(floor?.name || "");
-      }
-    } else {
-      setUnitName("");
-      setFloorName("");
+    if (selectedLineId && selectedDate && profile?.factory_id) {
+      checkExistingLogs();
     }
-  }, [selectedLineId, lines, units, floors]);
+  }, [selectedLineId, selectedDate, selectedWorkOrderId, profile?.factory_id]);
 
   async function fetchFormData() {
     if (!profile?.factory_id) return;
 
     try {
-      const [
-        linesRes, workOrdersRes, unitsRes, floorsRes, assignmentsRes
-      ] = await Promise.all([
-        supabase.from("lines").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
-        supabase.from("work_orders").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
-        supabase.from("units").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
-        supabase.from("floors").select("*").eq("factory_id", profile.factory_id).eq("is_active", true),
+      const [linesRes, workOrdersRes, assignmentsRes] = await Promise.all([
+        supabase.from("lines").select("id, line_id, name").eq("factory_id", profile.factory_id).eq("is_active", true).order("line_id"),
+        supabase.from("work_orders").select("id, po_number, buyer, style, item, order_qty, line_id").eq("factory_id", profile.factory_id).eq("is_active", true),
         supabase.from("user_line_assignments").select("line_id").eq("user_id", user?.id || ""),
       ]);
 
@@ -138,30 +144,124 @@ export default function FinishingDailyOutput() {
 
       setLines(availableLines);
       setWorkOrders(workOrdersRes.data || []);
-      setUnits(unitsRes.data || []);
-      setFloors(floorsRes.data || []);
+
+      // Pre-select from URL params
+      const lineParam = searchParams.get("line");
+      const woParam = searchParams.get("wo");
+      if (lineParam && availableLines.find(l => l.id === lineParam)) {
+        setSelectedLineId(lineParam);
+      }
+      if (woParam && (workOrdersRes.data || []).find(w => w.id === woParam)) {
+        setSelectedWorkOrderId(woParam);
+      }
     } catch (error) {
       console.error("Error fetching form data:", error);
-      toast.error(t("common.submissionFailed"));
+      toast.error("Failed to load form data");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function checkExistingLogs() {
+    if (!profile?.factory_id || !selectedLineId) return;
+
+    try {
+      const dateStr = format(selectedDate, "yyyy-MM-dd");
+      
+      // Build query for existing output and target
+      let outputQuery = supabase
+        .from("finishing_daily_logs")
+        .select("*")
+        .eq("factory_id", profile.factory_id)
+        .eq("production_date", dateStr)
+        .eq("line_id", selectedLineId)
+        .eq("log_type", "OUTPUT");
+
+      let targetQuery = supabase
+        .from("finishing_daily_logs")
+        .select("*")
+        .eq("factory_id", profile.factory_id)
+        .eq("production_date", dateStr)
+        .eq("line_id", selectedLineId)
+        .eq("log_type", "TARGET");
+
+      if (selectedWorkOrderId) {
+        outputQuery = outputQuery.eq("work_order_id", selectedWorkOrderId);
+        targetQuery = targetQuery.eq("work_order_id", selectedWorkOrderId);
+      } else {
+        outputQuery = outputQuery.is("work_order_id", null);
+        targetQuery = targetQuery.is("work_order_id", null);
+      }
+
+      const [outputRes, targetRes] = await Promise.all([
+        outputQuery.maybeSingle(),
+        targetQuery.maybeSingle()
+      ]);
+
+      if (outputRes.error) throw outputRes.error;
+      if (targetRes.error) throw targetRes.error;
+
+      // Set target for comparison
+      if (targetRes.data) {
+        setTargetLog(targetRes.data);
+      } else {
+        setTargetLog(null);
+      }
+
+      if (outputRes.data) {
+        setExistingLog(outputRes.data);
+        // Pre-fill form with existing data
+        setShift(outputRes.data.shift || "");
+        setRemarks(outputRes.data.remarks || "");
+        setProcessValues({
+          thread_cutting: outputRes.data.thread_cutting?.toString() || "",
+          inside_check: outputRes.data.inside_check?.toString() || "",
+          top_side_check: outputRes.data.top_side_check?.toString() || "",
+          buttoning: outputRes.data.buttoning?.toString() || "",
+          iron: outputRes.data.iron?.toString() || "",
+          get_up: outputRes.data.get_up?.toString() || "",
+          poly: outputRes.data.poly?.toString() || "",
+          carton: outputRes.data.carton?.toString() || "",
+        });
+        setIsEditing(true);
+      } else {
+        setExistingLog(null);
+        setIsEditing(false);
+        // Reset form
+        setProcessValues({
+          thread_cutting: "",
+          inside_check: "",
+          top_side_check: "",
+          buttoning: "",
+          iron: "",
+          get_up: "",
+          poly: "",
+          carton: "",
+        });
+      }
+    } catch (error) {
+      console.error("Error checking existing logs:", error);
+    }
+  }
+
+  function handleProcessValueChange(key: ProcessKey, value: string) {
+    setProcessValues(prev => ({ ...prev, [key]: value }));
   }
 
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
     if (!selectedLineId) newErrors.line = "Line is required";
-    if (!selectedWorkOrderId) newErrors.workOrder = "PO is required";
-    if (!dayQcPass || parseInt(dayQcPass) < 0) newErrors.dayQcPass = "Day QC Pass is required";
-    if (!totalQcPass || parseInt(totalQcPass) < 0) newErrors.totalQcPass = "Total QC Pass is required";
-    if (!dayPoly || parseInt(dayPoly) < 0) newErrors.dayPoly = "Day Poly is required";
-    if (!totalPoly || parseInt(totalPoly) < 0) newErrors.totalPoly = "Total Poly is required";
-    if (!dayCarton || parseInt(dayCarton) < 0) newErrors.dayCarton = "Day Carton is required";
-    if (!totalCarton || parseInt(totalCarton) < 0) newErrors.totalCarton = "Total Carton is required";
-    if (!mPowerActual || parseInt(mPowerActual) <= 0) newErrors.mPowerActual = "M Power is required";
-    if (!dayHourActual || parseFloat(dayHourActual) < 0) newErrors.dayHourActual = "Day hours is required";
-    if (dayOverTimeActual === "" || parseFloat(dayOverTimeActual) < 0) newErrors.dayOverTimeActual = "OT hours must be 0 or more";
+    
+    // At least one process value should be entered
+    const hasAnyValue = PROCESS_CATEGORIES.some(cat => {
+      const val = processValues[cat.key];
+      return val !== "" && parseInt(val) >= 0;
+    });
+    
+    if (!hasAnyValue) {
+      newErrors.processes = "Enter at least one output value";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -171,7 +271,7 @@ export default function FinishingDailyOutput() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error("Please fill in all required fields");
+      toast.error("Please fill in required fields");
       return;
     }
 
@@ -183,45 +283,62 @@ export default function FinishingDailyOutput() {
     setSubmitting(true);
 
     try {
-      const insertData = {
+      const logData = {
         factory_id: profile.factory_id,
-        production_date: format(new Date(), "yyyy-MM-dd"),
-        submitted_by: user.id,
+        production_date: format(selectedDate, "yyyy-MM-dd"),
         line_id: selectedLineId,
-        work_order_id: selectedWorkOrderId,
-        unit_name: unitName,
-        floor_name: floorName,
-        buyer_name: selectedWorkOrder?.buyer || "",
-        style_no: selectedWorkOrder?.style || "",
-        item_name: selectedWorkOrder?.item || "",
-        order_qty: selectedWorkOrder?.order_qty || 0,
-        day_qc_pass: parseInt(dayQcPass),
-        total_qc_pass: parseInt(totalQcPass),
-        day_poly: parseInt(dayPoly),
-        total_poly: parseInt(totalPoly),
-        day_carton: parseInt(dayCarton),
-        total_carton: parseInt(totalCarton),
-        average_production: averageProduction ? parseInt(averageProduction) : 0,
-        m_power_actual: parseInt(mPowerActual),
-        day_hour_actual: parseFloat(dayHourActual),
-        day_over_time_actual: parseFloat(dayOverTimeActual),
-        total_hour: totalHour ? parseFloat(totalHour) : 0,
-        total_over_time: totalOverTime ? parseFloat(totalOverTime) : 0,
+        work_order_id: selectedWorkOrderId || null,
+        log_type: "OUTPUT" as const,
+        shift: shift || null,
+        thread_cutting: processValues.thread_cutting ? parseInt(processValues.thread_cutting) : 0,
+        inside_check: processValues.inside_check ? parseInt(processValues.inside_check) : 0,
+        top_side_check: processValues.top_side_check ? parseInt(processValues.top_side_check) : 0,
+        buttoning: processValues.buttoning ? parseInt(processValues.buttoning) : 0,
+        iron: processValues.iron ? parseInt(processValues.iron) : 0,
+        get_up: processValues.get_up ? parseInt(processValues.get_up) : 0,
+        poly: processValues.poly ? parseInt(processValues.poly) : 0,
+        carton: processValues.carton ? parseInt(processValues.carton) : 0,
         remarks: remarks || null,
+        submitted_by: user.id,
       };
 
-      const { error } = await supabase.from("finishing_actuals").insert(insertData as any);
+      if (isEditing && existingLog) {
+        // Save old values to history
+        const historyData = {
+          log_id: existingLog.id,
+          changed_by: user.id,
+          old_values: existingLog,
+          new_values: logData,
+        };
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Output already submitted for this line and PO today");
-        } else {
+        await supabase.from("finishing_daily_log_history").insert(historyData);
+
+        // Update existing log
+        const { error } = await supabase
+          .from("finishing_daily_logs")
+          .update({
+            ...logData,
+            updated_at: new Date().toISOString(),
+            updated_by: user.id,
+          })
+          .eq("id", existingLog.id);
+
+        if (error) throw error;
+        toast.success("End-of-day output updated successfully!");
+      } else {
+        // Insert new log
+        const { error } = await supabase.from("finishing_daily_logs").insert(logData);
+
+        if (error) {
+          if (error.code === "23505") {
+            toast.error("Output already submitted for this date and line. You can edit the existing entry.");
+            checkExistingLogs();
+            return;
+          }
           throw error;
         }
-        return;
+        toast.success("End-of-day output submitted successfully!");
       }
-
-      toast.success("Finishing output submitted successfully!");
       
       if (isAdminOrHigher()) {
         navigate("/dashboard");
@@ -235,6 +352,37 @@ export default function FinishingDailyOutput() {
       setSubmitting(false);
     }
   }
+
+  const calculateTotal = () => {
+    return PROCESS_CATEGORIES.reduce((sum, cat) => {
+      const val = parseInt(processValues[cat.key]) || 0;
+      return sum + val;
+    }, 0);
+  };
+
+  const calculateTargetTotal = () => {
+    if (!targetLog) return 0;
+    return PROCESS_CATEGORIES.reduce((sum, cat) => {
+      const val = (targetLog as any)[cat.key] || 0;
+      return sum + val;
+    }, 0);
+  };
+
+  const getVariance = (key: ProcessKey): number => {
+    if (!targetLog) return 0;
+    const output = parseInt(processValues[key]) || 0;
+    const target = (targetLog as any)[key] || 0;
+    return output - target;
+  };
+
+  const VarianceIndicator = ({ variance }: { variance: number }) => {
+    if (variance > 0) {
+      return <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><TrendingUp className="h-3 w-3" />+{variance}</span>;
+    } else if (variance < 0) {
+      return <span className="text-destructive flex items-center gap-1"><TrendingDown className="h-3 w-3" />{variance}</span>;
+    }
+    return <span className="text-muted-foreground flex items-center gap-1"><Minus className="h-3 w-3" />0</span>;
+  };
 
   if (loading) {
     return (
@@ -261,18 +409,67 @@ export default function FinishingDailyOutput() {
         <div>
           <h1 className="text-xl font-bold">{t("nav.finishingDailyOutput")}</h1>
           <p className="text-sm text-muted-foreground">
-            {format(new Date(), "EEEE, MMMM d, yyyy")}
+            Record end-of-day production output
           </p>
         </div>
       </div>
 
+      {isEditing && existingLog && (
+        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            ✏️ Editing existing output for {format(selectedDate, "MMM dd, yyyy")}
+          </p>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Line & PO Selection */}
+        {/* Date & Line Selection */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Select Line & PO</CardTitle>
+            <CardTitle className="text-base">Select Date & Line</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date *</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !selectedDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {selectedDate ? format(selectedDate, "MMM dd, yyyy") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => date && setSelectedDate(date)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Shift (Optional)</Label>
+                <Select value={shift} onValueChange={setShift}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select shift" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A">Shift A (Day)</SelectItem>
+                    <SelectItem value="B">Shift B (Night)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>Line No. *</Label>
               <Select value={selectedLineId} onValueChange={setSelectedLineId}>
@@ -291,12 +488,13 @@ export default function FinishingDailyOutput() {
             </div>
 
             <div className="space-y-2">
-              <Label>PO Number *</Label>
+              <Label>PO Number (Optional)</Label>
               <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-                <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select PO" />
+                <SelectTrigger>
+                  <SelectValue placeholder="Select PO (optional)" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">No specific PO</SelectItem>
                   {filteredWorkOrders.map((wo) => (
                     <SelectItem key={wo.id} value={wo.id}>
                       {wo.po_number} - {wo.style}
@@ -304,16 +502,15 @@ export default function FinishingDailyOutput() {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
             </div>
           </CardContent>
         </Card>
 
-        {/* Auto-filled Details */}
+        {/* Order Details (if PO selected) */}
         {selectedWorkOrder && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Order Details (Auto-filled)</CardTitle>
+              <CardTitle className="text-base">Order Details</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -333,202 +530,116 @@ export default function FinishingDailyOutput() {
                   <span className="text-muted-foreground">Order Qty:</span>
                   <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Unit:</span>
-                  <p className="font-medium">{unitName || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Floor:</span>
-                  <p className="font-medium">{floorName || "-"}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Target vs Output Comparison (if target exists) */}
+        {targetLog && selectedLineId && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span>Target vs Output Comparison</span>
+                <Badge variant="outline">Target exists</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 gap-2 text-xs mb-3 font-medium text-muted-foreground">
+                <div>Process</div>
+                <div className="text-right">Target</div>
+                <div className="text-right">Output</div>
+                <div className="text-right">Variance</div>
+              </div>
+              <div className="space-y-2">
+                {PROCESS_CATEGORIES.map((cat) => {
+                  const target = (targetLog as any)[cat.key] || 0;
+                  const output = parseInt(processValues[cat.key]) || 0;
+                  const variance = output - target;
+                  
+                  return (
+                    <div key={cat.key} className="grid grid-cols-4 gap-2 text-sm">
+                      <div className="truncate">{cat.label}</div>
+                      <div className="text-right text-muted-foreground">{target}</div>
+                      <div className="text-right font-medium">{output}</div>
+                      <div className="text-right">
+                        <VarianceIndicator variance={variance} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="border-t pt-2 mt-2 grid grid-cols-4 gap-2 text-sm font-medium">
+                  <div>Total</div>
+                  <div className="text-right text-muted-foreground">{calculateTargetTotal()}</div>
+                  <div className="text-right">{calculateTotal()}</div>
+                  <div className="text-right">
+                    <VarianceIndicator variance={calculateTotal() - calculateTargetTotal()} />
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* QC & Production Output */}
+        {/* Process Category Outputs */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">QC & Production Output</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Day QC Pass *</Label>
-                <Input
-                  type="number"
-                  value={dayQcPass}
-                  onChange={(e) => setDayQcPass(e.target.value)}
-                  placeholder="0"
-                  className={errors.dayQcPass ? "border-destructive" : ""}
-                />
-                {errors.dayQcPass && <p className="text-sm text-destructive">{errors.dayQcPass}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Total QC Pass *</Label>
-                <Input
-                  type="number"
-                  value={totalQcPass}
-                  onChange={(e) => setTotalQcPass(e.target.value)}
-                  placeholder="0"
-                  className={errors.totalQcPass ? "border-destructive" : ""}
-                />
-                {errors.totalQcPass && <p className="text-sm text-destructive">{errors.totalQcPass}</p>}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Day Poly *</Label>
-                <Input
-                  type="number"
-                  value={dayPoly}
-                  onChange={(e) => setDayPoly(e.target.value)}
-                  placeholder="0"
-                  className={errors.dayPoly ? "border-destructive" : ""}
-                />
-                {errors.dayPoly && <p className="text-sm text-destructive">{errors.dayPoly}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Total Poly *</Label>
-                <Input
-                  type="number"
-                  value={totalPoly}
-                  onChange={(e) => setTotalPoly(e.target.value)}
-                  placeholder="0"
-                  className={errors.totalPoly ? "border-destructive" : ""}
-                />
-                {errors.totalPoly && <p className="text-sm text-destructive">{errors.totalPoly}</p>}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Day Carton *</Label>
-                <Input
-                  type="number"
-                  value={dayCarton}
-                  onChange={(e) => setDayCarton(e.target.value)}
-                  placeholder="0"
-                  className={errors.dayCarton ? "border-destructive" : ""}
-                />
-                {errors.dayCarton && <p className="text-sm text-destructive">{errors.dayCarton}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Total Carton *</Label>
-                <Input
-                  type="number"
-                  value={totalCarton}
-                  onChange={(e) => setTotalCarton(e.target.value)}
-                  placeholder="0"
-                  className={errors.totalCarton ? "border-destructive" : ""}
-                />
-                {errors.totalCarton && <p className="text-sm text-destructive">{errors.totalCarton}</p>}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Average Production</Label>
-              <Input
-                type="number"
-                value={averageProduction}
-                onChange={(e) => setAverageProduction(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Manpower & Hours */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Manpower & Hours</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>M Power Actual *</Label>
-                <Input
-                  type="number"
-                  value={mPowerActual}
-                  onChange={(e) => setMPowerActual(e.target.value)}
-                  placeholder="0"
-                  className={errors.mPowerActual ? "border-destructive" : ""}
-                />
-                {errors.mPowerActual && <p className="text-sm text-destructive">{errors.mPowerActual}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Day Hours Actual *</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={dayHourActual}
-                  onChange={(e) => setDayHourActual(e.target.value)}
-                  placeholder="0"
-                  className={errors.dayHourActual ? "border-destructive" : ""}
-                />
-                {errors.dayHourActual && <p className="text-sm text-destructive">{errors.dayHourActual}</p>}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>OT Hours Actual *</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={dayOverTimeActual}
-                  onChange={(e) => setDayOverTimeActual(e.target.value)}
-                  placeholder="0"
-                  className={errors.dayOverTimeActual ? "border-destructive" : ""}
-                />
-                {errors.dayOverTimeActual && <p className="text-sm text-destructive">{errors.dayOverTimeActual}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Total Hours</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={totalHour}
-                  onChange={(e) => setTotalHour(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Total OT Hours</Label>
-              <Input
-                type="number"
-                step="0.5"
-                value={totalOverTime}
-                onChange={(e) => setTotalOverTime(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Optional Fields */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Optional</CardTitle>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>End-of-Day Output by Process</span>
+              <span className="text-sm font-normal text-muted-foreground">
+                Total: {calculateTotal().toLocaleString()} pcs
+              </span>
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <Label>Remarks</Label>
-              <Textarea
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Any additional notes..."
-                rows={3}
-              />
+            {errors.processes && (
+              <p className="text-sm text-destructive mb-4">{errors.processes}</p>
+            )}
+            <div className="grid grid-cols-2 gap-4">
+              {PROCESS_CATEGORIES.map((cat) => {
+                const Icon = cat.icon;
+                const variance = getVariance(cat.key);
+                const hasTarget = targetLog !== null;
+                
+                return (
+                  <div key={cat.key} className="space-y-2">
+                    <Label className="flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 text-muted-foreground" />
+                        {cat.label}
+                      </span>
+                      {hasTarget && processValues[cat.key] && (
+                        <span className="text-xs">
+                          <VarianceIndicator variance={variance} />
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={processValues[cat.key]}
+                      onChange={(e) => handleProcessValueChange(cat.key, e.target.value)}
+                      placeholder={targetLog ? `Target: ${(targetLog as any)[cat.key] || 0}` : "0"}
+                    />
+                  </div>
+                );
+              })}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Remarks */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Notes (Optional)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              placeholder="Any notes about today's production..."
+              rows={3}
+            />
           </CardContent>
         </Card>
 
@@ -538,14 +649,25 @@ export default function FinishingDailyOutput() {
             {submitting ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Submitting...
+                {isEditing ? "Updating..." : "Submitting..."}
               </>
             ) : (
-              "Submit Finishing Output"
+              isEditing ? "Update End-of-Day Output" : "Submit End-of-Day Output"
             )}
           </Button>
         </div>
       </form>
+
+      {/* Link to hourly archive */}
+      <div className="mt-6 text-center">
+        <Button 
+          variant="link" 
+          className="text-muted-foreground"
+          onClick={() => navigate("/finishing/hourly-archive")}
+        >
+          View Hourly Log (Archive)
+        </Button>
+      </div>
     </div>
   );
 }
