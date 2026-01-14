@@ -1,6 +1,5 @@
 import { useContext, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
-import FinishingHourlyArchive from "./pages/FinishingHourlyArchive";
 import FinishingDailySummary from "./pages/FinishingDailySummary";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -110,7 +109,6 @@ function AppRoutes() {
         <Route path="/finishing/daily-output" element={<SubscriptionGate><FinishingDailyOutput /></SubscriptionGate>} />
         <Route path="/finishing/my-submissions" element={<SubscriptionGate><FinishingMySubmissions /></SubscriptionGate>} />
         <Route path="/finishing/overview" element={<SubscriptionGate><FinishingOverview /></SubscriptionGate>} />
-        <Route path="/finishing/hourly-archive" element={<SubscriptionGate><FinishingHourlyArchive /></SubscriptionGate>} />
         <Route path="/finishing/daily-summary" element={<SubscriptionGate><FinishingDailySummary /></SubscriptionGate>} />
         {/* Redirect old route to new daily target */}
         <Route path="/finishing/daily-sheet" element={<Navigate to="/finishing/daily-target" replace />} />
