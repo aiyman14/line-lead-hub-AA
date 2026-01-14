@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
 import { FileText, Clock, Target, TrendingUp, Search, Package, Edit2, Eye } from "lucide-react";
+import { FinishingLogDetailModal } from "@/components/FinishingLogDetailModal";
 
 interface FinishingDailyLog {
   id: string;
@@ -63,6 +64,8 @@ export default function FinishingMySubmissions() {
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"targets" | "outputs">("targets");
+  const [selectedLog, setSelectedLog] = useState<FinishingDailyLog | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id && user) {
@@ -172,9 +175,13 @@ export default function FinishingMySubmissions() {
     navigate(`${path}?${params.toString()}`);
   };
 
+  const handleView = (log: FinishingDailyLog) => {
+    setSelectedLog(log);
+    setDetailModalOpen(true);
+  };
+
   const calculateLogTotal = (log: FinishingDailyLog) => {
-    return log.thread_cutting + log.inside_check + log.top_side_check + 
-           log.buttoning + log.iron + log.get_up + log.poly + log.carton;
+    return (log.poly || 0) + (log.carton || 0);
   };
 
   if (loading) {
@@ -381,8 +388,18 @@ export default function FinishingMySubmissions() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8"
+                                  onClick={() => handleView(log)}
+                                  title="View details"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
                                   onClick={() => handleEdit(log)}
                                   disabled={log.is_locked}
+                                  title="Edit"
                                 >
                                   <Edit2 className="h-4 w-4" />
                                 </Button>
@@ -400,16 +417,11 @@ export default function FinishingMySubmissions() {
         </TabsContent>
       </Tabs>
 
-      {/* Link to hourly archive */}
-      <div className="text-center">
-        <Button 
-          variant="link" 
-          className="text-muted-foreground"
-          onClick={() => navigate("/finishing/hourly-archive")}
-        >
-          View Hourly Log (Archive)
-        </Button>
-      </div>
+      <FinishingLogDetailModal
+        log={selectedLog}
+        open={detailModalOpen}
+        onOpenChange={setDetailModalOpen}
+      />
     </div>
   );
 }
