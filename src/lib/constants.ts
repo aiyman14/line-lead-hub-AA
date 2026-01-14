@@ -208,6 +208,16 @@ export const NAV_ITEMS = {
     { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
     { path: '/week', label: 'This Week', icon: 'Calendar' },
     { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
+    { 
+      path: '/cutting', 
+      label: 'Cutting', 
+      icon: 'Scissors',
+      children: [
+        { path: '/cutting/morning-targets', label: 'Cutting Morning Targets', icon: 'Crosshair' },
+        { path: '/cutting/end-of-day', label: 'Cutting End of Day', icon: 'ClipboardCheck' },
+        { path: '/cutting/submissions', label: 'Cutting Submissions', icon: 'FileText' },
+      ]
+    },
     { path: '/lines', label: 'Lines', icon: 'Rows3' },
     { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
@@ -222,6 +232,16 @@ export const NAV_ITEMS = {
     { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
     { path: '/week', label: 'This Week', icon: 'Calendar' },
     { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
+    { 
+      path: '/cutting', 
+      label: 'Cutting', 
+      icon: 'Scissors',
+      children: [
+        { path: '/cutting/morning-targets', label: 'Cutting Morning Targets', icon: 'Crosshair' },
+        { path: '/cutting/end-of-day', label: 'Cutting End of Day', icon: 'ClipboardCheck' },
+        { path: '/cutting/submissions', label: 'Cutting Submissions', icon: 'FileText' },
+      ]
+    },
     { path: '/lines', label: 'Lines', icon: 'Rows3' },
     { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
     { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
