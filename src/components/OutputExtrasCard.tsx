@@ -31,7 +31,7 @@ export function getProductionStatus(data: OutputExtrasData): ProductionStatus {
 export function getStatusBadge(status: ProductionStatus) {
   switch (status) {
     case 'overproduced':
-      return { label: 'Overproduced', variant: 'warning' as const, icon: TrendingUp };
+      return { label: 'Completed', variant: 'success' as const, icon: Minus };
     case 'on_target':
       return { label: 'On Target', variant: 'success' as const, icon: Minus };
     case 'underproduced':
