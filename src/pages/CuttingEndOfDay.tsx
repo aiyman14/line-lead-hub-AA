@@ -4,13 +4,12 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Search, Scissors, ClipboardCheck, AlertCircle } from "lucide-react";
+import { Loader2, Search, Scissors, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Command,
   CommandEmpty,
@@ -51,14 +50,6 @@ interface ExistingActual {
   balance: number | null;
 }
 
-interface ExistingTarget {
-  id: string;
-  man_power: number;
-  marker_capacity: number;
-  lay_capacity: number;
-  cutting_capacity: number;
-}
-
 export default function CuttingEndOfDay() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -77,14 +68,11 @@ export default function CuttingEndOfDay() {
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
   const [selectedLine, setSelectedLine] = useState<Line | null>(null);
 
-  // Target reference (read-only)
-  const [todayTarget, setTodayTarget] = useState<ExistingTarget | null>(null);
-
-  // Actual fields
+  // Actual fields (same as targets form)
   const [dayCutting, setDayCutting] = useState("");
   const [dayInput, setDayInput] = useState("");
 
-  // Computed totals
+  // Computed totals (only for actuals)
   const [totalCutting, setTotalCutting] = useState(0);
   const [totalInput, setTotalInput] = useState(0);
   const [balance, setBalance] = useState(0);
@@ -171,18 +159,6 @@ export default function CuttingEndOfDay() {
     const today = format(new Date(), "yyyy-MM-dd");
 
     try {
-      // Check for today's target
-      const { data: targetData } = await supabase
-        .from("cutting_targets")
-        .select("id, man_power, marker_capacity, lay_capacity, cutting_capacity")
-        .eq("factory_id", profile.factory_id)
-        .eq("line_id", selectedLine.id)
-        .eq("work_order_id", selectedWorkOrder.id)
-        .eq("production_date", today)
-        .maybeSingle();
-
-      setTodayTarget(targetData);
-
       // Check for today's actual
       const { data: actualData, error } = await supabase
         .from("cutting_actuals")
@@ -308,7 +284,7 @@ export default function CuttingEndOfDay() {
         total_input: totalInput,
         balance: balance,
         is_late: isLate,
-        transfer_to_line_id: selectedLine.id, // Transfer to the same line for sewing
+        transfer_to_line_id: selectedLine.id,
       };
 
       if (isEditing && existingActual) {
@@ -516,53 +492,7 @@ export default function CuttingEndOfDay() {
           </Card>
         )}
 
-        {/* Today's Target Reference */}
-        {selectedLine && selectedWorkOrder && (
-          <Card className={!todayTarget ? "border-amber-200 bg-amber-50/50 dark:bg-amber-950/20" : ""}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                Today's Target Reference
-                {!todayTarget && (
-                  <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    Not submitted
-                  </Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {todayTarget ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div className="p-2 bg-muted rounded text-center">
-                    <p className="text-xs text-muted-foreground">Man Power</p>
-                    <p className="font-bold">{todayTarget.man_power}</p>
-                  </div>
-                  <div className="p-2 bg-muted rounded text-center">
-                    <p className="text-xs text-muted-foreground">Marker Cap</p>
-                    <p className="font-bold">{todayTarget.marker_capacity}</p>
-                  </div>
-                  <div className="p-2 bg-muted rounded text-center">
-                    <p className="text-xs text-muted-foreground">Lay Cap</p>
-                    <p className="font-bold">{todayTarget.lay_capacity}</p>
-                  </div>
-                  <div className="p-2 bg-muted rounded text-center">
-                    <p className="text-xs text-muted-foreground">Cutting Cap</p>
-                    <p className="font-bold text-primary">{todayTarget.cutting_capacity}</p>
-                  </div>
-                </div>
-              ) : (
-                <Alert className="border-amber-200 bg-transparent">
-                  <AlertCircle className="h-4 w-4 text-amber-600" />
-                  <AlertDescription className="text-amber-800 dark:text-amber-200">
-                    No targets submitted for today. You can still submit actuals, but it's recommended to submit targets first.
-                  </AlertDescription>
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Daily Actuals */}
+        {/* Daily Actuals (same fields as targets) */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -597,25 +527,25 @@ export default function CuttingEndOfDay() {
           </CardContent>
         </Card>
 
-        {/* Computed Totals */}
-        {selectedWorkOrder && (
+        {/* Cumulative Totals - Only for Actuals form */}
+        {selectedWorkOrder && (dayCutting || dayInput) && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Cumulative Totals</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-xs text-muted-foreground">TOTAL CUTTING</p>
-                  <p className="text-xl font-bold">{totalCutting.toLocaleString()}</p>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-muted/50 rounded-lg p-4 text-center">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">TOTAL CUTTING</p>
+                  <p className="text-2xl font-bold">{totalCutting.toLocaleString()}</p>
                 </div>
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-xs text-muted-foreground">TOTAL INPUT</p>
-                  <p className="text-xl font-bold text-success">{totalInput.toLocaleString()}</p>
+                <div className="bg-muted/50 rounded-lg p-4 text-center">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">TOTAL INPUT</p>
+                  <p className="text-2xl font-bold text-success">{totalInput.toLocaleString()}</p>
                 </div>
-                <div className={`p-3 rounded-lg ${balance < 0 ? 'bg-destructive/10' : 'bg-primary/10'}`}>
-                  <p className="text-xs text-muted-foreground">BALANCE</p>
-                  <p className={`text-xl font-bold ${balance < 0 ? 'text-destructive' : ''}`}>
+                <div className="bg-muted/50 rounded-lg p-4 text-center">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">BALANCE</p>
+                  <p className={`text-2xl font-bold ${balance < 0 ? 'text-destructive' : ''}`}>
                     {balance.toLocaleString()}
                   </p>
                 </div>
@@ -625,9 +555,22 @@ export default function CuttingEndOfDay() {
         )}
 
         {/* Submit Button */}
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          {isEditing ? "Update End-of-Day Actuals" : "Submit End-of-Day Actuals"}
+        <Button 
+          type="submit" 
+          className="w-full" 
+          size="lg"
+          disabled={submitting}
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Submitting...
+            </>
+          ) : isEditing ? (
+            "Update End-of-Day Actuals"
+          ) : (
+            "Submit End-of-Day Actuals"
+          )}
         </Button>
       </form>
     </div>

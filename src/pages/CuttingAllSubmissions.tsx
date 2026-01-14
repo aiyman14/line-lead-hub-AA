@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, isToday, parseISO } from "date-fns";
 import { toast } from "sonner";
-import { Loader2, Download, RefreshCw, Scissors, X, Pencil, Clock } from "lucide-react";
+import { Loader2, Download, RefreshCw, Scissors, Target, ClipboardCheck, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,29 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { EditCuttingActualModal } from "@/components/EditCuttingActualModal";
+import { CuttingDetailModal } from "@/components/CuttingDetailModal";
 import { useEditPermission } from "@/hooks/useEditPermission";
 
-interface CuttingSubmission {
+interface CuttingTarget {
   id: string;
   production_date: string;
-  submitted_at: string;
+  submitted_at: string | null;
   line_id: string;
   work_order_id: string;
   buyer: string | null;
@@ -45,14 +33,26 @@ interface CuttingSubmission {
   po_no: string | null;
   colour: string | null;
   order_qty: number | null;
-  man_power: number;
-  marker_capacity: number;
-  lay_capacity: number;
-  cutting_capacity: number;
-  under_qty: number | null;
+  cutting_capacity: number; // Day Cutting Target
+  lay_capacity: number; // Day Input Target
+  lines?: { line_id: string; name: string | null };
+  work_orders?: { po_number: string; buyer: string; style: string };
+}
+
+interface CuttingActual {
+  id: string;
+  production_date: string;
+  submitted_at: string | null;
+  line_id: string;
+  work_order_id: string;
+  buyer: string | null;
+  style: string | null;
+  po_no: string | null;
+  colour: string | null;
+  order_qty: number | null;
   day_cutting: number;
-  total_cutting: number | null;
   day_input: number;
+  total_cutting: number | null;
   total_input: number | null;
   balance: number | null;
   lines?: { line_id: string; name: string | null };
@@ -67,14 +67,17 @@ interface Line {
 
 export default function CuttingAllSubmissions() {
   const { profile } = useAuth();
-  const { canEditSubmission, getTimeUntilCutoff } = useEditPermission();
+  const { canEditSubmission } = useEditPermission();
   const [loading, setLoading] = useState(true);
-  const [submissions, setSubmissions] = useState<CuttingSubmission[]>([]);
+  const [targets, setTargets] = useState<CuttingTarget[]>([]);
+  const [actuals, setActuals] = useState<CuttingActual[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
-  const [selectedSubmission, setSelectedSubmission] = useState<CuttingSubmission | null>(null);
-  const [editingSubmission, setEditingSubmission] = useState<CuttingSubmission | null>(null);
+  const [activeTab, setActiveTab] = useState("actuals");
   
-  const timeUntilCutoff = getTimeUntilCutoff();
+  // Modals
+  const [selectedTarget, setSelectedTarget] = useState<CuttingTarget | null>(null);
+  const [selectedActual, setSelectedActual] = useState<CuttingActual | null>(null);
+  const [editingActual, setEditingActual] = useState<any>(null);
 
   // Filters
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
@@ -93,7 +96,14 @@ export default function CuttingAllSubmissions() {
     setLoading(true);
 
     try {
-      const [actualsRes, linesRes] = await Promise.all([
+      const [targetsRes, actualsRes, linesRes] = await Promise.all([
+        supabase
+          .from("cutting_targets")
+          .select("*, lines(line_id, name), work_orders(po_number, buyer, style)")
+          .eq("factory_id", profile.factory_id)
+          .gte("production_date", dateFrom)
+          .lte("production_date", dateTo)
+          .order("production_date", { ascending: false }),
         supabase
           .from("cutting_actuals")
           .select("*, lines!cutting_actuals_line_id_fkey(line_id, name), work_orders(po_number, buyer, style)")
@@ -108,49 +118,8 @@ export default function CuttingAllSubmissions() {
           .eq("is_active", true),
       ]);
 
-      const { data: targetsData } = await supabase
-        .from("cutting_targets")
-        .select("*, lines(line_id, name), work_orders(po_number, buyer, style)")
-        .eq("factory_id", profile.factory_id)
-        .gte("production_date", dateFrom)
-        .lte("production_date", dateTo);
-
-      const targetsMap = new Map<string, any>();
-      (targetsData || []).forEach(t => {
-        const key = `${t.production_date}-${t.line_id}-${t.work_order_id}`;
-        targetsMap.set(key, t);
-      });
-
-      const mergedSubmissions: CuttingSubmission[] = (actualsRes.data || []).map(actual => {
-        const key = `${actual.production_date}-${actual.line_id}-${actual.work_order_id}`;
-        const target = targetsMap.get(key);
-        return {
-          id: actual.id,
-          production_date: actual.production_date,
-          submitted_at: actual.submitted_at,
-          line_id: actual.line_id,
-          work_order_id: actual.work_order_id,
-          buyer: actual.buyer,
-          style: actual.style,
-          po_no: actual.po_no,
-          colour: actual.colour,
-          order_qty: actual.order_qty,
-          man_power: target?.man_power || 0,
-          marker_capacity: target?.marker_capacity || 0,
-          lay_capacity: target?.lay_capacity || 0,
-          cutting_capacity: target?.cutting_capacity || 0,
-          under_qty: target?.under_qty || null,
-          day_cutting: actual.day_cutting,
-          total_cutting: actual.total_cutting,
-          day_input: actual.day_input,
-          total_input: actual.total_input,
-          balance: actual.balance,
-          lines: actual.lines,
-          work_orders: actual.work_orders,
-        };
-      });
-
-      setSubmissions(mergedSubmissions);
+      setTargets(targetsRes.data || []);
+      setActuals(actualsRes.data || []);
       setLines(linesRes.data || []);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -163,15 +132,15 @@ export default function CuttingAllSubmissions() {
   // Get unique PO numbers for filter
   const uniquePOs = useMemo(() => {
     const pos = new Set<string>();
-    submissions.forEach(s => {
+    [...targets, ...actuals].forEach(s => {
       const po = s.work_orders?.po_number || s.po_no;
       if (po) pos.add(po);
     });
     return Array.from(pos).sort();
-  }, [submissions]);
+  }, [targets, actuals]);
 
-  const filteredSubmissions = useMemo(() => {
-    return submissions.filter(s => {
+  const filteredTargets = useMemo(() => {
+    return targets.filter(s => {
       if (selectedLine !== "all" && s.line_id !== selectedLine) return false;
       if (selectedPO !== "all") {
         const po = s.work_orders?.po_number || s.po_no;
@@ -179,46 +148,65 @@ export default function CuttingAllSubmissions() {
       }
       return true;
     });
-  }, [submissions, selectedLine, selectedPO]);
+  }, [targets, selectedLine, selectedPO]);
+
+  const filteredActuals = useMemo(() => {
+    return actuals.filter(s => {
+      if (selectedLine !== "all" && s.line_id !== selectedLine) return false;
+      if (selectedPO !== "all") {
+        const po = s.work_orders?.po_number || s.po_no;
+        if (po !== selectedPO) return false;
+      }
+      return true;
+    });
+  }, [actuals, selectedLine, selectedPO]);
 
   const stats = useMemo(() => {
     const today = format(new Date(), "yyyy-MM-dd");
-    const todaySubmissions = submissions.filter(s => s.production_date === today);
+    const todayTargets = targets.filter(s => s.production_date === today);
+    const todayActuals = actuals.filter(s => s.production_date === today);
     return {
-      submissionsToday: todaySubmissions.length,
-      cuttingToday: todaySubmissions.reduce((sum, s) => sum + (s.day_cutting || 0), 0),
-      inputToday: todaySubmissions.reduce((sum, s) => sum + (s.day_input || 0), 0),
-      underQtyToday: todaySubmissions.reduce((sum, s) => sum + (s.under_qty || 0), 0),
+      targetsToday: todayTargets.length,
+      actualsToday: todayActuals.length,
+      targetCuttingToday: todayTargets.reduce((sum, s) => sum + (s.cutting_capacity || 0), 0),
+      actualCuttingToday: todayActuals.reduce((sum, s) => sum + (s.day_cutting || 0), 0),
+      actualInputToday: todayActuals.reduce((sum, s) => sum + (s.day_input || 0), 0),
     };
-  }, [submissions]);
+  }, [targets, actuals]);
 
   function exportToCSV() {
-    const headers = [
-      "DATE", "LINE", "BUYER", "STYLE", "PO-NO", "COLOUR", "ORDER QTY",
-      "MAN POWER", "MARKER CAP", "LAY CAP", "CUTTING CAP", "UNDER QTY",
-      "DAY CUTTING", "TOTAL CUTTING", "DAY INPUT", "TOTAL INPUT", "BALANCE"
-    ];
-    const rows = filteredSubmissions.map(s => [
-      s.production_date,
-      s.lines?.name || s.lines?.line_id || "",
-      s.work_orders?.buyer || s.buyer || "",
-      s.work_orders?.style || s.style || "",
-      s.work_orders?.po_number || s.po_no || "",
-      s.colour || "",
-      s.order_qty || 0,
-      s.man_power,
-      s.marker_capacity,
-      s.lay_capacity,
-      s.cutting_capacity,
-      s.under_qty || 0,
-      s.day_cutting,
-      s.total_cutting || 0,
-      s.day_input,
-      s.total_input || 0,
-      s.balance || 0,
-    ]);
+    const headers = activeTab === "targets" 
+      ? ["DATE", "LINE", "BUYER", "STYLE", "PO-NO", "ORDER QTY", "DAY CUTTING TARGET", "DAY INPUT TARGET"]
+      : ["DATE", "LINE", "BUYER", "STYLE", "PO-NO", "ORDER QTY", "DAY CUTTING", "DAY INPUT", "TOTAL CUTTING", "TOTAL INPUT", "BALANCE"];
+    
+    const data = activeTab === "targets" ? filteredTargets : filteredActuals;
+    const rows = data.map(s => activeTab === "targets" 
+      ? [
+          s.production_date,
+          (s as CuttingTarget).lines?.name || (s as CuttingTarget).lines?.line_id || "",
+          s.work_orders?.buyer || s.buyer || "",
+          s.work_orders?.style || s.style || "",
+          s.work_orders?.po_number || s.po_no || "",
+          s.order_qty || 0,
+          (s as CuttingTarget).cutting_capacity || 0,
+          (s as CuttingTarget).lay_capacity || 0,
+        ]
+      : [
+          s.production_date,
+          (s as CuttingActual).lines?.name || (s as CuttingActual).lines?.line_id || "",
+          s.work_orders?.buyer || s.buyer || "",
+          s.work_orders?.style || s.style || "",
+          s.work_orders?.po_number || s.po_no || "",
+          s.order_qty || 0,
+          (s as CuttingActual).day_cutting || 0,
+          (s as CuttingActual).day_input || 0,
+          (s as CuttingActual).total_cutting || 0,
+          (s as CuttingActual).total_input || 0,
+          (s as CuttingActual).balance || 0,
+        ]
+    );
     const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    downloadCSV(csv, `cutting-submissions-${dateFrom}-to-${dateTo}.csv`);
+    downloadCSV(csv, `cutting-${activeTab}-${dateFrom}-to-${dateTo}.csv`);
   }
 
   function downloadCSV(csv: string, filename: string) {
@@ -249,7 +237,7 @@ export default function CuttingAllSubmissions() {
           </div>
           <div>
             <h1 className="text-xl font-bold">All Cutting Submissions</h1>
-            <p className="text-sm text-muted-foreground">View all cutting reports</p>
+            <p className="text-sm text-muted-foreground">View targets and actuals</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -320,104 +308,141 @@ export default function CuttingAllSubmissions() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-primary">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Submissions Today</p>
-            <p className="text-2xl font-bold">{stats.submissionsToday}</p>
-            <p className="text-xs text-muted-foreground">Today's entries</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Targets Today</p>
+            <p className="text-2xl font-bold">{stats.targetsToday}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-success">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Cutting Today</p>
-            <p className="text-2xl font-bold">{stats.cuttingToday.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">Total pieces</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Actuals Today</p>
+            <p className="text-2xl font-bold">{stats.actualsToday}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-info">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Input Today</p>
-            <p className="text-2xl font-bold">{stats.inputToday.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">Total pieces</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Target Cutting</p>
+            <p className="text-2xl font-bold">{stats.targetCuttingToday.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-warning">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Under QTY Today</p>
-            <p className="text-2xl font-bold">{stats.underQtyToday.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">Total pieces</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Actual Cutting</p>
+            <p className="text-2xl font-bold">{stats.actualCuttingToday.toLocaleString()}</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">All Cutting Submissions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>DATE</TableHead>
-                  <TableHead>LINE</TableHead>
-                  <TableHead>PO-NO</TableHead>
-                  <TableHead className="text-right">ORDER QTY</TableHead>
-                  <TableHead className="text-right">CUTTING CAP</TableHead>
-                  <TableHead className="text-right">TOTAL CUTTING</TableHead>
-                  <TableHead className="text-right">TOTAL INPUT</TableHead>
-                  <TableHead className="text-right">BALANCE</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredSubmissions.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                      No submissions found for selected filters
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredSubmissions.map((s) => {
-                    const editCheck = canEditSubmission(s.production_date);
-                    return (
-                      <TableRow 
-                        key={s.id} 
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setSelectedSubmission(s)}
-                      >
-                        <TableCell className="font-medium whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            {format(new Date(s.production_date), "MMM d, yyyy")}
-                            {isToday(parseISO(s.production_date)) && (
-                              <Badge variant="secondary" className="text-xs">Today</Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{s.lines?.name || s.lines?.line_id || "—"}</Badge>
-                        </TableCell>
-                        <TableCell>{s.work_orders?.po_number || s.po_no || "—"}</TableCell>
-                        <TableCell className="text-right">{s.order_qty?.toLocaleString() || "—"}</TableCell>
-                        <TableCell className="text-right font-medium text-primary">{s.cutting_capacity}</TableCell>
-                        <TableCell className="text-right font-medium">{s.total_cutting?.toLocaleString() || "—"}</TableCell>
-                        <TableCell className="text-right font-medium text-success">{s.total_input?.toLocaleString() || "—"}</TableCell>
-                        <TableCell className={`text-right font-medium ${s.balance && s.balance < 0 ? "text-destructive" : ""}`}>
-                          {s.balance?.toLocaleString() || "—"}
-                        </TableCell>
-                        <TableCell>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="targets" className="flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            Targets ({filteredTargets.length})
+          </TabsTrigger>
+          <TabsTrigger value="actuals" className="flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4" />
+            Actuals ({filteredActuals.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Targets Tab */}
+        <TabsContent value="targets" className="mt-6">
+          {filteredTargets.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                No target submissions found for selected filters
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredTargets.map((target) => (
+                <Card 
+                  key={target.id} 
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => setSelectedTarget(target)}
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="outline" className="bg-primary/10">
+                        <Target className="h-3 w-3 mr-1" />
+                        Target
+                      </Badge>
+                      {isToday(parseISO(target.production_date)) && (
+                        <Badge variant="secondary" className="text-xs">Today</Badge>
+                      )}
+                    </div>
+                    <CardTitle className="text-base mt-2">
+                      {target.lines?.name || target.lines?.line_id || "—"}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Date:</span>
+                        <span className="font-medium">{format(parseISO(target.production_date), "MMM d, yyyy")}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">PO:</span>
+                        <span className="font-medium">{target.work_orders?.po_number || target.po_no || "—"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Cutting Target:</span>
+                        <span className="font-bold text-primary">{target.cutting_capacity?.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Input Target:</span>
+                        <span className="font-bold text-success">{target.lay_capacity?.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Actuals Tab */}
+        <TabsContent value="actuals" className="mt-6">
+          {filteredActuals.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                No actual submissions found for selected filters
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredActuals.map((actual) => {
+                const editCheck = canEditSubmission(actual.production_date);
+                return (
+                  <Card 
+                    key={actual.id} 
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => setSelectedActual(actual)}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="bg-success/10 text-success">
+                          <ClipboardCheck className="h-3 w-3 mr-1" />
+                          Actual
+                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {isToday(parseISO(actual.production_date)) && (
+                            <Badge variant="secondary" className="text-xs">Today</Badge>
+                          )}
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  className="h-7 w-7"
                                   disabled={!editCheck.canEdit}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setEditingSubmission(s);
+                                    setEditingActual(actual);
                                   }}
                                 >
-                                  <Pencil className="h-4 w-4" />
+                                  <Pencil className="h-3.5 w-3.5" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
@@ -425,128 +450,182 @@ export default function CuttingAllSubmissions() {
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Edit Modal */}
-      <EditCuttingActualModal
-        submission={editingSubmission}
-        open={!!editingSubmission}
-        onOpenChange={(open) => !open && setEditingSubmission(null)}
-        onSaved={fetchData}
-      />
-
-      {/* Detail Modal */}
-      <Dialog open={!!selectedSubmission} onOpenChange={() => setSelectedSubmission(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Scissors className="h-5 w-5" />
-              Submission Details
-            </DialogTitle>
-          </DialogHeader>
-          {selectedSubmission && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Date</p>
-                  <p className="font-medium">{format(new Date(selectedSubmission.production_date), "MMM d, yyyy")}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Line</p>
-                  <p className="font-medium">{selectedSubmission.lines?.name || selectedSubmission.lines?.line_id || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Buyer</p>
-                  <p className="font-medium">{selectedSubmission.work_orders?.buyer || selectedSubmission.buyer || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Style</p>
-                  <p className="font-medium">{selectedSubmission.work_orders?.style || selectedSubmission.style || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">PO Number</p>
-                  <p className="font-medium">{selectedSubmission.work_orders?.po_number || selectedSubmission.po_no || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Colour</p>
-                  <p className="font-medium">{selectedSubmission.colour || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Order Qty</p>
-                  <p className="font-medium">{selectedSubmission.order_qty?.toLocaleString() || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Man Power</p>
-                  <p className="font-medium">{selectedSubmission.man_power}</p>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium mb-3">Capacity Planning</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Marker Capacity</p>
-                    <p className="font-medium">{selectedSubmission.marker_capacity}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Lay Capacity</p>
-                    <p className="font-medium">{selectedSubmission.lay_capacity}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Cutting Capacity</p>
-                    <p className="font-medium text-primary">{selectedSubmission.cutting_capacity}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Under Qty</p>
-                    <p className="font-medium">{selectedSubmission.under_qty || "—"}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium mb-3">Actuals</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Day Cutting</p>
-                    <p className="font-medium">{selectedSubmission.day_cutting.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Total Cutting</p>
-                    <p className="font-medium">{selectedSubmission.total_cutting?.toLocaleString() || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Day Input</p>
-                    <p className="font-medium text-success">{selectedSubmission.day_input.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Total Input</p>
-                    <p className="font-medium">{selectedSubmission.total_input?.toLocaleString() || "—"}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground uppercase">Balance</p>
-                    <p className={`font-medium text-lg ${selectedSubmission.balance && selectedSubmission.balance < 0 ? "text-destructive" : ""}`}>
-                      {selectedSubmission.balance?.toLocaleString() || "—"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-4 text-xs text-muted-foreground">
-                Submitted: {selectedSubmission.submitted_at ? format(new Date(selectedSubmission.submitted_at), "MMM d, yyyy 'at' h:mm a") : "—"}
-              </div>
+                        </div>
+                      </div>
+                      <CardTitle className="text-base mt-2">
+                        {actual.lines?.name || actual.lines?.line_id || "—"}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Date:</span>
+                          <span className="font-medium">{format(parseISO(actual.production_date), "MMM d, yyyy")}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">PO:</span>
+                          <span className="font-medium">{actual.work_orders?.po_number || actual.po_no || "—"}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Day Cutting:</span>
+                          <span className="font-bold">{actual.day_cutting?.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Day Input:</span>
+                          <span className="font-bold text-success">{actual.day_input?.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between border-t pt-2 mt-2">
+                          <span className="text-muted-foreground">Balance:</span>
+                          <span className={`font-bold ${actual.balance && actual.balance < 0 ? 'text-destructive' : ''}`}>
+                            {actual.balance?.toLocaleString() || "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </TabsContent>
+      </Tabs>
+
+      {/* Target Detail Modal */}
+      {selectedTarget && (
+        <CuttingTargetDetailModal
+          target={selectedTarget}
+          open={!!selectedTarget}
+          onOpenChange={(open) => !open && setSelectedTarget(null)}
+        />
+      )}
+
+      {/* Actual Detail Modal */}
+      {selectedActual && (
+        <CuttingDetailModal
+          cutting={{
+            id: selectedActual.id,
+            production_date: selectedActual.production_date,
+            line_name: selectedActual.lines?.name || selectedActual.lines?.line_id || "—",
+            buyer: selectedActual.work_orders?.buyer || selectedActual.buyer,
+            style: selectedActual.work_orders?.style || selectedActual.style,
+            po_number: selectedActual.work_orders?.po_number || selectedActual.po_no,
+            colour: selectedActual.colour,
+            order_qty: selectedActual.order_qty,
+            man_power: null,
+            marker_capacity: null,
+            lay_capacity: null,
+            cutting_capacity: null,
+            under_qty: null,
+            day_cutting: selectedActual.day_cutting,
+            total_cutting: selectedActual.total_cutting,
+            day_input: selectedActual.day_input,
+            total_input: selectedActual.total_input,
+            balance: selectedActual.balance,
+            submitted_at: selectedActual.submitted_at,
+          }}
+          open={!!selectedActual}
+          onOpenChange={(open) => !open && setSelectedActual(null)}
+        />
+      )}
+
+      {/* Edit Actual Modal */}
+      <EditCuttingActualModal
+        submission={editingActual}
+        open={!!editingActual}
+        onOpenChange={(open) => !open && setEditingActual(null)}
+        onSaved={fetchData}
+      />
+    </div>
+  );
+}
+
+// Target Detail Modal Component
+function CuttingTargetDetailModal({ 
+  target, 
+  open, 
+  onOpenChange 
+}: { 
+  target: CuttingTarget; 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <div
+      className={`fixed inset-0 z-50 ${open ? 'flex' : 'hidden'} items-center justify-center`}
+      onClick={() => onOpenChange(false)}
+    >
+      <div className="fixed inset-0 bg-black/50" />
+      <div 
+        className="relative bg-background rounded-lg shadow-lg max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Target className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Target Details</h2>
+          </div>
+
+          <div className="space-y-6">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Date</p>
+                <p className="font-semibold">{format(parseISO(target.production_date), "MMM d, yyyy")}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Line</p>
+                <p className="font-semibold">{target.lines?.name || target.lines?.line_id || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Buyer</p>
+                <p className="font-semibold">{target.work_orders?.buyer || target.buyer || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Style</p>
+                <p className="font-semibold">{target.work_orders?.style || target.style || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">PO Number</p>
+                <p className="font-semibold">{target.work_orders?.po_number || target.po_no || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Order Qty</p>
+                <p className="font-semibold">{target.order_qty?.toLocaleString() || "—"}</p>
+              </div>
+            </div>
+
+            {/* Target Values */}
+            <div>
+              <h4 className="font-semibold text-sm mb-3">Target Values</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-primary/10 rounded-lg p-4 text-center">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Day Cutting Target</p>
+                  <p className="text-2xl font-bold text-primary">{target.cutting_capacity?.toLocaleString() || 0}</p>
+                </div>
+                <div className="bg-success/10 rounded-lg p-4 text-center">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Day Input Target</p>
+                  <p className="text-2xl font-bold text-success">{target.lay_capacity?.toLocaleString() || 0}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Submitted Info */}
+            {target.submitted_at && (
+              <p className="text-xs text-muted-foreground">
+                Submitted: {format(new Date(target.submitted_at), "MMM d, yyyy 'at' h:mm a")}
+              </p>
+            )}
+          </div>
+
+          <Button 
+            className="w-full mt-6" 
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Close
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -68,12 +68,9 @@ export default function CuttingMorningTargets() {
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
   const [selectedLine, setSelectedLine] = useState<Line | null>(null);
 
-  // Target fields
-  const [manPower, setManPower] = useState("");
-  const [markerCapacity, setMarkerCapacity] = useState("");
-  const [layCapacity, setLayCapacity] = useState("");
-  const [cuttingCapacity, setCuttingCapacity] = useState("");
-  const [underQty, setUnderQty] = useState("0");
+  // Target fields (same as actuals form)
+  const [dayCutting, setDayCutting] = useState("");
+  const [dayInput, setDayInput] = useState("");
 
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
@@ -163,21 +160,15 @@ export default function CuttingMorningTargets() {
       if (data) {
         setIsEditing(true);
         setExistingTarget(data);
-        setManPower(String(data.man_power));
-        setMarkerCapacity(String(data.marker_capacity));
-        setLayCapacity(String(data.lay_capacity));
-        setCuttingCapacity(String(data.cutting_capacity));
-        setUnderQty(String(data.under_qty || 0));
+        // Use marker_capacity and lay_capacity as our day_cutting and day_input targets
+        setDayCutting(String(data.cutting_capacity || 0));
+        setDayInput(String(data.lay_capacity || 0));
       } else {
         setIsEditing(false);
         setExistingTarget(null);
-        // Don't reset fields if user already typed something
-        if (!manPower && !markerCapacity && !layCapacity && !cuttingCapacity) {
-          setManPower("");
-          setMarkerCapacity("");
-          setLayCapacity("");
-          setCuttingCapacity("");
-          setUnderQty("0");
+        if (!dayCutting && !dayInput) {
+          setDayCutting("");
+          setDayInput("");
         }
       }
     } catch (error) {
@@ -194,10 +185,8 @@ export default function CuttingMorningTargets() {
 
     if (!selectedLine) newErrors.line = "Line is required";
     if (!selectedWorkOrder) newErrors.workOrder = "PO is required";
-    if (!manPower || parseInt(manPower) < 0) newErrors.manPower = "Man Power is required";
-    if (!markerCapacity || parseInt(markerCapacity) < 0) newErrors.markerCapacity = "Marker Capacity is required";
-    if (!layCapacity || parseInt(layCapacity) < 0) newErrors.layCapacity = "Lay Capacity is required";
-    if (!cuttingCapacity || parseInt(cuttingCapacity) < 0) newErrors.cuttingCapacity = "Cutting Capacity is required";
+    if (!dayCutting || parseInt(dayCutting) < 0) newErrors.dayCutting = "Day Cutting Target is required";
+    if (!dayInput || parseInt(dayInput) < 0) newErrors.dayInput = "Day Input Target is required";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -231,6 +220,7 @@ export default function CuttingMorningTargets() {
         isLate = now > cutoffTime;
       }
 
+      // Map day_cutting to cutting_capacity and day_input to lay_capacity for storage
       const targetData = {
         factory_id: profile.factory_id,
         production_date: today,
@@ -243,11 +233,11 @@ export default function CuttingMorningTargets() {
         po_no: selectedWorkOrder.po_number,
         colour: selectedWorkOrder.color || "",
         order_qty: selectedWorkOrder.order_qty,
-        man_power: parseInt(manPower),
-        marker_capacity: parseInt(markerCapacity),
-        lay_capacity: parseInt(layCapacity),
-        cutting_capacity: parseInt(cuttingCapacity),
-        under_qty: parseInt(underQty) || 0,
+        man_power: 0,
+        marker_capacity: 0,
+        lay_capacity: parseInt(dayInput) || 0, // Store day_input target here
+        cutting_capacity: parseInt(dayCutting) || 0, // Store day_cutting target here
+        under_qty: 0,
         is_late: isLate,
       };
 
@@ -456,79 +446,58 @@ export default function CuttingMorningTargets() {
           </Card>
         )}
 
-        {/* Target Capacities */}
+        {/* Daily Targets (same fields as actuals) */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Scissors className="h-4 w-4" />
-              Target Capacities
+              Daily Targets
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>MAN POWER *</Label>
+              <Label>DAY CUTTING (Target) *</Label>
               <Input
                 type="number"
-                value={manPower}
-                onChange={(e) => setManPower(e.target.value)}
+                value={dayCutting}
+                onChange={(e) => setDayCutting(e.target.value)}
                 placeholder="0"
-                className={errors.manPower ? "border-destructive" : ""}
+                className={errors.dayCutting ? "border-destructive" : ""}
               />
-              {errors.manPower && <p className="text-sm text-destructive">{errors.manPower}</p>}
+              {errors.dayCutting && <p className="text-sm text-destructive">{errors.dayCutting}</p>}
             </div>
 
             <div className="space-y-2">
-              <Label>MARKER CAPACITY *</Label>
+              <Label>DAY INPUT (Target) * (to Sewing)</Label>
               <Input
                 type="number"
-                value={markerCapacity}
-                onChange={(e) => setMarkerCapacity(e.target.value)}
+                value={dayInput}
+                onChange={(e) => setDayInput(e.target.value)}
                 placeholder="0"
-                className={errors.markerCapacity ? "border-destructive" : ""}
+                className={errors.dayInput ? "border-destructive" : ""}
               />
-              {errors.markerCapacity && <p className="text-sm text-destructive">{errors.markerCapacity}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label>LAY CAPACITY *</Label>
-              <Input
-                type="number"
-                value={layCapacity}
-                onChange={(e) => setLayCapacity(e.target.value)}
-                placeholder="0"
-                className={errors.layCapacity ? "border-destructive" : ""}
-              />
-              {errors.layCapacity && <p className="text-sm text-destructive">{errors.layCapacity}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label>CUTTING CAPACITY *</Label>
-              <Input
-                type="number"
-                value={cuttingCapacity}
-                onChange={(e) => setCuttingCapacity(e.target.value)}
-                placeholder="0"
-                className={errors.cuttingCapacity ? "border-destructive" : ""}
-              />
-              {errors.cuttingCapacity && <p className="text-sm text-destructive">{errors.cuttingCapacity}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label>UNDER QTY</Label>
-              <Input
-                type="number"
-                value={underQty}
-                onChange={(e) => setUnderQty(e.target.value)}
-                placeholder="0"
-              />
+              {errors.dayInput && <p className="text-sm text-destructive">{errors.dayInput}</p>}
             </div>
           </CardContent>
         </Card>
 
         {/* Submit Button */}
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          {isEditing ? "Update Daily Cutting Targets" : "Submit Daily Cutting Targets"}
+        <Button 
+          type="submit" 
+          className="w-full" 
+          size="lg"
+          disabled={submitting}
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Submitting...
+            </>
+          ) : isEditing ? (
+            "Update Daily Cutting Targets"
+          ) : (
+            "Submit Daily Cutting Targets"
+          )}
         </Button>
       </form>
     </div>
