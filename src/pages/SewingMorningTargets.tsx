@@ -271,7 +271,7 @@ export default function SewingMorningTargets() {
       if (isAdminOrHigher()) {
         navigate("/dashboard");
       } else {
-        navigate("/my-submissions");
+        navigate("/sewing/my-submissions");
       }
     } catch (error: any) {
       console.error("Error submitting targets:", error);

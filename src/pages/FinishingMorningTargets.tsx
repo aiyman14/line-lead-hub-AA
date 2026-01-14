@@ -215,7 +215,7 @@ export default function FinishingMorningTargets() {
       if (isAdminOrHigher()) {
         navigate("/dashboard");
       } else {
-        navigate("/my-submissions");
+        navigate("/finishing/my-submissions");
       }
     } catch (error: any) {
       console.error("Error submitting targets:", error);

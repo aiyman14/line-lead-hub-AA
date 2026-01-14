@@ -33,13 +33,14 @@ export default function LegacyMySubmissionsRedirect() {
     return <Navigate to="/finishing/my-submissions" replace />;
   }
 
+  // Default: Sewing workers go to sewing my-submissions, admins go to dashboard
   const isWorker =
     profile.department != null ||
     (hasRole("worker") && !isAdminOrHigher());
 
   return (
     <Navigate
-      to={isWorker ? "/sewing/morning-targets" : "/dashboard"}
+      to={isWorker ? "/sewing/my-submissions" : "/dashboard"}
       replace
     />
   );

@@ -263,7 +263,7 @@ export default function SewingEndOfDay() {
       if (isAdminOrHigher()) {
         navigate("/dashboard");
       } else {
-        navigate("/my-submissions");
+        navigate("/sewing/my-submissions");
       }
     } catch (error: any) {
       console.error("Error submitting actuals:", error);

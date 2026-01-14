@@ -233,7 +233,7 @@ export default function FinishingEndOfDay() {
       if (isAdminOrHigher()) {
         navigate("/dashboard");
       } else {
-        navigate("/my-submissions");
+        navigate("/finishing/my-submissions");
       }
     } catch (error: any) {
       console.error("Error submitting actuals:", error);
