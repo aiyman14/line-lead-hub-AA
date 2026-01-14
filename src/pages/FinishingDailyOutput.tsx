@@ -73,6 +73,7 @@ export default function FinishingDailyOutput() {
   const [existingLog, setExistingLog] = useState<any>(null);
   const [targetLog, setTargetLog] = useState<TargetLog | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [previousCartonTotal, setPreviousCartonTotal] = useState(0);
 
   // Master data
   const [lines, setLines] = useState<Line[]>([]);
@@ -117,6 +118,9 @@ export default function FinishingDailyOutput() {
   useEffect(() => {
     if (selectedLineId && selectedWorkOrderId && profile?.factory_id) {
       checkExistingLogs();
+      fetchPreviousCartonTotal();
+    } else {
+      setPreviousCartonTotal(0);
     }
   }, [selectedLineId, selectedWorkOrderId, profile?.factory_id]);
 
@@ -229,6 +233,37 @@ export default function FinishingDailyOutput() {
       }
     } catch (error) {
       console.error("Error checking existing logs:", error);
+    }
+  }
+
+  async function fetchPreviousCartonTotal() {
+    if (!profile?.factory_id || !selectedWorkOrderId) return;
+
+    try {
+      const today = format(new Date(), "yyyy-MM-dd");
+      
+      // Fetch all carton values for this work order (excluding today's entry if editing)
+      const { data, error } = await supabase
+        .from("finishing_daily_logs")
+        .select("id, carton")
+        .eq("factory_id", profile.factory_id)
+        .eq("work_order_id", selectedWorkOrderId)
+        .eq("log_type", "OUTPUT");
+
+      if (error) throw error;
+
+      // Sum all carton values, excluding the current log if editing
+      const total = (data || []).reduce((sum, log) => {
+        // If we're editing, exclude the current log's carton from previous total
+        if (existingLog && log.id === existingLog.id) {
+          return sum;
+        }
+        return sum + (log.carton || 0);
+      }, 0);
+
+      setPreviousCartonTotal(total);
+    } catch (error) {
+      console.error("Error fetching previous carton total:", error);
     }
   }
 
@@ -576,6 +611,75 @@ export default function FinishingDailyOutput() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Order Progress - appears when Carton has value */}
+        {selectedWorkOrder && processValues.carton && parseInt(processValues.carton) > 0 && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Archive className="h-4 w-4" />
+                Order Progress (Finished Goods)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Order Qty:</span>
+                    <p className="text-lg font-bold">{selectedWorkOrder.order_qty.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Previous Total Carton:</span>
+                    <p className="text-lg font-bold font-mono">{previousCartonTotal.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="border-t pt-3">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Today's Carton Entry:</span>
+                      <p className="text-lg font-bold text-primary font-mono">+{parseInt(processValues.carton).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">New Total Carton:</span>
+                      <p className="text-lg font-bold font-mono">{(previousCartonTotal + parseInt(processValues.carton)).toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="border-t pt-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Remaining:</span>
+                    {(() => {
+                      const newTotal = previousCartonTotal + parseInt(processValues.carton);
+                      const remaining = selectedWorkOrder.order_qty - newTotal;
+                      return (
+                        <span className={cn("text-lg font-bold font-mono", remaining > 0 ? "text-amber-600" : remaining < 0 ? "text-green-600" : "text-green-600")}>
+                          {remaining > 0 ? remaining.toLocaleString() : remaining === 0 ? "✓ Complete" : `+${Math.abs(remaining).toLocaleString()} extras`}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  {/* Progress bar */}
+                  <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        (previousCartonTotal + parseInt(processValues.carton)) >= selectedWorkOrder.order_qty 
+                          ? "bg-green-500" 
+                          : "bg-primary"
+                      )}
+                      style={{ 
+                        width: `${Math.min(100, ((previousCartonTotal + parseInt(processValues.carton)) / selectedWorkOrder.order_qty) * 100)}%` 
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 text-right">
+                    {((previousCartonTotal + parseInt(processValues.carton)) / selectedWorkOrder.order_qty * 100).toFixed(1)}% of order
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Remarks */}
         <Card>
