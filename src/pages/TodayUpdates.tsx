@@ -156,7 +156,7 @@ export default function TodayUpdates() {
   const [finishingDailyLogs, setFinishingDailyLogs] = useState<FinishingDailyLog[]>([]);
   const [cuttingActuals, setCuttingActuals] = useState<CuttingActual[]>([]);
   const [cuttingTargets, setCuttingTargets] = useState<CuttingTargetFull[]>([]);
-  const [storageTransactions, setStorageTransactions] = useState<StorageTransaction[]>();
+  const [storageTransactions, setStorageTransactions] = useState<StorageTransaction[]>([]);
   const [selectedCuttingTarget, setSelectedCuttingTarget] = useState<CuttingTargetFull | null>(null);
   const [cuttingTargetModalOpen, setCuttingTargetModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
