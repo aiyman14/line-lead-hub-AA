@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -261,6 +261,107 @@ export default function TodayUpdates() {
     (s.storage_bin_cards?.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.storage_bin_cards?.style || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Merge cutting targets and actuals by line+work_order for unified display
+  const mergedCuttingData = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      line_id: string;
+      line_name: string;
+      work_order_id: string;
+      po_number: string | null;
+      target: CuttingTargetFull | null;
+      actual: CuttingActual | null;
+      submitted_at: string | null;
+    }>();
+
+    // Add targets
+    filteredCuttingTargets.forEach(target => {
+      const key = `${target.line_id}-${target.work_order_id}`;
+      map.set(key, {
+        key,
+        line_id: target.line_id,
+        line_name: target.lines?.name || target.lines?.line_id || 'Unknown',
+        work_order_id: target.work_order_id,
+        po_number: target.work_orders?.po_number || target.po_no || null,
+        target,
+        actual: null,
+        submitted_at: target.submitted_at,
+      });
+    });
+
+    // Add/merge actuals
+    filteredCutting.forEach(actual => {
+      const key = `${actual.line_id}-${actual.work_order_id}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.actual = actual;
+        // Use the later submission time
+        if (actual.submitted_at && (!existing.submitted_at || actual.submitted_at > existing.submitted_at)) {
+          existing.submitted_at = actual.submitted_at;
+        }
+      } else {
+        map.set(key, {
+          key,
+          line_id: actual.line_id,
+          line_name: actual.lines?.name || actual.lines?.line_id || 'Unknown',
+          work_order_id: actual.work_order_id,
+          po_number: actual.work_orders?.po_number || null,
+          target: null,
+          actual,
+          submitted_at: actual.submitted_at,
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => 
+      (b.submitted_at || '').localeCompare(a.submitted_at || '')
+    );
+  }, [filteredCuttingTargets, filteredCutting]);
+
+  // Merge finishing TARGET and OUTPUT logs by line for unified display
+  const mergedFinishingData = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      line_id: string;
+      line_name: string;
+      po_number: string | null;
+      target: FinishingDailyLog | null;
+      output: FinishingDailyLog | null;
+      submitted_at: string;
+    }>();
+
+    filteredFinishing.forEach(log => {
+      const key = log.line_id;
+      const existing = map.get(key);
+      
+      if (existing) {
+        if (log.log_type === 'TARGET') {
+          existing.target = log;
+        } else {
+          existing.output = log;
+        }
+        // Use the later submission time
+        if (log.submitted_at > existing.submitted_at) {
+          existing.submitted_at = log.submitted_at;
+        }
+      } else {
+        map.set(key, {
+          key,
+          line_id: log.line_id,
+          line_name: log.lines?.name || log.lines?.line_id || 'Unknown',
+          po_number: log.work_orders?.po_number || null,
+          target: log.log_type === 'TARGET' ? log : null,
+          output: log.log_type === 'OUTPUT' ? log : null,
+          submitted_at: log.submitted_at,
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => 
+      b.submitted_at.localeCompare(a.submitted_at)
+    );
+  }, [filteredFinishing]);
 
   const totalOutput = sewingUpdates.reduce((sum, u) => sum + (u.output_qty || 0), 0);
   
@@ -833,40 +934,49 @@ export default function TodayUpdates() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Time</TableHead>
-                        <TableHead>Type</TableHead>
                         <TableHead>Line</TableHead>
                         <TableHead>PO</TableHead>
-                        <TableHead className="text-right">Poly</TableHead>
-                        <TableHead className="text-right">Carton</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">Output (Poly)</TableHead>
+                        <TableHead className="text-right">Target (Poly)</TableHead>
+                        <TableHead className="text-right">Output (Carton)</TableHead>
+                        <TableHead className="text-right">Target (Carton)</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredFinishing.map((log) => {
-                        const total = (log.poly || 0) + (log.carton || 0);
+                      {mergedFinishingData.map((row) => {
+                        const outputPoly = row.output?.poly || 0;
+                        const targetPoly = row.target?.poly || 0;
+                        const outputCarton = row.output?.carton || 0;
+                        const targetCarton = row.target?.carton || 0;
                         return (
                           <TableRow 
-                            key={log.id}
+                            key={row.key}
                             className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => handleFinishingClick(log)}
+                            onClick={() => row.output ? handleFinishingClick(row.output) : row.target && handleFinishingClick(row.target)}
                           >
-                            <TableCell className="font-mono text-sm">{formatTime(log.submitted_at)}</TableCell>
+                            <TableCell className="font-mono text-sm">{formatTime(row.submitted_at)}</TableCell>
+                            <TableCell className="font-medium">{row.line_name}</TableCell>
+                            <TableCell>{row.po_number || '-'}</TableCell>
+                            <TableCell className="text-right font-mono font-bold">{outputPoly.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{targetPoly > 0 ? targetPoly.toLocaleString() : '-'}</TableCell>
+                            <TableCell className="text-right font-mono font-bold">{outputCarton.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{targetCarton > 0 ? targetCarton.toLocaleString() : '-'}</TableCell>
                             <TableCell>
-                              <StatusBadge variant={log.log_type === 'TARGET' ? 'info' : 'success'} size="sm">
-                                {log.log_type}
-                              </StatusBadge>
+                              {row.output && row.target ? (
+                                <StatusBadge variant="success" size="sm">Complete</StatusBadge>
+                              ) : row.output ? (
+                                <StatusBadge variant="warning" size="sm">No Target</StatusBadge>
+                              ) : (
+                                <StatusBadge variant="info" size="sm">Target Only</StatusBadge>
+                              )}
                             </TableCell>
-                            <TableCell className="font-medium">{log.lines?.name || log.lines?.line_id}</TableCell>
-                            <TableCell>{log.work_orders?.po_number || '-'}</TableCell>
-                            <TableCell className="text-right font-mono">{(log.poly || 0).toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-mono">{(log.carton || 0).toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-mono font-bold">{total.toLocaleString()}</TableCell>
                           </TableRow>
                         );
                       })}
-                      {filteredFinishing.length === 0 && (
+                      {mergedFinishingData.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             No finishing logs today
                           </TableCell>
                         </TableRow>
@@ -878,15 +988,8 @@ export default function TodayUpdates() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="cutting" className="mt-4 space-y-4">
-          {/* Cutting Morning Targets */}
+        <TabsContent value="cutting" className="mt-4">
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Scissors className="h-4 w-4 text-warning" />
-                Morning Targets ({filteredCuttingTargets.length})
-              </CardTitle>
-            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
@@ -895,81 +998,48 @@ export default function TodayUpdates() {
                       <TableHead>Time</TableHead>
                       <TableHead>Line</TableHead>
                       <TableHead>PO</TableHead>
+                      <TableHead className="text-right">Output</TableHead>
+                      <TableHead className="text-right">Target</TableHead>
                       <TableHead className="text-right">Manpower</TableHead>
-                      <TableHead className="text-right">Marker Cap</TableHead>
-                      <TableHead className="text-right">Lay Cap</TableHead>
-                      <TableHead className="text-right">Cutting Cap</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredCuttingTargets.map((target) => (
-                      <TableRow 
-                        key={target.id} 
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleCuttingTargetClick(target)}
-                      >
-                        <TableCell className="font-mono text-sm">{target.submitted_at ? formatTime(target.submitted_at) : '-'}</TableCell>
-                        <TableCell className="font-medium">{target.lines?.name || target.lines?.line_id}</TableCell>
-                        <TableCell>{target.work_orders?.po_number || target.po_no || '-'}</TableCell>
-                        <TableCell className="text-right font-mono">{target.man_power}</TableCell>
-                        <TableCell className="text-right font-mono">{target.marker_capacity.toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-mono">{target.lay_capacity.toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-mono">{target.cutting_capacity.toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredCuttingTargets.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          No cutting targets submitted today
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Cutting End of Day Actuals */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Scissors className="h-4 w-4 text-warning" />
-                End of Day Actuals ({filteredCutting.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Line</TableHead>
-                      <TableHead>PO</TableHead>
-                      <TableHead className="text-right">Day Cutting</TableHead>
                       <TableHead className="text-right">Day Input</TableHead>
-                      <TableHead className="text-right">Total Cutting</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredCutting.map((cutting) => (
-                      <TableRow 
-                        key={cutting.id} 
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleCuttingClick(cutting)}
-                      >
-                        <TableCell className="font-mono text-sm">{cutting.submitted_at ? formatTime(cutting.submitted_at) : '-'}</TableCell>
-                        <TableCell className="font-medium">{cutting.lines?.name || cutting.lines?.line_id}</TableCell>
-                        <TableCell>{cutting.work_orders?.po_number || '-'}</TableCell>
-                        <TableCell className="text-right font-mono font-bold">{cutting.day_cutting.toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-mono">{cutting.day_input.toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-mono">{cutting.total_cutting?.toLocaleString() || '-'}</TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredCutting.length === 0 && (
+                    {mergedCuttingData.map((row) => {
+                      const output = row.actual?.day_cutting || 0;
+                      const target = row.target?.cutting_capacity || 0;
+                      const manpower = row.target?.man_power || 0;
+                      const dayInput = row.actual?.day_input || 0;
+                      return (
+                        <TableRow 
+                          key={row.key}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => row.actual ? handleCuttingClick(row.actual) : row.target && handleCuttingTargetClick(row.target)}
+                        >
+                          <TableCell className="font-mono text-sm">{row.submitted_at ? formatTime(row.submitted_at) : '-'}</TableCell>
+                          <TableCell className="font-medium">{row.line_name}</TableCell>
+                          <TableCell>{row.po_number || '-'}</TableCell>
+                          <TableCell className="text-right font-mono font-bold">{output.toLocaleString()}</TableCell>
+                          <TableCell className="text-right font-mono">{target > 0 ? target.toLocaleString() : '-'}</TableCell>
+                          <TableCell className="text-right">{manpower || '-'}</TableCell>
+                          <TableCell className="text-right font-mono">{dayInput > 0 ? dayInput.toLocaleString() : '-'}</TableCell>
+                          <TableCell>
+                            {row.actual && row.target ? (
+                              <StatusBadge variant="success" size="sm">Complete</StatusBadge>
+                            ) : row.actual ? (
+                              <StatusBadge variant="warning" size="sm">No Target</StatusBadge>
+                            ) : (
+                              <StatusBadge variant="info" size="sm">Target Only</StatusBadge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {mergedCuttingData.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          No cutting actuals submitted today
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          No cutting submissions today
                         </TableCell>
                       </TableRow>
                     )}
