@@ -235,8 +235,7 @@ export default function SewingMorningTargets() {
 
       // If a submission already exists for today+line+PO, update it (only if still within edit window)
       const { data: existing, error: existingError } = await supabase
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from("sewing_targets" as any)
+        .from("sewing_targets")
         .select("id")
         .eq("factory_id", profile.factory_id)
         .eq("production_date", productionDate)
@@ -250,30 +249,23 @@ export default function SewingMorningTargets() {
         const { canEdit, reason } = canEditSubmission(productionDate, user.id);
         if (!canEdit) {
           toast.error(reason || t("common.submissionFailed"));
+          setSubmitting(false);
           return;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: updateError } = await supabase
-          .from("sewing_targets" as any)
-          .update(insertData as any)
+          .from("sewing_targets")
+          .update(insertData)
           .eq("id", existing.id);
 
         if (updateError) throw updateError;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: insertError } = await supabase
-          .from("sewing_targets" as any)
-          .insert(insertData as any);
+          .from("sewing_targets")
+          .insert(insertData);
 
         if (insertError) throw insertError;
       }
-    } catch (error: any) {
-      console.error("Error submitting targets:", error);
-      toast.error(t("common.submissionFailed"));
-      return;
-    }
-
       toast.success(t("common.submissionSuccess"));
       
       if (isAdminOrHigher()) {
