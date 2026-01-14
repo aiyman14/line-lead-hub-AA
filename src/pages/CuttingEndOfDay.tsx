@@ -614,7 +614,7 @@ export default function CuttingEndOfDay() {
             </div>
 
             <div className="space-y-2">
-              <Label>DAY INPUT * (to Sewing)</Label>
+              <Label>DAY INPUT *</Label>
               <Input
                 type="number"
                 value={dayInput}
