@@ -48,7 +48,22 @@
     "createUpdaterArtifacts": true,
     "macOS": {
       "hardenedRuntime": true,
-      "entitlements": "src-tauri/entitlements.plist"
+      "entitlements": "src-tauri/entitlements.plist",
+      "dmg": {
+        "background": "icons/dmg-background.png",
+        "appPosition": {
+          "x": 130,
+          "y": 220
+        },
+        "applicationFolderPosition": {
+          "x": 410,
+          "y": 220
+        },
+        "windowSize": {
+          "width": 540,
+          "height": 380
+        }
+      }
     }
   },
   "plugins": {
