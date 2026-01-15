@@ -163,64 +163,84 @@ jobs:
           ls -lh "$DMG_OUT"
 
       - name: Notarize + staple DMG (macOS)
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
+  if: matrix.os == 'macos-latest'
+  shell: bash
+  env:
+    APPLE_ID: ${{ secrets.APPLE_ID }}
+    APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+    APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  run: |
+    set -euo pipefail
 
-          DMG="artifacts/Production_Portal_universal.dmg"
-          if [ ! -f "$DMG" ]; then
-            echo "Could not find DMG to notarize: $DMG" >&2
-            exit 1
-          fi
+    DMG=$(find "src-tauri/target/universal-apple-darwin/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)
+    if [ -z "${DMG:-}" ]; then
+      DMG=$(find "src-tauri/target/release/bundle/dmg" -name "*.dmg" -type f 2>/dev/null | head -1 || true)
+    fi
 
-          echo "Submitting for notarization (wait): $DMG"
-          SUBMIT_JSON="$(xcrun notarytool submit "$DMG" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait \
-            --output-format json)"
+    if [ -z "${DMG:-}" ] || [ ! -f "$DMG" ]; then
+      echo "Could not find DMG to notarize" >&2
+      exit 1
+    fi
 
-          echo "$SUBMIT_JSON"
+    retry() {
+      local n=0 max=6 delay=20
+      until "$@"; do
+        n=$((n+1))
+        if [ "$n" -ge "$max" ]; then
+          echo "Command failed after $n attempts: $*" >&2
+          return 1
+        fi
+        echo "Command failed (attempt $n/$max). Retrying in ${delay}s..." >&2
+        sleep "$delay"
+        delay=$((delay*2))
+      done
+    }
 
-          UUID="$(python3 - <<'PY'
-          import json,sys
-          d=json.loads(sys.stdin.read())
-          print(d.get("id",""))
-          PY
-          <<< "$SUBMIT_JSON")"
+    echo "Submitting for notarization (wait): $DMG"
 
-          STATUS="$(python3 - <<'PY'
-          import json,sys
-          d=json.loads(sys.stdin.read())
-          print((d.get("status") or "").strip())
-          PY
-          <<< "$SUBMIT_JSON")"
+    SUBMIT_JSON="$(retry xcrun notarytool submit "$DMG" \
+      --apple-id "$APPLE_ID" \
+      --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+      --team-id "$APPLE_TEAM_ID" \
+      --wait \
+      --output-format json)"
 
-          echo "Notary submission id: $UUID"
-          echo "Notary status: $STATUS"
+    echo "$SUBMIT_JSON"
 
-          if [ "$STATUS" != "Accepted" ]; then
-            echo "Notarization failed. Log:" >&2
-            xcrun notarytool log "$UUID" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" || true
-            exit 1
-          fi
+    UUID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("id",""))' "$SUBMIT_JSON")"
+    STATUS="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("status",""))' "$SUBMIT_JSON")"
 
-          echo "Wait for ticket propagation..."
-          sleep 120
+    echo "Notary submission id: $UUID"
+    echo "Notary status: $STATUS"
 
-          echo "Stapling..."
-          xcrun stapler staple "$DMG"
-          xcrun stapler validate "$DMG" || true
+    if [ -z "${UUID:-}" ]; then
+      echo "ERROR: Could not extract notary submission id from JSON." >&2
+      exit 1
+    fi
 
+    if [ "$STATUS" != "Accepted" ]; then
+      echo "Notarization not accepted. Fetching log..." >&2
+      xcrun notarytool log "$UUID" \
+        --apple-id "$APPLE_ID" \
+        --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+        --team-id "$APPLE_TEAM_ID" || true
+      exit 1
+    fi
+
+    # Ticket propagation lag happens even after Accepted.
+    echo "Waiting for ticket propagation..."
+    sleep 120
+
+    echo "Stapling notarization ticket..."
+    retry xcrun stapler staple "$DMG"
+
+    echo "Stapler validate..."
+    xcrun stapler validate "$DMG" || true
+
+    echo "Gatekeeper verification..."
+    spctl -a -vv "$DMG" || true
+
+        
       - name: Collect artifacts (all OS)
         shell: bash
         run: |
