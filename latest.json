@@ -1,11 +1,23 @@
 {
-  "version": "1.0.18",
+  "version": "1.0.39",
   "notes": "Production Portal update",
-  "pub_date": "2026-01-08T12:47:00Z",
+  "pub_date": "2026-01-15T12:00:00Z",
   "platforms": {
+    "darwin-x86_64": {
+      "url": "https://github.com/WovenTexLTD/line-lead-hub/releases/download/desktop-v1.0.39/Production%20Portal_1.0.39_x64.app.tar.gz",
+      "signature": ""
+    },
+    "darwin-aarch64": {
+      "url": "https://github.com/WovenTexLTD/line-lead-hub/releases/download/desktop-v1.0.39/Production%20Portal_1.0.39_aarch64.app.tar.gz",
+      "signature": ""
+    },
     "linux-x86_64": {
-      "url": "https://github.com/WovenTexLTD/line-lead-hub/releases/download/desktop-v1.0.18/Production%20Portal_1.0.18_amd64.AppImage",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUblM3TjByNCtsRVdqdFJQRC90bVNQa0c4YUtoV1VlUGZkUjJGN3Y5QzJiWEpteUh2QmhKMXJ4M0MxTy9Ra1VZK0NkdHJwNnk2YTNsNmhKeEI3T1praGFId3pGcUdNbUFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY3ODcyODIzCWZpbGU6UHJvZHVjdGlvbiBQb3J0YWxfMS4wLjE4X2FtZDY0LkFwcEltYWdlCjBzVmFrZkZkYXpDdkVWZHBmY2FHanNsWVV3VENOM0RxaURiODVwZXowVmhZWURENkYveTVFOWNMeENDOWJlYzNFS3l0SkVGT2tnL2hsMUtBMFk5cEF3PT0K"
+      "url": "https://github.com/WovenTexLTD/line-lead-hub/releases/download/desktop-v1.0.39/Production%20Portal_1.0.39_amd64.AppImage",
+      "signature": ""
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/WovenTexLTD/line-lead-hub/releases/download/desktop-v1.0.39/Production%20Portal_1.0.39_x64-setup.nsis.zip",
+      "signature": ""
     }
   }
 }
