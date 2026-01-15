@@ -323,6 +323,23 @@ jobs:
           # Keep our notarized DMG
           [ -f artifacts/Production_Portal_universal.dmg ] || (echo "Missing notarized DMG" >&2 && exit 1)
 
+          # Capture updater bundle + signature (these are what the in-app updater uses)
+          # Tauri typically outputs latest.json + latest.json.sig alongside the update bundle.
+          UPDATER_JSON=$(find src-tauri/target -type f -name "latest.json" | head -1 || true)
+          UPDATER_SIG=$(find src-tauri/target -type f -name "latest.json.sig" | head -1 || true)
+
+          if [ -n "${UPDATER_JSON:-}" ] && [ -f "$UPDATER_JSON" ]; then
+            cp "$UPDATER_JSON" artifacts/latest.json
+          else
+            echo "WARNING: latest.json not found in build output" >&2
+          fi
+
+          if [ -n "${UPDATER_SIG:-}" ] && [ -f "$UPDATER_SIG" ]; then
+            cp "$UPDATER_SIG" artifacts/latest.json.sig
+          else
+            echo "WARNING: latest.json.sig not found in build output" >&2
+          fi
+
           # Also capture updater artifact if present
           MAC_TAR=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
           if [ -n "${MAC_TAR:-}" ] && [ -f "$MAC_TAR" ]; then
@@ -365,6 +382,7 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           artifacts: |
+            dist/latest.json
             dist/*.AppImage
             dist/*.deb
             dist/*.rpm
