@@ -50,18 +50,18 @@
       "hardenedRuntime": true,
       "entitlements": "src-tauri/entitlements.plist",
       "dmg": {
-        "background": "icons/dmg-background.png",
+        "background": "dmg-background.png",
         "appPosition": {
-          "x": 130,
-          "y": 220
+          "x": 180,
+          "y": 320
         },
         "applicationFolderPosition": {
-          "x": 410,
-          "y": 220
+          "x": 480,
+          "y": 320
         },
         "windowSize": {
-          "width": 540,
-          "height": 380
+          "width": 660,
+          "height": 500
         }
       }
     }
