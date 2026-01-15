@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { StorageBinCardDetailModal } from "@/components/StorageBinCardDetailModal";
+import { TablePagination } from "@/components/ui/table-pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 interface BinCard {
   id: string;
@@ -58,7 +60,7 @@ export function StorageSubmissionsTable({
   const [binCardTransactions, setBinCardTransactions] = useState<any[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
-
+  const [pageSize, setPageSize] = useState(25);
   useEffect(() => {
     fetchData();
   }, [factoryId, dateRange]);
@@ -154,6 +156,21 @@ export function StorageSubmissionsTable({
       (card.description?.toLowerCase().includes(term))
     );
   }, [binCards, searchTerm]);
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData,
+    setCurrentPage,
+    goToFirstPage,
+    goToLastPage,
+    goToNextPage,
+    goToPreviousPage,
+    canGoNext,
+    canGoPrevious,
+    startIndex,
+    endIndex,
+  } = usePagination(filteredCards, { pageSize });
 
   const stats = useMemo(() => {
     const totalBalance = binCards.reduce((sum, c) => sum + (c.latestBalance || 0), 0);
@@ -283,14 +300,14 @@ export function StorageSubmissionsTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCards.length === 0 ? (
+                {paginatedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No bin cards found
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredCards.map((card) => (
+                  paginatedData.map((card) => (
                     <TableRow
                       key={card.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -323,6 +340,22 @@ export function StorageSubmissionsTable({
               </TableBody>
             </Table>
           </div>
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            totalItems={filteredCards.length}
+            onPageChange={setCurrentPage}
+            onFirstPage={goToFirstPage}
+            onLastPage={goToLastPage}
+            onNextPage={goToNextPage}
+            onPreviousPage={goToPreviousPage}
+            canGoNext={canGoNext}
+            canGoPrevious={canGoPrevious}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+          />
         </CardContent>
       </Card>
 

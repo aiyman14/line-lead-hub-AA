@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +23,8 @@ import { ExportSubmissionsDialog } from "@/components/ExportSubmissionsDialog";
 import { FinishingDailySheetsTable } from "@/components/submissions/FinishingDailySheetsTable";
 import { CuttingSubmissionsTable } from "@/components/submissions/CuttingSubmissionsTable";
 import { StorageSubmissionsTable } from "@/components/submissions/StorageSubmissionsTable";
+import { TablePagination } from "@/components/ui/table-pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { toast } from "sonner";
 
 // Types for targets
@@ -139,7 +141,7 @@ export default function AllSubmissions() {
   const [targetModalOpen, setTargetModalOpen] = useState(false);
   const [actualModalOpen, setActualModalOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
-
+  const [pageSize, setPageSize] = useState(25);
   useEffect(() => {
     if (profile?.factory_id) {
       fetchSubmissions();
@@ -259,20 +261,22 @@ export default function AllSubmissions() {
     );
   };
 
-  // Get current data based on category and department
-  const getCurrentData = () => {
+  // Get current sewing data based on category
+  const sewingData = useMemo(() => {
     if (category === 'targets') {
-      return department === 'sewing'
-        ? filterBySearch(sewingTargets)
-        : filterBySearch(finishingTargets);
+      return filterBySearch(sewingTargets);
     } else {
-      return department === 'sewing'
-        ? filterBySearch(sewingActuals)
-        : filterBySearch(finishingActuals);
+      return filterBySearch(sewingActuals);
     }
-  };
+  }, [category, sewingTargets, sewingActuals, searchTerm]);
 
-  const currentData = getCurrentData();
+  // Separate pagination for targets and actuals to maintain type safety
+  const sewingTargetsPagination = usePagination(filterBySearch(sewingTargets), { pageSize });
+  const sewingActualsPagination = usePagination(filterBySearch(sewingActuals), { pageSize });
+
+  // Use the appropriate pagination based on category
+  const pagination = category === 'targets' ? sewingTargetsPagination : sewingActualsPagination;
+  const { currentPage, totalPages, setCurrentPage, goToFirstPage, goToLastPage, goToNextPage, goToPreviousPage, canGoNext, canGoPrevious, startIndex, endIndex } = pagination;
 
   // Summary stats
   const getCounts = () => ({
@@ -523,7 +527,7 @@ export default function AllSubmissions() {
                   <ClipboardCheck className="h-4 w-4 text-primary" />
                 )}
                 Sewing {category === 'targets' ? 'Targets' : 'End of Day'}
-                <Badge variant="secondary" className="ml-2">{currentData.length}</Badge>
+                <Badge variant="secondary" className="ml-2">{sewingData.length}</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -543,7 +547,7 @@ export default function AllSubmissions() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(currentData as SewingTarget[]).map((target) => (
+                      {sewingTargetsPagination.paginatedData.map((target) => (
                         <TableRow
                           key={target.id}
                           className="cursor-pointer hover:bg-muted/50"
@@ -565,7 +569,7 @@ export default function AllSubmissions() {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {currentData.length === 0 && (
+                      {sewingTargetsPagination.paginatedData.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             No sewing targets found
@@ -591,7 +595,7 @@ export default function AllSubmissions() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(currentData as SewingActual[]).map((actual) => (
+                      {sewingActualsPagination.paginatedData.map((actual) => (
                         <TableRow
                           key={actual.id}
                           className="cursor-pointer hover:bg-muted/50"
@@ -613,7 +617,7 @@ export default function AllSubmissions() {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {currentData.length === 0 && (
+                      {sewingActualsPagination.paginatedData.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             No sewing end of day data found
@@ -624,6 +628,22 @@ export default function AllSubmissions() {
                   </Table>
                 )}
               </div>
+              <TablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                startIndex={startIndex}
+                endIndex={endIndex}
+                totalItems={sewingData.length}
+                onPageChange={setCurrentPage}
+                onFirstPage={goToFirstPage}
+                onLastPage={goToLastPage}
+                onNextPage={goToNextPage}
+                onPreviousPage={goToPreviousPage}
+                canGoNext={canGoNext}
+                canGoPrevious={canGoPrevious}
+                pageSize={pageSize}
+                onPageSizeChange={setPageSize}
+              />
             </CardContent>
           </Card>
         </>

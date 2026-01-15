@@ -14,6 +14,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { TablePagination } from "@/components/ui/table-pagination";
+import { usePagination } from "@/hooks/usePagination";
 import {
   Dialog,
   DialogContent,
@@ -65,7 +67,7 @@ export function CuttingSubmissionsTable({
   const [loading, setLoading] = useState(true);
   const [submissions, setSubmissions] = useState<CuttingSubmission[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<CuttingSubmission | null>(null);
-
+  const [pageSize, setPageSize] = useState(25);
   useEffect(() => {
     fetchData();
   }, [factoryId, dateRange]);
@@ -149,6 +151,20 @@ export function CuttingSubmissionsTable({
     );
   }, [submissions, searchTerm]);
 
+  const {
+    currentPage,
+    totalPages,
+    paginatedData,
+    setCurrentPage,
+    goToFirstPage,
+    goToLastPage,
+    goToNextPage,
+    goToPreviousPage,
+    canGoNext,
+    canGoPrevious,
+    startIndex,
+    endIndex,
+  } = usePagination(filteredSubmissions, { pageSize });
   const stats = useMemo(() => {
     const today = format(new Date(), "yyyy-MM-dd");
     const todaySubmissions = submissions.filter(s => s.production_date === today);
@@ -253,14 +269,14 @@ export function CuttingSubmissionsTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSubmissions.length === 0 ? (
+                {paginatedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No cutting submissions found
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredSubmissions.map((s) => {
+                  paginatedData.map((s) => {
                     const percent = s.cutting_capacity > 0 ? (s.day_cutting / s.cutting_capacity) * 100 : null;
                     return (
                       <TableRow
@@ -297,6 +313,22 @@ export function CuttingSubmissionsTable({
               </TableBody>
             </Table>
           </div>
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            totalItems={filteredSubmissions.length}
+            onPageChange={setCurrentPage}
+            onFirstPage={goToFirstPage}
+            onLastPage={goToLastPage}
+            onNextPage={goToNextPage}
+            onPreviousPage={goToPreviousPage}
+            canGoNext={canGoNext}
+            canGoPrevious={canGoPrevious}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+          />
         </CardContent>
       </Card>
 

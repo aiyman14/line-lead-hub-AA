@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { Loader2, Package, Search, ClipboardList, Eye, Target, TrendingUp } from "lucide-react";
 import { FinishingLogDetailModal } from "@/components/FinishingLogDetailModal";
+import { TablePagination } from "@/components/ui/table-pagination";
+import { usePagination } from "@/hooks/usePagination";
 import type { Database } from "@/integrations/supabase/types";
 
 type FinishingLogType = Database["public"]["Enums"]["finishing_log_type"];
@@ -56,7 +58,7 @@ export function FinishingDailySheetsTable({
   const [activeTab, setActiveTab] = useState<"targets" | "outputs">("targets");
   const [selectedLog, setSelectedLog] = useState<DailyLogRow | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
-
+  const [pageSize, setPageSize] = useState(25);
   useEffect(() => {
     fetchLogs();
   }, [factoryId, dateRange]);
@@ -110,18 +112,34 @@ export function FinishingDailySheetsTable({
     }
   }
 
-  const filteredLogs = logs.filter((log) => {
-    const matchesTab = activeTab === "targets" ? log.log_type === "TARGET" : log.log_type === "OUTPUT";
-    if (!matchesTab) return false;
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
-    return (
-      log.line_name.toLowerCase().includes(search) ||
-      (log.po_number?.toLowerCase() || "").includes(search) ||
-      (log.style?.toLowerCase() || "").includes(search)
-    );
-  });
+  const filteredLogs = useMemo(() => {
+    return logs.filter((log) => {
+      const matchesTab = activeTab === "targets" ? log.log_type === "TARGET" : log.log_type === "OUTPUT";
+      if (!matchesTab) return false;
+      if (!searchTerm) return true;
+      const search = searchTerm.toLowerCase();
+      return (
+        log.line_name.toLowerCase().includes(search) ||
+        (log.po_number?.toLowerCase() || "").includes(search) ||
+        (log.style?.toLowerCase() || "").includes(search)
+      );
+    });
+  }, [logs, activeTab, searchTerm]);
 
+  const {
+    currentPage,
+    totalPages,
+    paginatedData,
+    setCurrentPage,
+    goToFirstPage,
+    goToLastPage,
+    goToNextPage,
+    goToPreviousPage,
+    canGoNext,
+    canGoPrevious,
+    startIndex,
+    endIndex,
+  } = usePagination(filteredLogs, { pageSize });
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       month: "short",
@@ -251,7 +269,7 @@ export function FinishingDailySheetsTable({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                      {filteredLogs.map((log) => (
+                      {paginatedData.map((log) => (
                         <TableRow 
                           key={log.id} 
                           className="hover:bg-muted/50 cursor-pointer"
@@ -301,7 +319,7 @@ export function FinishingDailySheetsTable({
                           </TableCell>
                         </TableRow>
                       ))}
-                      {filteredLogs.length === 0 && (
+                      {paginatedData.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                             <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
@@ -312,6 +330,22 @@ export function FinishingDailySheetsTable({
                     </TableBody>
                 </Table>
               </div>
+              <TablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                startIndex={startIndex}
+                endIndex={endIndex}
+                totalItems={filteredLogs.length}
+                onPageChange={setCurrentPage}
+                onFirstPage={goToFirstPage}
+                onLastPage={goToLastPage}
+                onNextPage={goToNextPage}
+                onPreviousPage={goToPreviousPage}
+                canGoNext={canGoNext}
+                canGoPrevious={canGoPrevious}
+                pageSize={pageSize}
+                onPageSizeChange={setPageSize}
+              />
             </CardContent>
           </Card>
         </TabsContent>
