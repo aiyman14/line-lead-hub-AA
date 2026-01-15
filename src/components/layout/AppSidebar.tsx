@@ -50,6 +50,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { NAV_ITEMS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { openExternalUrl, isTauri } from "@/lib/capacitor";
+import { isRunningFromDMG } from "@/lib/dmg-detection";
+import { DMGWarningModal } from "@/components/DMGWarningModal";
 import logoSvg from "@/assets/logo.svg";
 
 // Web fallback version (desktop uses the runtime version from the installed app)
@@ -137,6 +139,7 @@ export function AppSidebar() {
   const [expandedMenus, setExpandedMenus] = React.useState<string[]>(['/setup']);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [appVersion, setAppVersion] = useState<string>(WEB_APP_VERSION);
+  const [showDMGWarning, setShowDMGWarning] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +175,17 @@ export function AppSidebar() {
     if (!isTauri()) {
       toast.info("Updates are only available in the desktop app");
       return;
+    }
+
+    // Check if running from DMG before allowing update
+    try {
+      const isDMG = await isRunningFromDMG();
+      if (isDMG) {
+        setShowDMGWarning(true);
+        return;
+      }
+    } catch (e) {
+      console.warn("DMG check failed:", e);
     }
 
     setIsCheckingUpdate(true);
@@ -287,8 +301,17 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar
-      className={cn(
+    <>
+      {/* DMG Warning Modal for update button */}
+      {showDMGWarning && (
+        <DMGWarningModal 
+          triggeredByUpdate={true} 
+          onClose={() => setShowDMGWarning(false)}
+        />
+      )}
+      
+      <Sidebar
+        className={cn(
         "border-r border-sidebar-border transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
@@ -537,6 +560,7 @@ export function AppSidebar() {
           )}
         </Button>
       </SidebarFooter>
-    </Sidebar>
+      </Sidebar>
+    </>
   );
 }
