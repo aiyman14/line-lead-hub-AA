@@ -398,7 +398,7 @@ jobs:
           if-no-files-found: error
           path: artifacts/
 
-  release:
+    release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
@@ -412,13 +412,79 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: List downloaded artifacts
+        release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: dist
+          merge-multiple: true
+
+      - name: Debug dist contents (before latest.json)
         shell: bash
         run: |
-          echo "Downloaded artifacts:"
-          find dist -type f -ls
+          echo "DIST FILES:"
+          ls -la dist || true
 
-      - name: Create Release + Upload Assets
+      - name: Generate latest.json (from filenames in dist)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#desktop-v}"
+          REPO="${{ github.repository }}"
+          PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          LINUX_FILE="$(ls -1 dist/*.AppImage | head -1)"
+          WINDOWS_FILE="$(ls -1 dist/*.msi | head -1)"
+          MACOS_FILE="$(ls -1 dist/*.app.tar.gz | head -1)"
+
+          LINUX_SIG="$(tr -d '\n' < dist/linux-x86_64.sig)"
+          WINDOWS_SIG="$(tr -d '\n' < dist/windows-x86_64.sig)"
+          DARWIN_SIG="$(tr -d '\n' < dist/darwin-universal.sig)"
+
+          LINUX_NAME="$(basename "$LINUX_FILE")"
+          WINDOWS_NAME="$(basename "$WINDOWS_FILE")"
+          MACOS_NAME="$(basename "$MACOS_FILE")"
+
+          LINUX_URL="https://github.com/$REPO/releases/download/$TAG/$LINUX_NAME"
+          WINDOWS_URL="https://github.com/$REPO/releases/download/$TAG/$WINDOWS_NAME"
+          MACOS_URL="https://github.com/$REPO/releases/download/$TAG/$MACOS_NAME"
+
+          cat > dist/latest.json <<EOF
+          {
+            "version": "$VERSION",
+            "notes": "Production Portal update",
+            "pub_date": "$PUB_DATE",
+            "platforms": {
+              "linux-x86_64": { "url": "$LINUX_URL", "signature": "$LINUX_SIG" },
+              "windows-x86_64": { "url": "$WINDOWS_URL", "signature": "$WINDOWS_SIG" },
+              "darwin-aarch64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" },
+              "darwin-x86_64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" }
+            }
+          }
+          EOF
+
+          python3 -m json.tool dist/latest.json >/dev/null
+          echo "latest.json generated OK:"
+          cat dist/latest.json
+
+      - name: Debug dist contents (after latest.json)
+        shell: bash
+        run: |
+          echo "DIST FILES AFTER:"
+          ls -la dist
+          echo "CHECK latest.json:"
+          test -f dist/latest.json && echo "FOUND dist/latest.json" || (echo "MISSING dist/latest.json" && exit 1)
+
+      - name: Create Release + Upload Assets (includes latest.json)
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.ref_name }}
