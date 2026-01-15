@@ -166,19 +166,46 @@ jobs:
            rm -f "$DMG_OUT"
 
            APP_NAME="$(basename "$APP_PATH")"
-           BACKGROUND="$(pwd)/src-tauri/dmg-background.png"
+           BACKGROUND_FALLBACK="$(pwd)/src-tauri/dmg-background.png"
 
            echo "Creating DMG (with instructions + Applications link): $DMG_OUT"
 
-           # create-dmg is what gives us the background image + Applications alias + icon positioning
+           # create-dmg gives us the background image + Applications alias + icon positioning
            if ! command -v create-dmg >/dev/null 2>&1; then
              echo "Installing create-dmg..."
              brew update
              brew install create-dmg
            fi
 
-           if [ ! -f "$BACKGROUND" ]; then
-             echo "WARNING: DMG background not found at $BACKGROUND (DMG will still be created, but without instructions image)" >&2
+           # Use ImageMagick to generate a crisp background with perfect text (avoids AI-generated text artifacts)
+           if ! command -v convert >/dev/null 2>&1; then
+             echo "Installing ImageMagick..."
+             brew update
+             brew install imagemagick
+           fi
+
+           BG_W=660
+           BG_H=500
+           BACKGROUND_RENDERED="$STAGE_DIR/.dmg-background.png"
+
+           if command -v convert >/dev/null 2>&1; then
+             convert -size ${BG_W}x${BG_H} gradient:'#202124-#0b0c0d' \
+               -attenuate 0.12 +noise Gaussian \
+               -stroke 'rgba(255,255,255,0.18)' -strokewidth 2 -fill none \
+               -draw "roundrectangle 96,236 264,404 18,18" \
+               -draw "roundrectangle 396,236 564,404 18,18" \
+               -gravity North -font Helvetica -pointsize 34 \
+               -fill 'rgba(255,255,255,0.92)' \
+               -annotate +0+110 "Drag to Applications →" \
+               "$BACKGROUND_RENDERED" || true
+           fi
+
+           if [ -f "$BACKGROUND_RENDERED" ]; then
+             BACKGROUND="$BACKGROUND_RENDERED"
+           elif [ -f "$BACKGROUND_FALLBACK" ]; then
+             BACKGROUND="$BACKGROUND_FALLBACK"
+           else
+             echo "WARNING: No DMG background available (continuing without one)" >&2
              BACKGROUND=""
            fi
 
@@ -186,7 +213,7 @@ jobs:
              create-dmg \
                --volname "Production Portal" \
                --window-pos 200 120 \
-               --window-size 660 500 \
+               --window-size ${BG_W} ${BG_H} \
                --icon-size 128 \
                --background "$BACKGROUND" \
                --icon "$APP_NAME" 180 320 \
@@ -197,7 +224,7 @@ jobs:
              create-dmg \
                --volname "Production Portal" \
                --window-pos 200 120 \
-               --window-size 660 500 \
+               --window-size ${BG_W} ${BG_H} \
                --icon-size 128 \
                --icon "$APP_NAME" 180 320 \
                --app-drop-link 480 320 \
