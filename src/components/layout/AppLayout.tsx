@@ -7,6 +7,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { Button } from "@/components/ui/button";
 import { TrialExpirationBanner } from "@/components/TrialExpirationBanner";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
+import { DMGWarningModal } from "@/components/DMGWarningModal";
 
 export function AppLayout() {
   const { user, loading, factory, profile } = useAuth();
@@ -28,10 +29,10 @@ export function AppLayout() {
 
   return (
     <SidebarProvider defaultOpen={true} className="w-full min-h-[100dvh] overflow-x-hidden bg-background">
-      {/* 
-        Root container: fills viewport INCLUDING safe areas
-        (We paint safe-area top/bottom with background to prevent any black bars.)
-      */}
+      {/* DMG Warning Modal - startup check (blocks until moved to Applications on macOS) */}
+      <DMGWarningModal forceCheck={true} />
+      
+      {/* Root container: fills viewport INCLUDING safe areas */}
       <div className="flex w-full flex-col overflow-x-hidden bg-background" style={{ minHeight: '100dvh' }}>
         {/* Safe-area background filler (top) */}
         <div
