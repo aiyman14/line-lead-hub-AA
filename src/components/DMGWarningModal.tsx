@@ -136,8 +136,12 @@ export function DMGWarningModal({
           <ol className="mt-2 space-y-1 text-sm text-muted-foreground list-decimal list-inside">
             <li>Click "Open Applications" below</li>
             <li>Drag Production Portal into the Applications folder</li>
-            <li>Close this window and open from Applications</li>
+            <li><strong>Eject the disk image</strong> (right-click → Eject, or drag to Trash)</li>
+            <li>Open the app from Applications</li>
           </ol>
+          <p className="mt-3 text-xs text-amber-600 dark:text-amber-400 font-medium">
+            ⚠️ Important: You must eject the disk image for automatic updates to work!
+          </p>
         </div>
 
         <DialogFooter className="flex-col gap-2 sm:flex-row">

@@ -352,27 +352,43 @@ jobs:
           [ -f artifacts/Production_Portal_universal.dmg ] || (echo "Missing notarized DMG" >&2 && exit 1)
 
           # Capture updater bundle + signature (these are what the in-app updater uses)
-          # Tauri typically outputs latest.json + latest.json.sig alongside the update bundle.
-          UPDATER_JSON=$(find src-tauri/target -type f -name "latest.json" | head -1 || true)
-          UPDATER_SIG=$(find src-tauri/target -type f -name "latest.json.sig" | head -1 || true)
+          # Tauri 2.x generates latest.json in the bundle directory
+          echo "Searching for latest.json in build output..."
+          find src-tauri/target -type f -name "latest.json" 2>/dev/null || echo "No latest.json found yet"
+          
+          UPDATER_JSON=$(find src-tauri/target -type f -name "latest.json" 2>/dev/null | head -1 || true)
+          UPDATER_SIG=$(find src-tauri/target -type f -name "latest.json.sig" 2>/dev/null | head -1 || true)
 
           if [ -n "${UPDATER_JSON:-}" ] && [ -f "$UPDATER_JSON" ]; then
+            echo "Found latest.json at: $UPDATER_JSON"
             cp "$UPDATER_JSON" artifacts/latest.json
+            cat artifacts/latest.json
           else
-            echo "WARNING: latest.json not found in build output" >&2
+            echo "ERROR: latest.json not found in build output. Updater will not work!" >&2
+            echo "Listing all files in target directory..."
+            find src-tauri/target -type f -name "*.json" 2>/dev/null | head -20 || true
           fi
 
           if [ -n "${UPDATER_SIG:-}" ] && [ -f "$UPDATER_SIG" ]; then
+            echo "Found latest.json.sig at: $UPDATER_SIG"
             cp "$UPDATER_SIG" artifacts/latest.json.sig
           else
             echo "WARNING: latest.json.sig not found in build output" >&2
           fi
 
-          # Also capture updater artifact if present
+          # Also capture updater artifact (.app.tar.gz) if present
           MAC_TAR=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
+          if [ -z "${MAC_TAR:-}" ]; then
+            # Fallback: search in any location
+            MAC_TAR=$(find src-tauri/target -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
+          fi
+          
           if [ -n "${MAC_TAR:-}" ] && [ -f "$MAC_TAR" ]; then
+            echo "Found updater bundle at: $MAC_TAR"
             cp "$MAC_TAR" artifacts/
             [ -f "$MAC_TAR.sig" ] && cp "$MAC_TAR.sig" artifacts/darwin-universal.sig || true
+          else
+            echo "WARNING: .app.tar.gz updater bundle not found" >&2
           fi
 
       - name: Upload installers
