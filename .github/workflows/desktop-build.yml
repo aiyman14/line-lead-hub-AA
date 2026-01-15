@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -=[],=-y \
+          sudo apt-get install -y \
             pkg-config \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
@@ -160,13 +160,11 @@ jobs:
           rm -f "$DMG_OUT"
 
           APP_NAME="$(basename "$APP_PATH")"
-          BACKGROUND_FALLBACK="$(pwd)/src-tauri/dmg-background.png"
 
           if ! command -v create-dmg >/dev/null 2>&1; then
             brew update
             brew install create-dmg
           fi
-
           if ! command -v magick >/dev/null 2>&1; then
             brew update
             brew install imagemagick
@@ -176,48 +174,26 @@ jobs:
           BG_H=500
           BACKGROUND_RENDERED="$STAGE_DIR/dmg-background-rendered.png"
 
-          if command -v magick >/dev/null 2>&1; then
-            magick -size ${BG_W}x${BG_H} gradient:'#202124-#0b0c0d' \
-              -attenuate 0.12 +noise Gaussian \
-              -stroke 'rgba(255,255,255,0.18)' -strokewidth 2 -fill none \
-              -draw "roundrectangle 96,236 264,404 18,18" \
-              -draw "roundrectangle 396,236 564,404 18,18" \
-              -gravity North -font Helvetica -pointsize 34 \
-              -fill 'rgba(255,255,255,0.92)' \
-              -annotate +0+110 "Drag to Applications →" \
-              "$BACKGROUND_RENDERED" || true
-          fi
+          magick -size ${BG_W}x${BG_H} gradient:'#202124-#0b0c0d' \
+            -attenuate 0.12 +noise Gaussian \
+            -stroke 'rgba(255,255,255,0.18)' -strokewidth 2 -fill none \
+            -draw "roundrectangle 96,236 264,404 18,18" \
+            -draw "roundrectangle 396,236 564,404 18,18" \
+            -gravity North -font Helvetica -pointsize 34 \
+            -fill 'rgba(255,255,255,0.92)' \
+            -annotate +0+110 "Drag to Applications →" \
+            "$BACKGROUND_RENDERED"
 
-          if [ -f "$BACKGROUND_RENDERED" ]; then
-            BACKGROUND="$BACKGROUND_RENDERED"
-          elif [ -f "$BACKGROUND_FALLBACK" ]; then
-            BACKGROUND="$BACKGROUND_FALLBACK"
-          else
-            BACKGROUND=""
-          fi
-
-          if [ -n "${BACKGROUND:-}" ]; then
-            create-dmg \
-              --volname "Production Portal" \
-              --window-pos 200 120 \
-              --window-size ${BG_W} ${BG_H} \
-              --icon-size 128 \
-              --background "$BACKGROUND" \
-              --icon "$APP_NAME" 180 320 \
-              --app-drop-link 480 320 \
-              "$DMG_OUT" \
-              "$STAGE_DIR"
-          else
-            create-dmg \
-              --volname "Production Portal" \
-              --window-pos 200 120 \
-              --window-size ${BG_W} ${BG_H} \
-              --icon-size 128 \
-              --icon "$APP_NAME" 180 320 \
-              --app-drop-link 480 320 \
-              "$DMG_OUT" \
-              "$STAGE_DIR"
-          fi
+          create-dmg \
+            --volname "Production Portal" \
+            --window-pos 200 120 \
+            --window-size ${BG_W} ${BG_H} \
+            --icon-size 128 \
+            --background "$BACKGROUND_RENDERED" \
+            --icon "$APP_NAME" 180 320 \
+            --app-drop-link 480 320 \
+            "$DMG_OUT" \
+            "$STAGE_DIR"
 
           echo "DMG created:"
           ls -lh "$DMG_OUT"
@@ -334,7 +310,7 @@ jobs:
 
           [ -f artifacts/Production_Portal_universal.dmg ] || (echo "Missing notarized DMG" >&2 && exit 1)
 
-          # Updater bundle (.app.tar.gz) + signature (what the in-app updater uses)
+          # Updater bundle is the .app.tar.gz produced by Tauri
           MAC_TAR=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
           if [ -z "${MAC_TAR:-}" ]; then
             MAC_TAR=$(find src-tauri/target -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
@@ -374,7 +350,7 @@ jobs:
           echo "DIST FILES:"
           ls -la dist
 
-      - name: Generate latest.json (from files in dist)
+      - name: Generate latest.json (from dist files)
         shell: bash
         run: |
           set -euo pipefail
@@ -384,19 +360,9 @@ jobs:
           REPO="${{ github.repository }}"
           PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-          LINUX_FILE="$(ls -1 dist/*.AppImage 2>/dev/null | head -1 || true)"
-          WINDOWS_FILE="$(ls -1 dist/*.msi 2>/dev/null | head -1 || true)"
-          MACOS_FILE="$(ls -1 dist/*.app.tar.gz 2>/dev/null | head -1 || true)"
-
-          if [ -z "${LINUX_FILE:-}" ] || [ -z "${WINDOWS_FILE:-}" ] || [ -z "${MACOS_FILE:-}" ]; then
-            echo "Missing one of required updater files (.AppImage, .msi, .app.tar.gz)" >&2
-            ls -la dist
-            exit 1
-          fi
-
-          [ -f dist/linux-x86_64.sig ] || (echo "Missing dist/linux-x86_64.sig" >&2 && exit 1)
-          [ -f dist/windows-x86_64.sig ] || (echo "Missing dist/windows-x86_64.sig" >&2 && exit 1)
-          [ -f dist/darwin-universal.sig ] || (echo "Missing dist/darwin-universal.sig" >&2 && exit 1)
+          LINUX_FILE="$(ls -1 dist/*.AppImage | head -1)"
+          WINDOWS_FILE="$(ls -1 dist/*.msi | head -1)"
+          MACOS_FILE="$(ls -1 dist/*.app.tar.gz | head -1)"
 
           LINUX_SIG="$(tr -d '\n' < dist/linux-x86_64.sig)"
           WINDOWS_SIG="$(tr -d '\n' < dist/windows-x86_64.sig)"
@@ -411,21 +377,22 @@ jobs:
           MACOS_URL="https://github.com/$REPO/releases/download/$TAG/$MACOS_NAME"
 
           cat > dist/latest.json <<EOF
-{
-  "version": "$VERSION",
-  "notes": "Production Portal update",
-  "pub_date": "$PUB_DATE",
-  "platforms": {
-    "linux-x86_64": { "url": "$LINUX_URL", "signature": "$LINUX_SIG" },
-    "windows-x86_64": { "url": "$WINDOWS_URL", "signature": "$WINDOWS_SIG" },
-    "darwin-aarch64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" },
-    "darwin-x86_64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" }
-  }
-}
-EOF
+          {
+            "version": "$VERSION",
+            "notes": "Production Portal update",
+            "pub_date": "$PUB_DATE",
+            "platforms": {
+              "linux-x86_64": { "url": "$LINUX_URL", "signature": "$LINUX_SIG" },
+              "windows-x86_64": { "url": "$WINDOWS_URL", "signature": "$WINDOWS_SIG" },
+              "darwin-aarch64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" },
+              "darwin-x86_64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" }
+            }
+          }
+          EOF
 
           python3 -m json.tool dist/latest.json >/dev/null
-          echo "latest.json generated OK"
+          echo "latest.json generated OK:"
+          cat dist/latest.json
 
       - name: Create Release + Upload Assets (includes latest.json)
         uses: ncipollo/release-action@v1
