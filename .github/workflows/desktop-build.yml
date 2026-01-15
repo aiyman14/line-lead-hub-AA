@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -=[],=-y \
             pkg-config \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
@@ -69,7 +69,6 @@ jobs:
           printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > ~/.tauri/tauri.key
           chmod 600 ~/.tauri/tauri.key
 
-      # ---- macOS: import Developer ID cert (.p12) into keychain ----
       - name: Import Apple Developer ID certificate
         if: matrix.os == 'macos-latest'
         uses: apple-actions/import-codesign-certs@v3
@@ -77,7 +76,6 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
-      # ---- BUILD ----
       - name: Build desktop app (Linux/Windows)
         if: matrix.os != 'macos-latest'
         shell: bash
@@ -94,7 +92,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      # ---- macOS: codesign properly + rebuild DMG from signed .app ----
       - name: Codesign app properly + rebuild DMG (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
@@ -105,7 +102,6 @@ jobs:
 
           mkdir -p artifacts
 
-          # Find the built .app
           APP_PATH="$(find "src-tauri/target/universal-apple-darwin/release/bundle/macos" -maxdepth 2 -name "*.app" -type d | head -1 || true)"
           if [ -z "${APP_PATH:-}" ]; then
             APP_PATH="$(find "src-tauri/target/release/bundle/macos" -maxdepth 2 -name "*.app" -type d | head -1 || true)"
@@ -125,7 +121,6 @@ jobs:
             ENTITLEMENTS=""
           fi
 
-          # Sign nested code first (Frameworks, dylibs, helpers), then the app
           echo "Signing nested items..."
           while IFS= read -r item; do
             if [ -n "${ENTITLEMENTS:-}" ]; then
@@ -156,90 +151,77 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           spctl -a -vv "$APP_PATH" || true
 
-           # Rebuild a *Finder-styled* DMG from the signed app (with background + /Applications link)
-           STAGE_DIR="$(pwd)/artifacts/dmg_stage"
-           rm -rf "$STAGE_DIR"
-           mkdir -p "$STAGE_DIR"
-           cp -R "$APP_PATH" "$STAGE_DIR/"
+          STAGE_DIR="$(pwd)/artifacts/dmg_stage"
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR"
+          cp -R "$APP_PATH" "$STAGE_DIR/"
 
-           DMG_OUT="artifacts/Production_Portal_universal.dmg"
-           rm -f "$DMG_OUT"
+          DMG_OUT="artifacts/Production_Portal_universal.dmg"
+          rm -f "$DMG_OUT"
 
-           APP_NAME="$(basename "$APP_PATH")"
-           BACKGROUND_FALLBACK="$(pwd)/src-tauri/dmg-background.png"
+          APP_NAME="$(basename "$APP_PATH")"
+          BACKGROUND_FALLBACK="$(pwd)/src-tauri/dmg-background.png"
 
-           echo "Creating DMG (with instructions + Applications link): $DMG_OUT"
+          if ! command -v create-dmg >/dev/null 2>&1; then
+            brew update
+            brew install create-dmg
+          fi
 
-           # create-dmg gives us the background image + Applications alias + icon positioning
-           if ! command -v create-dmg >/dev/null 2>&1; then
-             echo "Installing create-dmg..."
-             brew update
-             brew install create-dmg
-           fi
+          if ! command -v magick >/dev/null 2>&1; then
+            brew update
+            brew install imagemagick
+          fi
 
-           # Use ImageMagick to generate a crisp background with perfect text (avoids AI-generated text artifacts)
-           if ! command -v magick >/dev/null 2>&1; then
-             echo "Installing ImageMagick..."
-             brew update
-             brew install imagemagick
-           fi
+          BG_W=660
+          BG_H=500
+          BACKGROUND_RENDERED="$STAGE_DIR/dmg-background-rendered.png"
 
-           BG_W=660
-           BG_H=500
-           # NOTE: do NOT start the filename with a dot; Finder background setting can fail on hidden files.
-           BACKGROUND_RENDERED="$STAGE_DIR/dmg-background-rendered.png"
+          if command -v magick >/dev/null 2>&1; then
+            magick -size ${BG_W}x${BG_H} gradient:'#202124-#0b0c0d' \
+              -attenuate 0.12 +noise Gaussian \
+              -stroke 'rgba(255,255,255,0.18)' -strokewidth 2 -fill none \
+              -draw "roundrectangle 96,236 264,404 18,18" \
+              -draw "roundrectangle 396,236 564,404 18,18" \
+              -gravity North -font Helvetica -pointsize 34 \
+              -fill 'rgba(255,255,255,0.92)' \
+              -annotate +0+110 "Drag to Applications →" \
+              "$BACKGROUND_RENDERED" || true
+          fi
 
-           if command -v magick >/dev/null 2>&1; then
-             magick -size ${BG_W}x${BG_H} gradient:'#202124-#0b0c0d' \
-               -attenuate 0.12 +noise Gaussian \
-               -stroke 'rgba(255,255,255,0.18)' -strokewidth 2 -fill none \
-               -draw "roundrectangle 96,236 264,404 18,18" \
-               -draw "roundrectangle 396,236 564,404 18,18" \
-               -gravity North -font Helvetica -pointsize 34 \
-               -fill 'rgba(255,255,255,0.92)' \
-               -annotate +0+110 "Drag to Applications →" \
-               "$BACKGROUND_RENDERED" || true
-           fi
+          if [ -f "$BACKGROUND_RENDERED" ]; then
+            BACKGROUND="$BACKGROUND_RENDERED"
+          elif [ -f "$BACKGROUND_FALLBACK" ]; then
+            BACKGROUND="$BACKGROUND_FALLBACK"
+          else
+            BACKGROUND=""
+          fi
 
-           if [ -f "$BACKGROUND_RENDERED" ]; then
-             BACKGROUND="$BACKGROUND_RENDERED"
-           elif [ -f "$BACKGROUND_FALLBACK" ]; then
-             BACKGROUND="$BACKGROUND_FALLBACK"
-           else
-             echo "WARNING: No DMG background available (continuing without one)" >&2
-             BACKGROUND=""
-           fi
-
-           if [ -n "${BACKGROUND:-}" ]; then
-             create-dmg \
-               --volname "Production Portal" \
-               --window-pos 200 120 \
-               --window-size ${BG_W} ${BG_H} \
-               --icon-size 128 \
-               --background "$BACKGROUND" \
-               --icon "$APP_NAME" 180 320 \
-               --app-drop-link 480 320 \
-               "$DMG_OUT" \
-               "$STAGE_DIR"
-           else
-             create-dmg \
-               --volname "Production Portal" \
-               --window-pos 200 120 \
-               --window-size ${BG_W} ${BG_H} \
-               --icon-size 128 \
-               --icon "$APP_NAME" 180 320 \
-               --app-drop-link 480 320 \
-               "$DMG_OUT" \
-               "$STAGE_DIR"
-           fi
-
-           echo "DMG created:"
-           ls -lh "$DMG_OUT"
+          if [ -n "${BACKGROUND:-}" ]; then
+            create-dmg \
+              --volname "Production Portal" \
+              --window-pos 200 120 \
+              --window-size ${BG_W} ${BG_H} \
+              --icon-size 128 \
+              --background "$BACKGROUND" \
+              --icon "$APP_NAME" 180 320 \
+              --app-drop-link 480 320 \
+              "$DMG_OUT" \
+              "$STAGE_DIR"
+          else
+            create-dmg \
+              --volname "Production Portal" \
+              --window-pos 200 120 \
+              --window-size ${BG_W} ${BG_H} \
+              --icon-size 128 \
+              --icon "$APP_NAME" 180 320 \
+              --app-drop-link 480 320 \
+              "$DMG_OUT" \
+              "$STAGE_DIR"
+          fi
 
           echo "DMG created:"
           ls -lh "$DMG_OUT"
 
-      # ---- macOS: notarize + staple the rebuilt DMG ----
       - name: Notarize + staple DMG (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
@@ -271,7 +253,6 @@ jobs:
           }
 
           echo "Submitting for notarization (wait): $DMG"
-
           SUBMIT_JSON="$(retry xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
@@ -313,18 +294,19 @@ jobs:
           echo "Gatekeeper verification..."
           spctl -a -vv "$DMG" || true
 
-      # ---- COLLECT ARTIFACTS ----
       - name: Collect artifacts (Linux)
         if: matrix.os == 'ubuntu-22.04'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts
+
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1 || true)
           if [ -n "${APPIMAGE:-}" ] && [ -f "$APPIMAGE" ]; then
             cp "$APPIMAGE" artifacts/
             [ -f "$APPIMAGE.sig" ] && cp "$APPIMAGE.sig" artifacts/linux-x86_64.sig || true
           fi
+
           find src-tauri/target/release/bundle -name "*.deb" -type f -exec cp {} artifacts/ \; || true
           find src-tauri/target/release/bundle -name "*.rpm" -type f -exec cp {} artifacts/ \; || true
 
@@ -334,11 +316,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
+
           MSI=$(find src-tauri/target/release/bundle -name "*.msi" -type f | head -1 || true)
           if [ -n "${MSI:-}" ] && [ -f "$MSI" ]; then
             cp "$MSI" artifacts/
             [ -f "$MSI.sig" ] && cp "$MSI.sig" artifacts/windows-x86_64.sig || true
           fi
+
           find src-tauri/target/release/bundle -name "*.exe" -type f -exec cp {} artifacts/ \; || true
 
       - name: Collect artifacts (macOS)
@@ -348,43 +332,15 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
 
-          # Keep our notarized DMG
           [ -f artifacts/Production_Portal_universal.dmg ] || (echo "Missing notarized DMG" >&2 && exit 1)
 
-          # Capture updater bundle + signature (these are what the in-app updater uses)
-          # Tauri 2.x generates latest.json in the bundle directory
-          echo "Searching for latest.json in build output..."
-          find src-tauri/target -type f -name "latest.json" 2>/dev/null || echo "No latest.json found yet"
-          
-          UPDATER_JSON=$(find src-tauri/target -type f -name "latest.json" 2>/dev/null | head -1 || true)
-          UPDATER_SIG=$(find src-tauri/target -type f -name "latest.json.sig" 2>/dev/null | head -1 || true)
-
-          if [ -n "${UPDATER_JSON:-}" ] && [ -f "$UPDATER_JSON" ]; then
-            echo "Found latest.json at: $UPDATER_JSON"
-            cp "$UPDATER_JSON" artifacts/latest.json
-            cat artifacts/latest.json
-          else
-            echo "ERROR: latest.json not found in build output. Updater will not work!" >&2
-            echo "Listing all files in target directory..."
-            find src-tauri/target -type f -name "*.json" 2>/dev/null | head -20 || true
-          fi
-
-          if [ -n "${UPDATER_SIG:-}" ] && [ -f "$UPDATER_SIG" ]; then
-            echo "Found latest.json.sig at: $UPDATER_SIG"
-            cp "$UPDATER_SIG" artifacts/latest.json.sig
-          else
-            echo "WARNING: latest.json.sig not found in build output" >&2
-          fi
-
-          # Also capture updater artifact (.app.tar.gz) if present
+          # Updater bundle (.app.tar.gz) + signature (what the in-app updater uses)
           MAC_TAR=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
           if [ -z "${MAC_TAR:-}" ]; then
-            # Fallback: search in any location
             MAC_TAR=$(find src-tauri/target -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)
           fi
-          
+
           if [ -n "${MAC_TAR:-}" ] && [ -f "$MAC_TAR" ]; then
-            echo "Found updater bundle at: $MAC_TAR"
             cp "$MAC_TAR" artifacts/
             [ -f "$MAC_TAR.sig" ] && cp "$MAC_TAR.sig" artifacts/darwin-universal.sig || true
           else
@@ -398,7 +354,7 @@ jobs:
           if-no-files-found: error
           path: artifacts/
 
-    release:
+  release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
@@ -412,27 +368,13 @@ jobs:
           path: dist
           merge-multiple: true
 
-        release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/desktop-v')
-
-    steps:
-      - name: Download all installers
-        uses: actions/download-artifact@v4
-        with:
-          pattern: installers-*
-          path: dist
-          merge-multiple: true
-
-      - name: Debug dist contents (before latest.json)
+      - name: Debug dist contents
         shell: bash
         run: |
           echo "DIST FILES:"
-          ls -la dist || true
+          ls -la dist
 
-      - name: Generate latest.json (from filenames in dist)
+      - name: Generate latest.json (from files in dist)
         shell: bash
         run: |
           set -euo pipefail
@@ -442,9 +384,19 @@ jobs:
           REPO="${{ github.repository }}"
           PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-          LINUX_FILE="$(ls -1 dist/*.AppImage | head -1)"
-          WINDOWS_FILE="$(ls -1 dist/*.msi | head -1)"
-          MACOS_FILE="$(ls -1 dist/*.app.tar.gz | head -1)"
+          LINUX_FILE="$(ls -1 dist/*.AppImage 2>/dev/null | head -1 || true)"
+          WINDOWS_FILE="$(ls -1 dist/*.msi 2>/dev/null | head -1 || true)"
+          MACOS_FILE="$(ls -1 dist/*.app.tar.gz 2>/dev/null | head -1 || true)"
+
+          if [ -z "${LINUX_FILE:-}" ] || [ -z "${WINDOWS_FILE:-}" ] || [ -z "${MACOS_FILE:-}" ]; then
+            echo "Missing one of required updater files (.AppImage, .msi, .app.tar.gz)" >&2
+            ls -la dist
+            exit 1
+          fi
+
+          [ -f dist/linux-x86_64.sig ] || (echo "Missing dist/linux-x86_64.sig" >&2 && exit 1)
+          [ -f dist/windows-x86_64.sig ] || (echo "Missing dist/windows-x86_64.sig" >&2 && exit 1)
+          [ -f dist/darwin-universal.sig ] || (echo "Missing dist/darwin-universal.sig" >&2 && exit 1)
 
           LINUX_SIG="$(tr -d '\n' < dist/linux-x86_64.sig)"
           WINDOWS_SIG="$(tr -d '\n' < dist/windows-x86_64.sig)"
@@ -459,30 +411,21 @@ jobs:
           MACOS_URL="https://github.com/$REPO/releases/download/$TAG/$MACOS_NAME"
 
           cat > dist/latest.json <<EOF
-          {
-            "version": "$VERSION",
-            "notes": "Production Portal update",
-            "pub_date": "$PUB_DATE",
-            "platforms": {
-              "linux-x86_64": { "url": "$LINUX_URL", "signature": "$LINUX_SIG" },
-              "windows-x86_64": { "url": "$WINDOWS_URL", "signature": "$WINDOWS_SIG" },
-              "darwin-aarch64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" },
-              "darwin-x86_64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" }
-            }
-          }
-          EOF
+{
+  "version": "$VERSION",
+  "notes": "Production Portal update",
+  "pub_date": "$PUB_DATE",
+  "platforms": {
+    "linux-x86_64": { "url": "$LINUX_URL", "signature": "$LINUX_SIG" },
+    "windows-x86_64": { "url": "$WINDOWS_URL", "signature": "$WINDOWS_SIG" },
+    "darwin-aarch64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" },
+    "darwin-x86_64": { "url": "$MACOS_URL", "signature": "$DARWIN_SIG" }
+  }
+}
+EOF
 
           python3 -m json.tool dist/latest.json >/dev/null
-          echo "latest.json generated OK:"
-          cat dist/latest.json
-
-      - name: Debug dist contents (after latest.json)
-        shell: bash
-        run: |
-          echo "DIST FILES AFTER:"
-          ls -la dist
-          echo "CHECK latest.json:"
-          test -f dist/latest.json && echo "FOUND dist/latest.json" || (echo "MISSING dist/latest.json" && exit 1)
+          echo "latest.json generated OK"
 
       - name: Create Release + Upload Assets (includes latest.json)
         uses: ncipollo/release-action@v1
