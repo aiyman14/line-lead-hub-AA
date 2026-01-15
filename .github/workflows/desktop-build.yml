@@ -156,20 +156,57 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           spctl -a -vv "$APP_PATH" || true
 
-          # Rebuild DMG from the signed app (fresh DMG is critical)
-          STAGE_DIR="$(pwd)/artifacts/dmg_stage"
-          rm -rf "$STAGE_DIR"
-          mkdir -p "$STAGE_DIR"
-          cp -R "$APP_PATH" "$STAGE_DIR/"
+           # Rebuild a *Finder-styled* DMG from the signed app (with background + /Applications link)
+           STAGE_DIR="$(pwd)/artifacts/dmg_stage"
+           rm -rf "$STAGE_DIR"
+           mkdir -p "$STAGE_DIR"
+           cp -R "$APP_PATH" "$STAGE_DIR/"
 
-          DMG_OUT="artifacts/Production_Portal_universal.dmg"
-          rm -f "$DMG_OUT"
+           DMG_OUT="artifacts/Production_Portal_universal.dmg"
+           rm -f "$DMG_OUT"
 
-          echo "Creating DMG: $DMG_OUT"
-          hdiutil create -volname "Production Portal" \
-            -srcfolder "$STAGE_DIR" \
-            -ov -format UDZO \
-            "$DMG_OUT"
+           APP_NAME="$(basename "$APP_PATH")"
+           BACKGROUND="$(pwd)/src-tauri/dmg-background.png"
+
+           echo "Creating DMG (with instructions + Applications link): $DMG_OUT"
+
+           # create-dmg is what gives us the background image + Applications alias + icon positioning
+           if ! command -v create-dmg >/dev/null 2>&1; then
+             echo "Installing create-dmg..."
+             brew update
+             brew install create-dmg
+           fi
+
+           if [ ! -f "$BACKGROUND" ]; then
+             echo "WARNING: DMG background not found at $BACKGROUND (DMG will still be created, but without instructions image)" >&2
+             BACKGROUND=""
+           fi
+
+           if [ -n "${BACKGROUND:-}" ]; then
+             create-dmg \
+               --volname "Production Portal" \
+               --window-pos 200 120 \
+               --window-size 660 500 \
+               --icon-size 128 \
+               --background "$BACKGROUND" \
+               --icon "$APP_NAME" 180 320 \
+               --app-drop-link 480 320 \
+               "$DMG_OUT" \
+               "$STAGE_DIR"
+           else
+             create-dmg \
+               --volname "Production Portal" \
+               --window-pos 200 120 \
+               --window-size 660 500 \
+               --icon-size 128 \
+               --icon "$APP_NAME" 180 320 \
+               --app-drop-link 480 320 \
+               "$DMG_OUT" \
+               "$STAGE_DIR"
+           fi
+
+           echo "DMG created:"
+           ls -lh "$DMG_OUT"
 
           echo "DMG created:"
           ls -lh "$DMG_OUT"
