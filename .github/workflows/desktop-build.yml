@@ -350,7 +350,7 @@ jobs:
           echo "DIST FILES:"
           ls -la dist
 
-      - name: Generate latest.json (from dist files)
+           - name: Generate latest.json (from filenames in dist)
         shell: bash
         run: |
           set -euo pipefail
@@ -360,10 +360,12 @@ jobs:
           REPO="${{ github.repository }}"
           PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
+          # Pick files (these may contain spaces!)
           LINUX_FILE="$(ls -1 dist/*.AppImage | head -1)"
           WINDOWS_FILE="$(ls -1 dist/*.msi | head -1)"
           MACOS_FILE="$(ls -1 dist/*.app.tar.gz | head -1)"
 
+          # Read signatures (single-line)
           LINUX_SIG="$(tr -d '\n' < dist/linux-x86_64.sig)"
           WINDOWS_SIG="$(tr -d '\n' < dist/windows-x86_64.sig)"
           DARWIN_SIG="$(tr -d '\n' < dist/darwin-universal.sig)"
@@ -372,9 +374,18 @@ jobs:
           WINDOWS_NAME="$(basename "$WINDOWS_FILE")"
           MACOS_NAME="$(basename "$MACOS_FILE")"
 
-          LINUX_URL="https://github.com/$REPO/releases/download/$TAG/$LINUX_NAME"
-          WINDOWS_URL="https://github.com/$REPO/releases/download/$TAG/$WINDOWS_NAME"
-          MACOS_URL="https://github.com/$REPO/releases/download/$TAG/$MACOS_NAME"
+          # URL-encode filenames so GitHub download links work even if the name has spaces
+          urlencode () {
+            python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$1"
+          }
+
+          LINUX_NAME_ENC="$(urlencode "$LINUX_NAME")"
+          WINDOWS_NAME_ENC="$(urlencode "$WINDOWS_NAME")"
+          MACOS_NAME_ENC="$(urlencode "$MACOS_NAME")"
+
+          LINUX_URL="https://github.com/$REPO/releases/download/$TAG/$LINUX_NAME_ENC"
+          WINDOWS_URL="https://github.com/$REPO/releases/download/$TAG/$WINDOWS_NAME_ENC"
+          MACOS_URL="https://github.com/$REPO/releases/download/$TAG/$MACOS_NAME_ENC"
 
           cat > dist/latest.json <<EOF
           {
@@ -391,9 +402,9 @@ jobs:
           EOF
 
           python3 -m json.tool dist/latest.json >/dev/null
-          echo "latest.json generated OK:"
+          echo "latest.json generated OK"
           cat dist/latest.json
-
+          
       - name: Create Release + Upload Assets (includes latest.json)
         uses: ncipollo/release-action@v1
         with:
