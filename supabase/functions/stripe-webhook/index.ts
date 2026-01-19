@@ -270,12 +270,64 @@ serve(async (req) => {
           customerId: invoice.customer 
         });
         
-        // Find factory by customer ID
-        const { data: factory } = await supabaseAdmin
+        // Find factory by customer ID first
+        let factory = null;
+        const { data: factoryByCustomer } = await supabaseAdmin
           .from('factory_accounts')
           .select('id, name')
           .eq('stripe_customer_id', invoice.customer as string)
           .single();
+        
+        factory = factoryByCustomer;
+        
+        // If not found by customer ID, try to find by subscription ID from the invoice
+        if (!factory && invoice.subscription) {
+          const { data: factoryBySub } = await supabaseAdmin
+            .from('factory_accounts')
+            .select('id, name')
+            .eq('stripe_subscription_id', invoice.subscription as string)
+            .single();
+          factory = factoryBySub;
+          
+          if (factory) {
+            logStep("Factory found by subscription ID instead of customer ID", { factoryId: factory.id });
+          }
+        }
+        
+        // Last resort: find by customer email via Stripe
+        if (!factory) {
+          try {
+            const customer = await stripe.customers.retrieve(invoice.customer as string);
+            if (customer && !customer.deleted && 'email' in customer && customer.email) {
+              const { data: profile } = await supabaseAdmin
+                .from('profiles')
+                .select('factory_id')
+                .eq('email', customer.email)
+                .limit(1)
+                .single();
+              
+              if (profile?.factory_id) {
+                const { data: factoryByEmail } = await supabaseAdmin
+                  .from('factory_accounts')
+                  .select('id, name')
+                  .eq('id', profile.factory_id)
+                  .single();
+                factory = factoryByEmail;
+                
+                if (factory) {
+                  logStep("Factory found by customer email", { factoryId: factory.id, email: customer.email });
+                  // Update the factory with the correct customer ID
+                  await supabaseAdmin
+                    .from('factory_accounts')
+                    .update({ stripe_customer_id: invoice.customer as string })
+                    .eq('id', factory.id);
+                }
+              }
+            }
+          } catch (err) {
+            logStep("Error looking up customer for factory match", { error: String(err) });
+          }
+        }
         
         if (factory) {
           await supabaseAdmin
@@ -315,6 +367,8 @@ serve(async (req) => {
           } catch (notifError) {
             logStep("Failed to send notification", { error: String(notifError) });
           }
+        } else {
+          logStep("Could not find factory for failed payment", { customerId: invoice.customer });
         }
         break;
       }
@@ -323,26 +377,91 @@ serve(async (req) => {
         const invoice = event.data.object as Stripe.Invoice;
         logStep("Payment succeeded", { 
           invoiceId: invoice.id,
-          customerId: invoice.customer 
+          customerId: invoice.customer,
+          subscriptionId: invoice.subscription
         });
         
-        // Find factory by customer ID
-        const { data: factory } = await supabaseAdmin
+        // Find factory by customer ID first
+        let factory = null;
+        const { data: factoryByCustomer } = await supabaseAdmin
           .from('factory_accounts')
-          .select('id')
+          .select('id, stripe_customer_id')
           .eq('stripe_customer_id', invoice.customer as string)
           .single();
         
+        factory = factoryByCustomer;
+        
+        // If not found by customer ID, try subscription ID
+        if (!factory && invoice.subscription) {
+          const { data: factoryBySub } = await supabaseAdmin
+            .from('factory_accounts')
+            .select('id, stripe_customer_id')
+            .eq('stripe_subscription_id', invoice.subscription as string)
+            .single();
+          factory = factoryBySub;
+          
+          if (factory) {
+            logStep("Factory found by subscription ID", { factoryId: factory.id });
+          }
+        }
+        
+        // Last resort: find by customer email via Stripe
+        if (!factory) {
+          try {
+            const customer = await stripe.customers.retrieve(invoice.customer as string);
+            if (customer && !customer.deleted && 'email' in customer && customer.email) {
+              const { data: profile } = await supabaseAdmin
+                .from('profiles')
+                .select('factory_id')
+                .eq('email', customer.email)
+                .limit(1)
+                .single();
+              
+              if (profile?.factory_id) {
+                const { data: factoryByEmail } = await supabaseAdmin
+                  .from('factory_accounts')
+                  .select('id, stripe_customer_id')
+                  .eq('id', profile.factory_id)
+                  .single();
+                factory = factoryByEmail;
+                
+                if (factory) {
+                  logStep("Factory found by customer email", { factoryId: factory.id, email: customer.email });
+                }
+              }
+            }
+          } catch (err) {
+            logStep("Error looking up customer for factory match", { error: String(err) });
+          }
+        }
+        
         if (factory) {
+          // Sync the Stripe IDs if they've changed
+          const updates: Record<string, unknown> = { 
+            subscription_status: 'active',
+            payment_failed_at: null
+          };
+          
+          if (factory.stripe_customer_id !== invoice.customer) {
+            updates.stripe_customer_id = invoice.customer as string;
+            logStep("Updating mismatched customer ID", { 
+              old: factory.stripe_customer_id, 
+              new: invoice.customer 
+            });
+          }
+          
+          if (invoice.subscription) {
+            updates.stripe_subscription_id = invoice.subscription as string;
+          }
+          
           await supabaseAdmin
             .from('factory_accounts')
-            .update({ 
-              subscription_status: 'active',
-              payment_failed_at: null
-            })
+            .update(updates)
             .eq('id', factory.id);
           
-          logStep("Factory subscription reactivated");
+          logStep("Factory subscription reactivated and synced", updates);
+        } else {
+          logStep("Could not find factory for successful payment", { customerId: invoice.customer });
         }
         break;
       }

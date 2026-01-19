@@ -224,36 +224,66 @@ serve(async (req) => {
     };
 
     const tryFindSubscriptionByCustomerEmail = async () => {
-      // First use any saved customer id.
-      let customerId = factory.stripe_customer_id || null;
-
-      if (!customerId) {
-        const customers = await stripe.customers.list({ email: user.email!, limit: 1 });
-        if (customers.data.length > 0) {
-          customerId = customers.data[0].id;
-          logStep("Stripe customer found by email", { customerId });
+      // Search all customers with this email (there may be multiple from different payment attempts)
+      const customers = await stripe.customers.list({ email: user.email!, limit: 10 });
+      
+      if (customers.data.length === 0) {
+        logStep("No Stripe customers found for email");
+        return null;
+      }
+      
+      logStep("Found Stripe customers by email", { count: customers.data.length, ids: customers.data.map((c: Stripe.Customer) => c.id) });
+      
+      // Check all customers for an active subscription
+      for (const customer of customers.data) {
+        const subs = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 10 });
+        const activeSub = subs.data.find((s: Stripe.Subscription) => s.status === 'active' || s.status === 'trialing');
+        
+        if (activeSub) {
+          logStep("Active subscription found", { 
+            customerId: customer.id, 
+            subscriptionId: activeSub.id, 
+            status: activeSub.status 
+          });
+          return activeSub;
         }
       }
-
-      if (!customerId) return null;
-
-      const subs = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 10 });
-      const activeSub = subs.data.find((s: Stripe.Subscription) => s.status === 'active' || s.status === 'trialing') || null;
-
-      if (activeSub) {
-        logStep("Active subscription found by customer", { subscriptionId: activeSub.id, status: activeSub.status });
-      } else {
-        logStep("No active subscriptions for customer", { customerId, count: subs.data.length });
-      }
-
-      return activeSub;
+      
+      logStep("No active subscriptions found across all customers");
+      return null;
     };
 
-    // Check for active Stripe subscription
+    // IMPORTANT: Always check for active subscription by email first
+    // This catches cases where customer ID in DB doesn't match the one with active subscription
+    try {
+      const activeSubByEmail = await tryFindSubscriptionByCustomerEmail();
+      if (activeSubByEmail) {
+        const currentCustomerId = typeof activeSubByEmail.customer === 'string' 
+          ? activeSubByEmail.customer 
+          : activeSubByEmail.customer.id;
+        
+        // Check if we need to sync the Stripe IDs
+        if (factory.stripe_customer_id !== currentCustomerId || 
+            factory.stripe_subscription_id !== activeSubByEmail.id) {
+          logStep("Syncing mismatched Stripe IDs", {
+            oldCustomerId: factory.stripe_customer_id,
+            newCustomerId: currentCustomerId,
+            oldSubId: factory.stripe_subscription_id,
+            newSubId: activeSubByEmail.id,
+          });
+        }
+        
+        return await respondWithActiveSubscription(activeSubByEmail);
+      }
+    } catch (err) {
+      logStep("Error checking subscription by email", { error: String(err) });
+    }
+
+    // Fall back to checking stored subscription ID if email lookup failed
     if (factory.stripe_subscription_id) {
       try {
         const subscription = await stripe.subscriptions.retrieve(factory.stripe_subscription_id);
-        logStep("Stripe subscription retrieved", {
+        logStep("Stripe subscription retrieved by stored ID", {
           id: subscription.id,
           status: subscription.status,
         });
@@ -267,20 +297,9 @@ serve(async (req) => {
           .from('factory_accounts')
           .update({ subscription_status: subscription.status })
           .eq('id', profile.factory_id);
-        logStep("Subscription not active", { status: subscription.status });
+        logStep("Stored subscription not active", { status: subscription.status });
       } catch (err) {
-        logStep("Error checking Stripe subscription", { error: String(err) });
-      }
-    } else {
-      // If we don't have a subscription id saved yet (e.g. webhooks not configured),
-      // try to discover it from the customer's email.
-      try {
-        const subscription = await tryFindSubscriptionByCustomerEmail();
-        if (subscription) {
-          return await respondWithActiveSubscription(subscription);
-        }
-      } catch (err) {
-        logStep("Error discovering subscription by email", { error: String(err) });
+        logStep("Error checking stored Stripe subscription", { error: String(err) });
       }
     }
 
