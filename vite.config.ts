@@ -30,6 +30,10 @@ export default defineConfig(({ mode }) => ({
   optimizeDeps: {
     // Only exclude Tauri plugins from pre-bundling in web mode
     exclude: isTauriBuild ? [] : tauriPackages,
+    // Force include React packages to ensure single instance
+    include: ["react", "react-dom", "@tanstack/react-query", "next-themes"],
+    // Force re-bundling by changing this value when needed
+    force: true,
   },
   build: {
     rollupOptions: {
