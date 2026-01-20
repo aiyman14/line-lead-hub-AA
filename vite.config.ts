@@ -14,13 +14,15 @@ const tauriPackages = [
 // Check if we're building for Tauri (set by tauri build command)
 const isTauriBuild = !!process.env.TAURI_ENV_PLATFORM;
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  esbuild: {
+    drop: mode === "production" ? ["console", "debugger"] : [],
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
