@@ -1,100 +1,54 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-/**
- * Capacitor Configuration for Production Portal
- * 
- * BUILD MODES:
- * 
- * 1. BUNDLED MODE (Store Releases - Google Play / App Store):
- *    - Comment out the entire `server` block below
- *    - Run: npm run mobile:sync
- *    - The app will load from the bundled dist/ folder
- *    - This is required for app store submissions
- * 
- * 2. LIVE URL MODE (Development / Instant Updates):
- *    - Uncomment the `server.url` line and set your production URL
- *    - The app loads from the remote URL (instant updates without store release)
- *    - Useful for testing or internal distribution
- */
+const devUrl = process.env.CAPACITOR_DEV_URL;
 
 const config: CapacitorConfig = {
-  // App identification - must match Google Play / App Store
   appId: 'com.woventex.productionportal',
   appName: 'Production Portal',
-  
-  // Web assets directory (output of `npm run build`)
   webDir: 'dist',
-  
-  // Server configuration
-  server: {
-    // === DEVELOPMENT MODE ===
-    // Uncomment the URL below for live reload during development
-    // url: 'https://12eae2b2-c622-4589-bd88-ae25411192d0.lovableproject.com?forceHideBadge=true',
-    
-    // === PRODUCTION MODE (default) ===
-    // When `url` is commented out, the app loads from bundled assets in webDir
-    
-    // Use HTTPS scheme for Android (required for Supabase/secure APIs)
-    androidScheme: 'https',
-    
-    // Allow cleartext (HTTP) only if needed for local development
-    // Set to false for production to enforce HTTPS
-    cleartext: false,
-  },
+  server: devUrl
+    ? {
+        url: devUrl,
+        cleartext: true,
+        androidScheme: 'https',
+      }
+    : {
+        androidScheme: 'https',
+        cleartext: false,
+      },
 
-  // iOS specific configuration
   ios: {
-    // Critical: allow our web app to paint safe areas itself (prevents native black bars)
     contentInset: 'never',
     preferredContentMode: 'mobile',
     scheme: 'productionportal',
-    // Required for Supabase auth deep links
     limitsNavigationsToAppBoundDomains: true,
-    // Enable native iOS bounce scrolling
     scrollEnabled: true,
     allowsLinkPreview: true,
-    // Paint the underlying native view the same as the app background
     backgroundColor: '#f1f3f5',
   },
 
-  // Android specific configuration
   android: {
-    // Disable mixed content for security (HTTPS only)
     allowMixedContent: false,
-    // Capture input for proper keyboard handling
     captureInput: true,
-    // Enable for debugging, disable for production releases
     webContentsDebuggingEnabled: false,
-    // Enable overscroll bounce effect on Android 12+
-    overScrollMode: 'always',
-    // Custom URL scheme for deep links
-    // This allows: productionportal://callback URLs
   },
 
-  // Plugin configurations
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
       launchAutoHide: true,
-      backgroundColor: '#f1f3f5', // Match app background
+      backgroundColor: '#f1f3f5',
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,
     },
-    
     StatusBar: {
-      style: 'DARK', // Dark icons on light background
-      backgroundColor: '#f1f3f5', // Match app background
-      overlaysWebView: true, // iOS: extend WebView under status bar to prevent black gaps
+      style: 'DARK',
+      backgroundColor: '#f1f3f5',
+      overlaysWebView: true,
     },
-    
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],
     },
-    
-    App: {
-      // Deep link URLs configured in AndroidManifest.xml and Info.plist
-    },
-
     Keyboard: {
       resize: 'body',
       resizeOnFullScreen: true,
