@@ -2,12 +2,21 @@
 
 import { supabase } from "@/integrations/supabase/client";
 
-// Rate limit check before sensitive operations
+interface RateLimitOptions {
+  email?: string;
+  factoryId?: string;
+  isCritical?: boolean;
+}
+
+const CRITICAL_ACTIONS = ["login", "reset_password", "signup"] as const;
+
 export async function checkRateLimit(
   action: "login" | "reset_password" | "invite" | "signup",
-  email?: string,
-  factoryId?: string
+  options: RateLimitOptions = {}
 ): Promise<{ allowed: boolean; error?: string }> {
+  const { email, factoryId, isCritical } = options;
+  const shouldFailClosed = isCritical ?? CRITICAL_ACTIONS.includes(action);
+
   try {
     const response = await supabase.functions.invoke("auth-rate-limit", {
       body: { action, email, factoryId },
@@ -15,7 +24,9 @@ export async function checkRateLimit(
 
     if (response.error) {
       console.error("Rate limit check failed:", response.error);
-      // Fail open - allow the request if rate limit check fails
+      if (shouldFailClosed) {
+        return { allowed: false, error: "Service temporarily unavailable. Please try again." };
+      }
       return { allowed: true };
     }
 
@@ -29,6 +40,9 @@ export async function checkRateLimit(
     return { allowed: true };
   } catch (error) {
     console.error("Rate limit check error:", error);
+    if (shouldFailClosed) {
+      return { allowed: false, error: "Service temporarily unavailable. Please try again." };
+    }
     return { allowed: true };
   }
 }

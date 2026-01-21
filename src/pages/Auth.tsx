@@ -251,7 +251,7 @@ export default function Auth() {
     setIsLoading(true);
 
     // Check rate limit before attempting login
-    const rateLimitResult = await checkRateLimit("login", loginEmail);
+    const rateLimitResult = await checkRateLimit("login", { email: loginEmail });
     if (!rateLimitResult.allowed) {
       setIsLoading(false);
       toast({
