@@ -8,6 +8,46 @@ import { supabase } from '@/integrations/supabase/client';
 
 const QUEUE_KEY = 'pp_offline_submission_queue';
 const SYNC_TAG = 'sync-submissions';
+const LOCK_KEY = 'pp_offline_queue_lock';
+const LOCK_TTL_MS = 30_000; // 30 seconds
+
+// Unique ID for this tab instance — used for lock ownership
+const TAB_ID = `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+
+/**
+ * Try to acquire a processing lock so only one tab processes the queue at a time.
+ * Returns true if lock was acquired, false if another tab holds the lock.
+ */
+function acquireLock(): boolean {
+  const existing = localStorage.getItem(LOCK_KEY);
+  if (existing) {
+    try {
+      const lock = JSON.parse(existing);
+      if (Date.now() - lock.timestamp < LOCK_TTL_MS) {
+        return false; // Another tab holds a fresh lock
+      }
+    } catch { /* stale/corrupt lock — proceed to claim */ }
+  }
+  localStorage.setItem(LOCK_KEY, JSON.stringify({ tabId: TAB_ID, timestamp: Date.now() }));
+  return true;
+}
+
+/**
+ * Release the processing lock if this tab owns it.
+ */
+function releaseLock(): void {
+  const existing = localStorage.getItem(LOCK_KEY);
+  if (existing) {
+    try {
+      const lock = JSON.parse(existing);
+      if (lock.tabId === TAB_ID) {
+        localStorage.removeItem(LOCK_KEY);
+      }
+    } catch {
+      localStorage.removeItem(LOCK_KEY);
+    }
+  }
+}
 
 export type FormType = 
   | 'sewing_targets' 
@@ -169,7 +209,6 @@ async function processSubmission(submission: QueuedSubmission): Promise<{ succes
  * Process the entire offline queue
  */
 export async function processQueue(): Promise<SyncResult> {
-  const queue = getQueuedSubmissions();
   const result: SyncResult = { successful: [], failed: [] };
 
   // Check if we're online
@@ -177,28 +216,41 @@ export async function processQueue(): Promise<SyncResult> {
     return result;
   }
 
-  // Check if user is authenticated
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
+  // Acquire lock to prevent multiple tabs from processing simultaneously
+  if (!acquireLock()) {
+    console.log('[offline-queue] Another tab is processing the queue, skipping');
     return result;
   }
 
-  for (const submission of queue) {
-    const { success, error } = await processSubmission(submission);
+  try {
+    const queue = getQueuedSubmissions();
 
-    if (success) {
-      removeFromQueue(submission.id);
-      result.successful.push(submission.id);
-    } else if (submission.retryCount >= submission.maxRetries) {
-      updateSubmissionStatus(submission.id, 'failed', error);
-      result.failed.push({ id: submission.id, error: error || 'Max retries exceeded' });
-    } else {
-      incrementRetry(submission.id);
-      updateSubmissionStatus(submission.id, 'pending', error);
+    // Check if user is authenticated
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData?.session;
+    if (!session) {
+      return result;
     }
-  }
 
-  return result;
+    for (const submission of queue) {
+      const { success, error } = await processSubmission(submission);
+
+      if (success) {
+        removeFromQueue(submission.id);
+        result.successful.push(submission.id);
+      } else if (submission.retryCount >= submission.maxRetries) {
+        updateSubmissionStatus(submission.id, 'failed', error);
+        result.failed.push({ id: submission.id, error: error || 'Max retries exceeded' });
+      } else {
+        incrementRetry(submission.id);
+        updateSubmissionStatus(submission.id, 'pending', error);
+      }
+    }
+
+    return result;
+  } finally {
+    releaseLock();
+  }
 }
 
 /**

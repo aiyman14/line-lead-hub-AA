@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { 
   Loader2, 
   ListOrdered,
@@ -43,12 +43,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { EmptyState } from "@/components/EmptyState";
 
 interface DropdownOption {
   id: string;
   label: string;
   sort_order: number;
-  is_active: boolean;
+  is_active: boolean | null;
   code?: string;
 }
 
@@ -111,7 +112,7 @@ interface SortableRowProps {
   canReorder: boolean;
   onEdit: (opt: DropdownOption) => void;
   onDelete: (id: string) => void;
-  onToggleActive: (id: string, currentValue: boolean) => void;
+  onToggleActive: (id: string, currentValue: boolean | null) => void;
 }
 
 function SortableRow({ opt, hasCode, canReorder, onEdit, onDelete, onToggleActive }: SortableRowProps) {
@@ -157,7 +158,7 @@ function SortableRow({ opt, hasCode, canReorder, onEdit, onDelete, onToggleActiv
       <TableCell>{opt.label}</TableCell>
       <TableCell>
         <Switch
-          checked={opt.is_active}
+          checked={opt.is_active ?? true}
           onCheckedChange={() => onToggleActive(opt.id, opt.is_active)}
         />
       </TableCell>
@@ -176,7 +177,7 @@ function SortableRow({ opt, hasCode, canReorder, onEdit, onDelete, onToggleActiv
 export default function DropdownSettings() {
   const { profile, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+
   
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<OptionType>('stages');
@@ -287,7 +288,7 @@ export default function DropdownSettings() {
 
   async function handleSave() {
     if (!profile?.factory_id || !formLabel.trim()) {
-      toast({ variant: "destructive", title: "Label is required" });
+      toast.error("Label is required");
       return;
     }
     
@@ -359,11 +360,11 @@ export default function DropdownSettings() {
         }
       }
       
-      toast({ title: dialogMode === 'create' ? "Option created" : "Option updated" });
+      toast.success(dialogMode === 'create' ? "Option created" : "Option updated");
       setIsDialogOpen(false);
       fetchAllOptions();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     } finally {
       setIsSaving(false);
     }
@@ -400,14 +401,14 @@ export default function DropdownSettings() {
         const { error } = await supabase.from('blocker_impact_options').delete().eq('id', id);
         if (error) throw error;
       }
-      toast({ title: "Option deleted" });
+      toast.success("Option deleted");
       fetchAllOptions();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     }
   }
 
-  async function toggleActive(id: string, currentValue: boolean) {
+  async function toggleActive(id: string, currentValue: boolean | null) {
     try {
       if (activeTab === 'stages') {
         await supabase.from('stages').update({ is_active: !currentValue }).eq('id', id);
@@ -424,7 +425,7 @@ export default function DropdownSettings() {
       }
       fetchAllOptions();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     }
   }
 
@@ -463,9 +464,9 @@ export default function DropdownSettings() {
         if (error) throw error;
       }
       
-      toast({ title: "Order updated" });
+      toast.success("Order updated");
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
       await fetchAllOptions(); // Revert on error
     }
   }
@@ -482,44 +483,29 @@ export default function DropdownSettings() {
 
   if (!profile?.factory_id) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-4">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <ListOrdered className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">No Factory Assigned</h2>
-            <p className="text-muted-foreground text-sm">
-              You need to be assigned to a factory first.
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/setup')}>
-              Go to Setup
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={ListOrdered}
+        title="No Factory Assigned"
+        description="You need to be assigned to a factory first."
+        action={{ label: "Go to Setup", onClick: () => navigate('/setup') }}
+      />
     );
   }
 
   if (!isAdminOrHigher()) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-4">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <AlertTriangle className="h-12 w-12 text-warning mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground text-sm">
-              You need admin permissions to manage dropdown settings.
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/dashboard')}>
-              Go to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title="Access Denied"
+        description="You need admin permissions to manage dropdown settings."
+        iconClassName="text-warning"
+        action={{ label: "Go to Dashboard", onClick: () => navigate('/dashboard') }}
+      />
     );
   }
 
   return (
-    <div className="p-4 lg:p-6">
+    <div className="py-4 lg:py-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" onClick={() => navigate('/setup')}>
@@ -714,8 +700,11 @@ export default function DropdownSettings() {
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {dialogMode === 'create' ? 'Create' : 'Save'}
+              {isSaving ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+              ) : (
+                dialogMode === 'create' ? 'Create' : 'Save'
+              )}
             </Button>
           </div>
         </DialogContent>

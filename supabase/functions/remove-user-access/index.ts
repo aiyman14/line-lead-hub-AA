@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeaders } from "../_shared/security.ts";
 
 // UUID validation regex
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -16,6 +12,9 @@ const removeUserSchema = z.object({
 });
 
 serve(async (req) => {
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -128,31 +127,39 @@ serve(async (req) => {
       });
     }
 
-    // Delete user_roles for this user in the factory
-    await supabaseAdmin
-      .from("user_roles")
-      .delete()
-      .eq("user_id", targetUserId)
-      .eq("factory_id", requesterFactoryId);
+    // Wipe ALL factory-scoped user data. No data leaves with the user.
 
-    // Delete user_line_assignments for this user in the factory
-    await supabaseAdmin
-      .from("user_line_assignments")
-      .delete()
-      .eq("user_id", targetUserId)
-      .eq("factory_id", requesterFactoryId);
+    // 1. Nullify submitted_by on production records so they don't block auth deletion.
+    //    The production data belongs to the factory and is preserved.
+    await Promise.all([
+      supabaseAdmin.from("sewing_targets").update({ submitted_by: null }).eq("submitted_by", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("sewing_actuals").update({ submitted_by: null }).eq("submitted_by", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("finishing_targets").update({ submitted_by: null }).eq("submitted_by", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("finishing_actuals").update({ submitted_by: null }).eq("submitted_by", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("cutting_targets").update({ submitted_by: null }).eq("submitted_by", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("cutting_actuals").update({ submitted_by: null }).eq("submitted_by", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("storage_bin_card_transactions").update({ submitted_by: null }).eq("submitted_by", targetUserId).eq("factory_id", requesterFactoryId),
+    ]);
 
-    // Delete profile (this will cascade or be cleaned up)
+    // 2. Delete user-specific factory data
+    await Promise.all([
+      supabaseAdmin.from("user_roles").delete().eq("user_id", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("user_line_assignments").delete().eq("user_id", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("notification_preferences").delete().eq("user_id", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("email_schedules").delete().eq("user_id", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("notifications").delete().eq("user_id", targetUserId).eq("factory_id", requesterFactoryId),
+      supabaseAdmin.from("chat_conversations").delete().eq("user_id", targetUserId).eq("factory_id", requesterFactoryId),
+    ]);
+
+    // 3. Delete profile and auth user
     await supabaseAdmin
       .from("profiles")
       .delete()
       .eq("id", targetUserId);
 
-    // Fully delete user from auth.users
     const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
     if (deleteAuthError) {
       console.error("[remove-user-access] Failed to delete auth user:", deleteAuthError.message);
-      // Continue anyway - profile is already deleted
     }
 
     console.log("[remove-user-access] Fully deleted user:", targetUserId);

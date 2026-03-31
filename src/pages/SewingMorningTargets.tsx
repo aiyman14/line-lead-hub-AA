@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search, Crosshair } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,8 +17,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { format } from "date-fns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { useEditPermission } from "@/hooks/useEditPermission";
+import { isLateForCutoff, getTodayInTimezone } from "@/lib/date-utils";
 
 interface Line {
   id: string;
@@ -60,6 +69,20 @@ interface DropdownOption {
   label: string;
 }
 
+const sewingTargetSchema = z.object({
+  line_id: z.string().min(1, "Line is required"),
+  work_order_id: z.string().min(1, "PO is required"),
+  per_hour_target: z.number().min(1, "Must be at least 1").max(10000, "Too high"),
+  manpower_planned: z.number().min(1, "Must be at least 1").max(500, "Too high"),
+  hours_planned: z.number().min(0.5, "Hours planned is required").max(24, "Max 24 hours"),
+  ot_hours_planned: z.number().min(0, "Cannot be negative").max(24, "Max 24 hours"),
+  planned_stage_id: z.string().min(1, "Stage is required"),
+  planned_stage_progress: z.string().min(1, "Progress is required"),
+  next_milestone: z.string().min(1, "Milestone is required"),
+  estimated_ex_factory: z.string().optional(),
+  remarks: z.string().max(1000, "Remarks too long").optional(),
+});
+
 export default function SewingMorningTargets() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
@@ -84,6 +107,7 @@ export default function SewingMorningTargets() {
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
   const [perHourTarget, setPerHourTarget] = useState("");
   const [manpowerPlanned, setManpowerPlanned] = useState("");
+  const [hoursPlanned, setHoursPlanned] = useState("");
   const [otHoursPlanned, setOtHoursPlanned] = useState("0");
   const [plannedStageId, setPlannedStageId] = useState("");
   const [plannedStageProgress, setPlannedStageProgress] = useState("");
@@ -97,6 +121,7 @@ export default function SewingMorningTargets() {
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [poSearchOpen, setPoSearchOpen] = useState(false);
 
   const filteredWorkOrders = useMemo(() => {
     if (!selectedLineId) return workOrders;
@@ -127,6 +152,16 @@ export default function SewingMorningTargets() {
       setFloorName("");
     }
   }, [selectedLineId, lines, units, floors]);
+
+  // Clear PO selection when line changes
+  useEffect(() => {
+    if (selectedLineId && selectedWorkOrderId) {
+      const selectedWO = workOrders.find(wo => wo.id === selectedWorkOrderId);
+      if (selectedWO && selectedWO.line_id && selectedWO.line_id !== selectedLineId) {
+        setSelectedWorkOrderId("");
+      }
+    }
+  }, [selectedLineId, selectedWorkOrderId, workOrders]);
 
   async function fetchFormData() {
     if (!profile?.factory_id) return;
@@ -167,19 +202,41 @@ export default function SewingMorningTargets() {
   }
 
   function validateForm(): boolean {
-    const newErrors: Record<string, string> = {};
+    const formData = {
+      line_id: selectedLineId,
+      work_order_id: selectedWorkOrderId,
+      per_hour_target: parseInt(perHourTarget) || 0,
+      manpower_planned: parseInt(manpowerPlanned) || 0,
+      hours_planned: hoursPlanned === "" ? 0 : parseFloat(hoursPlanned),
+      ot_hours_planned: parseFloat(otHoursPlanned) || 0,
+      planned_stage_id: plannedStageId,
+      planned_stage_progress: plannedStageProgress,
+      next_milestone: nextMilestone,
+      estimated_ex_factory: estimatedExFactory || undefined,
+      remarks: remarks || undefined,
+    };
 
-    if (!selectedLineId) newErrors.line = t("forms.lineRequired");
-    if (!selectedWorkOrderId) newErrors.workOrder = t("forms.poRequired");
-    if (!perHourTarget || parseInt(perHourTarget) <= 0) newErrors.perHourTarget = t("forms.targetRequired");
-    if (!manpowerPlanned || parseInt(manpowerPlanned) <= 0) newErrors.manpowerPlanned = t("forms.manpowerRequired");
-    if (otHoursPlanned === "" || parseFloat(otHoursPlanned) < 0) newErrors.otHoursPlanned = t("forms.otHoursRequired");
-    if (!plannedStageId) newErrors.plannedStage = t("forms.stageRequired");
-    if (!plannedStageProgress) newErrors.plannedStageProgress = t("forms.progressRequired");
-    if (!nextMilestone) newErrors.nextMilestone = t("forms.milestoneRequired");
+    const result = sewingTargetSchema.safeParse(formData);
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!result.success) {
+      const fieldErrors = result.error.flatten().fieldErrors;
+      const newErrors: Record<string, string> = {};
+      if (fieldErrors.line_id) newErrors.line = t("forms.lineRequired");
+      if (fieldErrors.work_order_id) newErrors.workOrder = t("forms.poRequired");
+      if (fieldErrors.per_hour_target) newErrors.perHourTarget = t("forms.targetRequired");
+      if (fieldErrors.manpower_planned) newErrors.manpowerPlanned = t("forms.manpowerRequired");
+      if (fieldErrors.hours_planned) newErrors.hoursPlanned = "Hours planned is required";
+      if (fieldErrors.ot_hours_planned) newErrors.otHoursPlanned = t("forms.otHoursRequired");
+      if (fieldErrors.planned_stage_id) newErrors.plannedStage = t("forms.stageRequired");
+      if (fieldErrors.planned_stage_progress) newErrors.plannedStageProgress = t("forms.progressRequired");
+      if (fieldErrors.next_milestone) newErrors.nextMilestone = t("forms.milestoneRequired");
+      if (fieldErrors.remarks) newErrors.remarks = fieldErrors.remarks[0];
+      setErrors(newErrors);
+      return false;
+    }
+
+    setErrors({});
+    return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -198,17 +255,13 @@ export default function SewingMorningTargets() {
     setSubmitting(true);
 
     try {
-      // Check if submission is late based on morning_target_cutoff
-      let isLate = false;
-      if (factory?.morning_target_cutoff) {
-        const now = new Date();
-        const [cutoffHour, cutoffMinute] = factory.morning_target_cutoff.split(':').map(Number);
-        const cutoffTime = new Date();
-        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
-        isLate = now > cutoffTime;
-      }
+      // Check if submission is late based on morning_target_cutoff (using factory timezone)
+      const timezone = factory?.timezone || "Asia/Dhaka";
+      const isLate = factory?.morning_target_cutoff
+        ? isLateForCutoff(factory.morning_target_cutoff, timezone)
+        : false;
 
-      const productionDate = format(new Date(), "yyyy-MM-dd");
+      const productionDate = getTodayInTimezone(timezone);
 
       const insertData = {
         factory_id: profile.factory_id,
@@ -224,6 +277,8 @@ export default function SewingMorningTargets() {
         order_qty: selectedWorkOrder?.order_qty || 0,
         per_hour_target: parseInt(perHourTarget),
         manpower_planned: parseInt(manpowerPlanned),
+        hours_planned: parseFloat(hoursPlanned),
+        target_total_planned: Math.round(parseInt(perHourTarget) * parseFloat(hoursPlanned)),
         ot_hours_planned: parseFloat(otHoursPlanned),
         planned_stage_id: plannedStageId,
         planned_stage_progress: parseInt(plannedStageProgress),
@@ -298,25 +353,30 @@ export default function SewingMorningTargets() {
   }
 
   return (
-    <div className="container max-w-2xl py-4 px-4 pb-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold">{t("forms.sewingMorningTargets")}</h1>
-        <p className="text-sm text-muted-foreground">
-          {new Date().toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-        </p>
+    <div className="container max-w-2xl py-3 md:py-4 lg:py-6 px-4 pb-8">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+          <Crosshair className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+        </div>
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold">{t("forms.sewingMorningTargets")}</h1>
+          <p className="text-sm text-muted-foreground">
+            {new Date(getTodayInTimezone(factory?.timezone || "Asia/Dhaka") + "T00:00:00").toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Line & PO Selection */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{t("forms.selectLinePO")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>{t("forms.lineNo")} *</Label>
+      <form onSubmit={handleSubmit}>
+      <div className="rounded-xl border border-border/50 bg-card p-5 md:p-6 space-y-6">
+        {/* ── Line & PO ── */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t("forms.selectLinePO")}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.lineNo")} *</Label>
               <Select value={selectedLineId} onValueChange={setSelectedLineId}>
-                <SelectTrigger className={errors.line ? "border-destructive" : ""}>
+                <SelectTrigger className={`h-10 ${errors.line ? "border-destructive" : ""}`}>
                   <SelectValue placeholder={t("forms.selectLine")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -327,204 +387,180 @@ export default function SewingMorningTargets() {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.line && <p className="text-sm text-destructive">{errors.line}</p>}
+              {errors.line && <p className="text-xs text-destructive">{errors.line}</p>}
             </div>
 
-            <div className="space-y-2">
-              <Label>{t("forms.poNumber")} *</Label>
-              <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-                <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                  <SelectValue placeholder={t("forms.selectPO")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredWorkOrders.map((wo) => (
-                    <SelectItem key={wo.id} value={wo.id}>
-                      {wo.po_number} - {wo.style}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.poNumber")} *</Label>
+              <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    disabled={!selectedLineId}
+                    className={`w-full h-10 justify-start ${errors.workOrder ? 'border-destructive' : ''}`}
+                  >
+                    <Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate text-sm">
+                      {selectedWorkOrderId
+                        ? (() => {
+                            const wo = filteredWorkOrders.find(w => w.id === selectedWorkOrderId);
+                            return wo ? `${wo.po_number} - ${wo.style}` : t("forms.selectPO");
+                          })()
+                        : (selectedLineId ? t("forms.selectPO") : "Select a line first")}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[min(350px,calc(100vw-2rem))] p-0" align="start">
+                  <Command shouldFilter={true}>
+                    <CommandInput placeholder={t("forms.selectPO")} />
+                    <CommandList>
+                      <CommandEmpty>No PO found.</CommandEmpty>
+                      <CommandGroup>
+                        {filteredWorkOrders.map((wo) => (
+                          <CommandItem
+                            key={wo.id}
+                            value={`${wo.po_number} ${wo.buyer} ${wo.style} ${wo.item || ''}`}
+                            onSelect={() => { setSelectedWorkOrderId(wo.id); setPoSearchOpen(false); }}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-medium">{wo.po_number} - {wo.style}</span>
+                              <span className="text-xs text-muted-foreground">{wo.buyer}{wo.item ? ` / ${wo.item}` : ''}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {errors.workOrder && <p className="text-xs text-destructive">{errors.workOrder}</p>}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Auto-filled Details */}
         {selectedWorkOrder && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">{t("forms.orderDetailsAuto")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">{t("forms.buyer")}:</span>
-                  <p className="font-medium">{selectedWorkOrder.buyer}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">{t("forms.style")}:</span>
-                  <p className="font-medium">{selectedWorkOrder.style}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">{t("forms.item")}:</span>
-                  <p className="font-medium">{selectedWorkOrder.item || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">{t("forms.orderQty")}:</span>
-                  <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">{t("forms.unit")}:</span>
-                  <p className="font-medium">{unitName || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">{t("forms.floor")}:</span>
-                  <p className="font-medium">{floorName || "-"}</p>
-                </div>
+          <div className="rounded-lg bg-muted/30 border border-border/40 px-4 py-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+              <div>
+                <span className="text-[11px] text-muted-foreground">{t("forms.buyer")}</span>
+                <p className="font-medium">{selectedWorkOrder.buyer}</p>
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <span className="text-[11px] text-muted-foreground">{t("forms.style")}</span>
+                <p className="font-medium">{selectedWorkOrder.style}</p>
+              </div>
+              <div>
+                <span className="text-[11px] text-muted-foreground">{t("forms.orderQty")}</span>
+                <p className="font-medium font-mono">{selectedWorkOrder.order_qty.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
         )}
 
-        {/* Target Fields */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{t("forms.todaysTargets")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>{t("forms.perHourTarget")} *</Label>
-                <Input
-                  type="number"
-                  value={perHourTarget}
-                  onChange={(e) => setPerHourTarget(e.target.value)}
-                  placeholder="0"
-                  className={errors.perHourTarget ? "border-destructive" : ""}
-                />
-                {errors.perHourTarget && <p className="text-sm text-destructive">{errors.perHourTarget}</p>}
-              </div>
+        <div className="border-t border-border/40" />
 
-              <div className="space-y-2">
-                <Label>{t("forms.manpowerPlanned")} *</Label>
-                <Input
-                  type="number"
-                  value={manpowerPlanned}
-                  onChange={(e) => setManpowerPlanned(e.target.value)}
-                  placeholder="0"
-                  className={errors.manpowerPlanned ? "border-destructive" : ""}
-                />
-                {errors.manpowerPlanned && <p className="text-sm text-destructive">{errors.manpowerPlanned}</p>}
-              </div>
+        {/* ── Targets ── */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t("forms.todaysTargets")}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.perHourTarget")} *</Label>
+              <Input type="number" value={perHourTarget} onChange={(e) => setPerHourTarget(e.target.value)} placeholder="0" className={`h-10 ${errors.perHourTarget ? "border-destructive" : ""}`} />
+              {errors.perHourTarget && <p className="text-xs text-destructive">{errors.perHourTarget}</p>}
             </div>
-
-            <div className="space-y-2">
-              <Label>{t("forms.otHoursPlanned")} *</Label>
-              <Input
-                type="number"
-                step="0.5"
-                value={otHoursPlanned}
-                onChange={(e) => setOtHoursPlanned(e.target.value)}
-                placeholder="0"
-                className={errors.otHoursPlanned ? "border-destructive" : ""}
-              />
-              {errors.otHoursPlanned && <p className="text-sm text-destructive">{errors.otHoursPlanned}</p>}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.manpowerPlanned")} *</Label>
+              <Input type="number" value={manpowerPlanned} onChange={(e) => setManpowerPlanned(e.target.value)} placeholder="0" className={`h-10 ${errors.manpowerPlanned ? "border-destructive" : ""}`} />
+              {errors.manpowerPlanned && <p className="text-xs text-destructive">{errors.manpowerPlanned}</p>}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Hours Planned *</Label>
+              <Input type="number" step="0.5" min="0" max="24" value={hoursPlanned} onChange={(e) => setHoursPlanned(e.target.value)} placeholder="0" className={`h-10 ${errors.hoursPlanned ? "border-destructive" : ""}`} />
+              {errors.hoursPlanned && <p className="text-xs text-destructive">{errors.hoursPlanned}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.otHoursPlanned")} *</Label>
+              <Input type="number" step="0.5" value={otHoursPlanned} onChange={(e) => setOtHoursPlanned(e.target.value)} placeholder="0" className={`h-10 ${errors.otHoursPlanned ? "border-destructive" : ""}`} />
+              {errors.otHoursPlanned && <p className="text-xs text-destructive">{errors.otHoursPlanned}</p>}
+            </div>
+          </div>
+        </div>
 
-        {/* Stage & Progress */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{t("forms.stageProgress")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>{t("forms.plannedStage")} *</Label>
+        <div className="border-t border-border/40" />
+
+        {/* ── Stage & Progress ── */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t("forms.stageProgress")}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.plannedStage")} *</Label>
               <Select value={plannedStageId} onValueChange={setPlannedStageId}>
-                <SelectTrigger className={errors.plannedStage ? "border-destructive" : ""}>
+                <SelectTrigger className={`h-10 ${errors.plannedStage ? "border-destructive" : ""}`}>
                   <SelectValue placeholder={t("forms.selectStage")} />
                 </SelectTrigger>
                 <SelectContent>
                   {stages.map((stage) => (
-                    <SelectItem key={stage.id} value={stage.id}>
-                      {stage.name}
-                    </SelectItem>
+                    <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {errors.plannedStage && <p className="text-sm text-destructive">{errors.plannedStage}</p>}
+              {errors.plannedStage && <p className="text-xs text-destructive">{errors.plannedStage}</p>}
             </div>
-
-            <div className="space-y-2">
-              <Label>{t("forms.stageProgressLabel")} *</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.stageProgressLabel")} *</Label>
               <Select value={plannedStageProgress} onValueChange={setPlannedStageProgress}>
-                <SelectTrigger className={errors.plannedStageProgress ? "border-destructive" : ""}>
+                <SelectTrigger className={`h-10 ${errors.plannedStageProgress ? "border-destructive" : ""}`}>
                   <SelectValue placeholder={t("forms.selectProgress")} />
                 </SelectTrigger>
                 <SelectContent>
                   {progressOptions.map((opt) => (
-                    <SelectItem key={opt.id} value={opt.label}>
-                      {opt.label}
-                    </SelectItem>
+                    <SelectItem key={opt.id} value={opt.label}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {errors.plannedStageProgress && <p className="text-sm text-destructive">{errors.plannedStageProgress}</p>}
+              {errors.plannedStageProgress && <p className="text-xs text-destructive">{errors.plannedStageProgress}</p>}
             </div>
-
-            <div className="space-y-2">
-              <Label>{t("forms.nextMilestone")} *</Label>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.nextMilestone")} *</Label>
               <Select value={nextMilestone} onValueChange={setNextMilestone}>
-                <SelectTrigger className={errors.nextMilestone ? "border-destructive" : ""}>
+                <SelectTrigger className={`h-10 ${errors.nextMilestone ? "border-destructive" : ""}`}>
                   <SelectValue placeholder={t("forms.selectMilestone")} />
                 </SelectTrigger>
                 <SelectContent>
                   {milestoneOptions.map((opt) => (
-                    <SelectItem key={opt.id} value={opt.label}>
-                      {opt.label}
-                    </SelectItem>
+                    <SelectItem key={opt.id} value={opt.label}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {errors.nextMilestone && <p className="text-sm text-destructive">{errors.nextMilestone}</p>}
+              {errors.nextMilestone && <p className="text-xs text-destructive">{errors.nextMilestone}</p>}
             </div>
-
-            <div className="space-y-2">
-              <Label>{t("forms.estimatedExFactory")}</Label>
-              <Input
-                type="date"
-                value={estimatedExFactory}
-                onChange={(e) => setEstimatedExFactory(e.target.value)}
-              />
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t("forms.estimatedExFactory")}</Label>
+              <Input type="date" value={estimatedExFactory} onChange={(e) => setEstimatedExFactory(e.target.value)} className="h-10" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Optional Fields */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{t("forms.optional")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Label>{t("forms.remarks")}</Label>
-              <Textarea
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                placeholder={t("forms.addAnyNotes")}
-                rows={3}
-              />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border-t border-border/40" />
 
-        <Button type="submit" className="w-full" disabled={submitting}>
+        {/* ── Remarks ── */}
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">{t("forms.remarks")}</Label>
+          <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder={t("forms.addAnyNotes")} rows={2} />
+        </div>
+
+      </div>
+
+        {/* Submit */}
+        <Button type="submit" className="w-full h-11 font-semibold mt-5" disabled={submitting}>
           {submitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t("forms.submitting")}
-            </>
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t("forms.submitting")}</>
           ) : (
             t("forms.submitTargets")
           )}

@@ -72,7 +72,7 @@ export function TablePagination({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
+          className="h-9 w-9"
           onClick={onFirstPage}
           disabled={!canGoPrevious}
         >
@@ -82,7 +82,7 @@ export function TablePagination({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
+          className="h-9 w-9"
           onClick={onPreviousPage}
           disabled={!canGoPrevious}
         >
@@ -100,7 +100,7 @@ export function TablePagination({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
+          className="h-9 w-9"
           onClick={onNextPage}
           disabled={!canGoNext}
         >
@@ -110,7 +110,7 @@ export function TablePagination({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
+          className="h-9 w-9"
           onClick={onLastPage}
           disabled={!canGoNext}
         >

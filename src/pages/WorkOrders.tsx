@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { mutateWithRetry, networkErrorMessage } from "@/lib/network-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,10 +14,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { 
   Loader2, 
-  ClipboardList, 
+  Receipt,
   Plus,
   Pencil,
   Trash2,
@@ -30,6 +32,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { EmptyState } from "@/components/EmptyState";
 
 interface WorkOrder {
   id: string;
@@ -40,11 +43,12 @@ interface WorkOrder {
   color: string | null;
   order_qty: number;
   smv: number | null;
+  cm_per_dozen: number | null;
   planned_ex_factory: string | null;
   target_per_hour: number | null;
   target_per_day: number | null;
-  status: string;
-  is_active: boolean;
+  status: string | null;
+  is_active: boolean | null;
   line_id: string | null;
 }
 
@@ -52,7 +56,7 @@ interface Line {
   id: string;
   line_id: string;
   name: string | null;
-  is_active: boolean;
+  is_active: boolean | null;
 }
 
 const WORK_ORDER_STATUSES = [
@@ -62,20 +66,36 @@ const WORK_ORDER_STATUSES = [
   { value: 'on_hold', label: 'On Hold' },
 ];
 
+const workOrderSchema = z.object({
+  po_number: z.string().min(1, "PO Number is required").max(100, "PO Number too long"),
+  buyer: z.string().min(1, "Buyer is required").max(200, "Buyer name too long"),
+  style: z.string().min(1, "Style is required").max(200, "Style too long"),
+  item: z.string().max(200, "Item too long").optional().nullable(),
+  color: z.string().max(100, "Color too long").optional().nullable(),
+  order_qty: z.number().min(0, "Cannot be negative").max(100000000, "Too high"),
+  smv: z.number().min(0, "Cannot be negative").max(1000, "Too high").optional().nullable(),
+  cm_per_dozen: z.number().min(0, "Cannot be negative").max(100000, "Too high").optional().nullable(),
+  planned_ex_factory: z.string().optional().nullable(),
+  target_per_hour: z.number().min(0, "Cannot be negative").max(100000, "Too high").optional().nullable(),
+  target_per_day: z.number().min(0, "Cannot be negative").max(1000000, "Too high").optional().nullable(),
+  status: z.enum(["not_started", "in_progress", "completed", "on_hold"]),
+  is_active: z.boolean(),
+});
+
 const getStatusColor = (status: string) => {
   switch (status) {
-    case 'not_started': return 'bg-muted text-muted-foreground';
-    case 'in_progress': return 'bg-info/10 text-info';
-    case 'completed': return 'bg-success/10 text-success';
-    case 'on_hold': return 'bg-warning/10 text-warning';
-    default: return 'bg-muted text-muted-foreground';
+    case 'not_started': return 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/40';
+    case 'in_progress': return 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-200/60 dark:border-blue-700/40';
+    case 'completed': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-700/40';
+    case 'on_hold': return 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-200/60 dark:border-amber-700/40';
+    default: return 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/40';
   }
 };
 
 export default function WorkOrders() {
   const { profile, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [loading, setLoading] = useState(true);
@@ -108,6 +128,7 @@ export default function WorkOrders() {
     color: '',
     order_qty: '',
     smv: '',
+    cm_per_dozen: '',
     planned_ex_factory: '',
     target_per_hour: '',
     target_per_day: '',
@@ -115,7 +136,8 @@ export default function WorkOrders() {
     is_active: true,
   });
   const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
-  
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
   // Delete confirmation state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
@@ -188,6 +210,7 @@ export default function WorkOrders() {
         .from('work_orders')
         .select('*')
         .eq('factory_id', profile.factory_id)
+        .neq('status', 'deleted')
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -210,6 +233,7 @@ export default function WorkOrders() {
       color: '',
       order_qty: '',
       smv: '',
+      cm_per_dozen: '',
       planned_ex_factory: '',
       target_per_hour: '',
       target_per_day: '',
@@ -231,11 +255,12 @@ export default function WorkOrders() {
       color: wo.color || '',
       order_qty: wo.order_qty.toString(),
       smv: wo.smv?.toString() || '',
+      cm_per_dozen: wo.cm_per_dozen?.toString() || '',
       planned_ex_factory: wo.planned_ex_factory || '',
       target_per_hour: wo.target_per_hour?.toString() || '',
       target_per_day: wo.target_per_day?.toString() || '',
       status: wo.status || 'not_started',
-      is_active: wo.is_active,
+      is_active: wo.is_active ?? true,
     });
     setSelectedLineIds(workOrderLineAssignments[wo.id] || []);
     setIsDialogOpen(true);
@@ -243,78 +268,102 @@ export default function WorkOrders() {
 
   async function handleSave() {
     if (!profile?.factory_id) return;
-    if (!formData.po_number.trim() || !formData.buyer.trim() || !formData.style.trim()) {
-      toast({ variant: "destructive", title: "PO Number, Buyer, and Style are required" });
+
+    const dataToValidate = {
+      po_number: formData.po_number.trim(),
+      buyer: formData.buyer.trim(),
+      style: formData.style.trim(),
+      item: formData.item.trim() || null,
+      color: formData.color.trim() || null,
+      order_qty: parseInt(formData.order_qty) || 0,
+      smv: formData.smv ? parseFloat(formData.smv) : null,
+      cm_per_dozen: formData.cm_per_dozen ? parseFloat(formData.cm_per_dozen) : null,
+      planned_ex_factory: formData.planned_ex_factory || null,
+      target_per_hour: formData.target_per_hour ? parseInt(formData.target_per_hour) : null,
+      target_per_day: formData.target_per_day ? parseInt(formData.target_per_day) : null,
+      status: formData.status as "not_started" | "in_progress" | "completed" | "on_hold",
+      is_active: formData.is_active,
+    };
+
+    const result = workOrderSchema.safeParse(dataToValidate);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) fieldErrors[err.path[0] as string] = err.message;
+      });
+      setFormErrors(fieldErrors);
       return;
     }
-    
+    setFormErrors({});
+
     setIsSaving(true);
-    
+
     try {
-      const data = {
+      // Ensure required fields are present for DB insert
+      const insertData = {
         factory_id: profile.factory_id,
-        po_number: formData.po_number.trim(),
-        buyer: formData.buyer.trim(),
-        style: formData.style.trim(),
-        item: formData.item.trim() || null,
-        color: formData.color.trim() || null,
-        order_qty: parseInt(formData.order_qty) || 0,
-        smv: formData.smv ? parseFloat(formData.smv) : null,
-        planned_ex_factory: formData.planned_ex_factory || null,
-        target_per_hour: formData.target_per_hour ? parseInt(formData.target_per_hour) : null,
-        target_per_day: formData.target_per_day ? parseInt(formData.target_per_day) : null,
-        status: formData.status,
-        is_active: formData.is_active,
-        line_id: selectedLineIds.length === 1 ? selectedLineIds[0] : null, // Keep backward compatibility
+        po_number: result.data.po_number,
+        buyer: result.data.buyer,
+        style: result.data.style,
+        item: result.data.item ?? null,
+        color: result.data.color ?? null,
+        order_qty: result.data.order_qty,
+        smv: result.data.smv ?? null,
+        cm_per_dozen: result.data.cm_per_dozen ?? null,
+        planned_ex_factory: result.data.planned_ex_factory ?? null,
+        target_per_hour: result.data.target_per_hour ?? null,
+        target_per_day: result.data.target_per_day ?? null,
+        status: result.data.status,
+        is_active: result.data.is_active,
+        line_id: selectedLineIds.length === 1 ? selectedLineIds[0] : null,
       };
       
       let workOrderId: string;
       
       if (dialogMode === 'create') {
-        const { data: insertedData, error } = await supabase
-          .from('work_orders')
-          .insert(data)
-          .select('id')
-          .single();
+        const { data: insertedData, error } = await mutateWithRetry(() =>
+          supabase.from('work_orders').insert([insertData]).select('id').single()
+        );
         if (error) throw error;
-        workOrderId = insertedData.id;
-        toast({ title: "Work order created" });
+        workOrderId = insertedData!.id;
+        toast.success("Work order created");
       } else if (editingItem) {
-        const { error } = await supabase.from('work_orders').update(data).eq('id', editingItem.id);
+        const { error } = await mutateWithRetry(() =>
+          supabase.from('work_orders').update(insertData).eq('id', editingItem.id)
+        );
         if (error) throw error;
         workOrderId = editingItem.id;
-        toast({ title: "Work order updated" });
+        toast.success("Work order updated");
       } else {
         throw new Error("No work order to update");
       }
-      
+
       // Update line assignments
       // First, delete existing assignments
-      await supabase
-        .from('work_order_line_assignments')
-        .delete()
-        .eq('work_order_id', workOrderId);
-      
+      await mutateWithRetry(() =>
+        supabase.from('work_order_line_assignments').delete().eq('work_order_id', workOrderId)
+      );
+
       // Then insert new assignments
       if (selectedLineIds.length > 0) {
         const assignments = selectedLineIds.map(lineId => ({
           work_order_id: workOrderId,
           line_id: lineId,
-          factory_id: profile.factory_id,
+          factory_id: profile.factory_id!,
         }));
-        
-        const { error: assignError } = await supabase
-          .from('work_order_line_assignments')
-          .insert(assignments);
-        
+
+        const { error: assignError } = await mutateWithRetry(() =>
+          supabase.from('work_order_line_assignments').insert(assignments)
+        );
+
         if (assignError) throw assignError;
       }
-      
+
       setIsDialogOpen(false);
       fetchWorkOrders();
       fetchLineAssignments();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: networkErrorMessage(error) });
     } finally {
       setIsSaving(false);
     }
@@ -338,14 +387,20 @@ export default function WorkOrders() {
     const id = itemToDelete;
     setDeleteDialogOpen(false);
     setItemToDelete(null);
-    
+
     try {
-      const { error } = await supabase.from('work_orders').delete().eq('id', id);
+      // Soft delete: mark as inactive and set status to 'deleted'
+      // Production history (sewing_actuals, cutting_actuals, finishing_daily_logs, etc.)
+      // is preserved for reporting purposes.
+      const { error } = await supabase
+        .from('work_orders')
+        .update({ is_active: false, status: 'deleted' })
+        .eq('id', id);
       if (error) throw error;
-      toast({ title: "Work order deleted" });
+      toast.success("Work order archived");
       fetchWorkOrders();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     }
   }
 
@@ -355,22 +410,18 @@ export default function WorkOrders() {
       if (error) throw error;
       fetchWorkOrders();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     }
   }
 
-  function downloadTemplate() {
-    const headers = ['po_number', 'buyer', 'style', 'item', 'color', 'order_qty', 'smv', 'planned_ex_factory', 'target_per_hour', 'target_per_day', 'status'];
-    const sampleRow = ['PO-001', 'ABC Buyer', 'STYLE-001', 'T-Shirt', 'Blue', '5000', '12.5', '2026-03-15', '100', '800', 'not_started'];
+  async function downloadTemplate() {
+    const headers = ['po_number', 'buyer', 'style', 'item', 'color', 'order_qty', 'smv', 'cm_per_dozen', 'planned_ex_factory', 'target_per_hour', 'target_per_day', 'status'];
+    const sampleRow = ['PO-001', 'ABC Buyer', 'STYLE-001', 'T-Shirt', 'Blue', '5000', '12.5', '45.00', '2026-03-15', '100', '800', 'not_started'];
     const csv = [headers.join(','), sampleRow.join(',')].join('\n');
     
+    const { downloadFile } = await import("@/lib/capacitor");
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'work_orders_template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadFile(blob, 'work_orders_template.csv');
   }
 
   // Column mapping for flexible CSV import
@@ -383,6 +434,7 @@ export default function WorkOrders() {
     'color': 'color',
     'order_qty': 'order_qty',
     'smv': 'smv',
+    'cm_per_dozen': 'cm_per_dozen',
     'planned_ex_factory': 'planned_ex_factory',
     'target_per_hour': 'target_per_hour',
     'target_per_day': 'target_per_day',
@@ -393,6 +445,11 @@ export default function WorkOrders() {
     'buyer name': 'style', // Maps to style as it's a required field
     'product type': 'item',
     'quantity': 'order_qty',
+    'c&m': 'cm_per_dozen',
+    'cm': 'cm_per_dozen',
+    'c&m/dozen': 'cm_per_dozen',
+    'cm/dozen': 'cm_per_dozen',
+    'cost and make': 'cm_per_dozen',
     'current status': 'status',
     'delivery deadline': 'planned_ex_factory',
     'comments': 'color', // Use comments as color/notes
@@ -447,7 +504,7 @@ export default function WorkOrders() {
           row[mappedField] = parseInt(value) || 0;
         } else if (mappedField === 'target_per_hour' || mappedField === 'target_per_day') {
           row[mappedField] = parseInt(value) || null;
-        } else if (mappedField === 'smv') {
+        } else if (mappedField === 'smv' || mappedField === 'cm_per_dozen') {
           row[mappedField] = parseFloat(value) || null;
         } else if (mappedField === 'status') {
           row[mappedField] = mapStatus(value);
@@ -474,7 +531,7 @@ export default function WorkOrders() {
     const text = await file.text();
     const csvLines = text.split('\n').filter(l => l.trim());
     if (csvLines.length < 2) {
-      toast({ variant: "destructive", title: "Invalid CSV", description: "File must have headers and at least one data row." });
+      toast.error("Invalid CSV", { description: "File must have headers and at least one data row." });
       return;
     }
     
@@ -487,7 +544,7 @@ export default function WorkOrders() {
     const parsedRows = parseCSVToRows(text);
     
     if (parsedRows.length === 0) {
-      toast({ variant: "destructive", title: "No valid rows found", description: "Make sure your CSV has columns like OrderLineID/po_number, Brand Name/buyer, etc." });
+      toast.error("No valid rows found", { description: "Make sure your CSV has columns like OrderLineID/po_number, Brand Name/buyer, etc." });
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -515,12 +572,12 @@ export default function WorkOrders() {
       const { error } = await supabase.from('work_orders').insert(allRows);
       if (error) throw error;
       
-      toast({ title: `Imported ${allRows.length} work orders` });
+      toast.success(`Imported ${allRows.length} work orders`);
       setIsPreviewOpen(false);
       setPreviewData(null);
       fetchWorkOrders();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Import failed", description: error.message });
+      toast.error("Import failed", { description: error?.message ?? "An error occurred" });
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -550,61 +607,51 @@ export default function WorkOrders() {
 
   if (!profile?.factory_id) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-4">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">No Factory Assigned</h2>
-            <p className="text-muted-foreground text-sm">
-              You need to be assigned to a factory first.
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/setup')}>
-              Go to Setup
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={Receipt}
+        title="No Factory Assigned"
+        description="You need to be assigned to a factory first."
+        action={{ label: "Go to Setup", onClick: () => navigate('/setup') }}
+      />
     );
   }
 
   if (!isAdminOrHigher()) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-4">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <AlertTriangle className="h-12 w-12 text-warning mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground text-sm">
-              You need admin permissions to manage work orders.
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/dashboard')}>
-              Go to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title="Access Denied"
+        description="You need admin permissions to manage work orders."
+        iconClassName="text-warning"
+        action={{ label: "Go to Dashboard", onClick: () => navigate('/dashboard') }}
+      />
     );
   }
 
   return (
-    <div className="p-4 lg:p-6">
+    <div className="py-3 md:py-4 lg:py-6 space-y-5 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/setup')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/setup')} className="shrink-0">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <ClipboardList className="h-5 w-5 text-primary" />
+          <div className="h-10 w-10 rounded-xl bg-indigo-500/10 flex items-center justify-center shrink-0">
+            <Receipt className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Work Orders / PO Master</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl md:text-2xl font-bold">PO Master</h1>
+              <span className="text-xs font-medium bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 rounded-full px-2 py-0.5">
+                {workOrders.filter(w => w.is_active).length} active
+              </span>
+            </div>
             <p className="text-sm text-muted-foreground">
-              {workOrders.length} work orders • {workOrders.filter(w => w.is_active).length} active
+              Manage {workOrders.length} work orders
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={downloadTemplate}>
             <Download className="h-4 w-4 mr-2" />
             Template
@@ -627,34 +674,64 @@ export default function WorkOrders() {
         </div>
       </div>
 
+      {/* KPI Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="relative overflow-hidden rounded-xl border border-indigo-200/60 dark:border-indigo-800/40 bg-gradient-to-br from-indigo-50 via-white to-blue-50/50 dark:from-indigo-950/40 dark:via-card dark:to-blue-950/20 p-4 transition-all duration-300 hover:shadow-lg group">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-indigo-500 opacity-[0.06] rounded-bl-full pointer-events-none" />
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-indigo-600/70 dark:text-indigo-400/70">Total Orders</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-indigo-900 dark:text-indigo-100 mt-1">{workOrders.length}</p>
+        </div>
+        <div className="relative overflow-hidden rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50 via-white to-green-50/50 dark:from-emerald-950/40 dark:via-card dark:to-green-950/20 p-4 transition-all duration-300 hover:shadow-lg group">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-emerald-500 opacity-[0.06] rounded-bl-full pointer-events-none" />
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-emerald-600/70 dark:text-emerald-400/70">In Progress</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-emerald-900 dark:text-emerald-100 mt-1">{workOrders.filter(w => w.status === 'in_progress').length}</p>
+        </div>
+        <div className="relative overflow-hidden rounded-xl border border-amber-200/60 dark:border-amber-800/40 bg-gradient-to-br from-amber-50 via-white to-orange-50/50 dark:from-amber-950/40 dark:via-card dark:to-orange-950/20 p-4 transition-all duration-300 hover:shadow-lg group">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-amber-500 opacity-[0.06] rounded-bl-full pointer-events-none" />
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-amber-600/70 dark:text-amber-400/70">On Hold</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-amber-900 dark:text-amber-100 mt-1">{workOrders.filter(w => w.status === 'on_hold').length}</p>
+        </div>
+        <div className="relative overflow-hidden rounded-xl border border-slate-200/60 dark:border-slate-800/40 bg-gradient-to-br from-slate-50 via-white to-slate-50/50 dark:from-slate-950/40 dark:via-card dark:to-slate-950/20 p-4 transition-all duration-300 hover:shadow-lg group">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-slate-500 opacity-[0.06] rounded-bl-full pointer-events-none" />
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-slate-600/70 dark:text-slate-400/70">Completed</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 mt-1">{workOrders.filter(w => w.status === 'completed').length}</p>
+        </div>
+      </div>
+
       {/* Search */}
-      <Card className="mb-6">
-        <CardContent className="pt-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by PO, buyer, style, or item..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by PO, buyer, style, or item..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
 
       {/* Table */}
-      <Card>
-        <CardContent className="pt-4">
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 shadow-md shadow-indigo-500/20 flex items-center justify-center">
+              <Receipt className="h-3.5 w-3.5 text-white" />
+            </div>
+            Work Orders
+            <Badge variant="secondary" className="ml-1">{filteredWorkOrders.length}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/50">
                   <TableHead>PO Number</TableHead>
                   <TableHead>Buyer</TableHead>
                   <TableHead>Style</TableHead>
                   <TableHead>Item</TableHead>
                   <TableHead>Color</TableHead>
                   <TableHead className="text-right">Order Qty</TableHead>
+                  <TableHead className="text-right">CM/Dz</TableHead>
                   <TableHead>Ex-Factory</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Active</TableHead>
@@ -664,19 +741,22 @@ export default function WorkOrders() {
               <TableBody>
                 {filteredWorkOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center text-muted-foreground">
-                      No work orders found. Add your first work order.
+                    <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
+                      <Receipt className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                      <p>No work orders found</p>
+                      <p className="text-xs mt-1">Add your first work order to get started</p>
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredWorkOrders.map((wo) => (
-                    <TableRow key={wo.id}>
+                    <TableRow key={wo.id} className="hover:bg-muted/50">
                       <TableCell className="font-mono font-medium">{wo.po_number}</TableCell>
                       <TableCell>{wo.buyer}</TableCell>
                       <TableCell>{wo.style}</TableCell>
                       <TableCell>{wo.item || '-'}</TableCell>
                       <TableCell>{wo.color || '-'}</TableCell>
                       <TableCell className="text-right font-mono">{wo.order_qty.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono">{wo.cm_per_dozen != null ? `$${wo.cm_per_dozen.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</TableCell>
                       <TableCell>{wo.planned_ex_factory || '-'}</TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(wo.status || 'not_started')}>
@@ -685,8 +765,8 @@ export default function WorkOrders() {
                       </TableCell>
                       <TableCell>
                         <Switch
-                          checked={wo.is_active}
-                          onCheckedChange={() => toggleActive(wo.id, wo.is_active)}
+                          checked={wo.is_active ?? true}
+                          onCheckedChange={() => toggleActive(wo.id, wo.is_active ?? true)}
                         />
                       </TableCell>
                       <TableCell className="text-right">
@@ -724,6 +804,7 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, po_number: e.target.value })}
                   placeholder="PO-001"
                 />
+                {formErrors.po_number && <p className="text-sm text-destructive">{formErrors.po_number}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Buyer *</Label>
@@ -732,9 +813,10 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, buyer: e.target.value })}
                   placeholder="ABC Fashions"
                 />
+                {formErrors.buyer && <p className="text-sm text-destructive">{formErrors.buyer}</p>}
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Style *</Label>
@@ -743,6 +825,7 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, style: e.target.value })}
                   placeholder="STYLE-001"
                 />
+                {formErrors.style && <p className="text-sm text-destructive">{formErrors.style}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Item</Label>
@@ -751,9 +834,10 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, item: e.target.value })}
                   placeholder="T-Shirt"
                 />
+                {formErrors.item && <p className="text-sm text-destructive">{formErrors.item}</p>}
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Color</Label>
@@ -762,6 +846,7 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, color: e.target.value })}
                   placeholder="Blue"
                 />
+                {formErrors.color && <p className="text-sm text-destructive">{formErrors.color}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Order Quantity</Label>
@@ -771,10 +856,11 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, order_qty: e.target.value })}
                   placeholder="5000"
                 />
+                {formErrors.order_qty && <p className="text-sm text-destructive">{formErrors.order_qty}</p>}
               </div>
             </div>
-            
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>SMV</Label>
                 <Input
@@ -784,6 +870,18 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, smv: e.target.value })}
                   placeholder="12.5"
                 />
+                {formErrors.smv && <p className="text-sm text-destructive">{formErrors.smv}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>CM / Dozen (USD)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.cm_per_dozen}
+                  onChange={(e) => setFormData({ ...formData, cm_per_dozen: e.target.value })}
+                  placeholder="$45.00"
+                />
+                {formErrors.cm_per_dozen && <p className="text-sm text-destructive">{formErrors.cm_per_dozen}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Planned Ex-Factory</Label>
@@ -794,7 +892,7 @@ export default function WorkOrders() {
                 />
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Target/Hour</Label>
@@ -804,6 +902,7 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, target_per_hour: e.target.value })}
                   placeholder="100"
                 />
+                {formErrors.target_per_hour && <p className="text-sm text-destructive">{formErrors.target_per_hour}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Target/Day</Label>
@@ -813,6 +912,7 @@ export default function WorkOrders() {
                   onChange={(e) => setFormData({ ...formData, target_per_day: e.target.value })}
                   placeholder="800"
                 />
+                {formErrors.target_per_day && <p className="text-sm text-destructive">{formErrors.target_per_day}</p>}
               </div>
             </div>
             
@@ -880,8 +980,11 @@ export default function WorkOrders() {
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {dialogMode === 'create' ? 'Create' : 'Save'}
+              {isSaving ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+              ) : (
+                dialogMode === 'create' ? 'Create' : 'Save'
+              )}
             </Button>
           </div>
         </DialogContent>
@@ -991,8 +1094,11 @@ export default function WorkOrders() {
                   Cancel
                 </Button>
                 <Button onClick={confirmImport} disabled={isImporting}>
-                  {isImporting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Import {previewData.totalRows} Work Order{previewData.totalRows !== 1 ? 's' : ''}
+                  {isImporting ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Importing...</>
+                  ) : (
+                    `Import ${previewData.totalRows} Work Order${previewData.totalRows !== 1 ? 's' : ''}`
+                  )}
                 </Button>
               </div>
             </div>
@@ -1004,9 +1110,9 @@ export default function WorkOrders() {
       <ConfirmDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        title="Delete Work Order"
-        description="Are you sure you want to delete this work order? This action cannot be undone."
-        confirmLabel="Delete"
+        title="Archive Work Order"
+        description="This will archive the work order and hide it from active lists. All production history will be preserved for reports."
+        confirmLabel="Archive"
         variant="destructive"
         onConfirm={handleDelete}
       />

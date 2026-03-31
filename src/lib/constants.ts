@@ -1,7 +1,11 @@
-// Production Portal Constants
+// ProductionPortal Constants
 
-export const APP_NAME = "Production Portal";
+export const APP_NAME = "ProductionPortal";
 export const APP_DESCRIPTION = "Garment Factory Production Tracking System";
+
+// Dev/test factory — Knowledge Base and Chat Analytics are only
+// available for this factory until general release.
+export const DEV_FACTORY_ID_PREFIX = "f7b308bb";
 
 // Role definitions
 export const ROLES = {
@@ -10,9 +14,17 @@ export const ROLES = {
   OWNER: 'owner',
   STORAGE: 'storage',
   CUTTING: 'cutting',
+  SEWING: 'sewing',
+  FINISHING: 'finishing',
+  BUYER: 'buyer',
+  SUPERADMIN: 'superadmin',
+  GATE_OFFICER: 'gate_officer',
 } as const;
 
 export type AppRole = typeof ROLES[keyof typeof ROLES];
+
+// Roles that are department-wide (all lines / all POs) — no line assignment needed
+export const DEPARTMENT_WIDE_ROLES: AppRole[] = ['storage', 'cutting', 'finishing', 'buyer'];
 
 // Role display names
 export const ROLE_LABELS: Record<AppRole, string> = {
@@ -21,6 +33,11 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   owner: 'Owner',
   storage: 'Storage',
   cutting: 'Cutting',
+  sewing: 'Sewing',
+  finishing: 'Finishing',
+  buyer: 'Buyer / Client',
+  superadmin: 'Super Admin',
+  gate_officer: 'Gate Officer',
 };
 
 // Blocker impact levels
@@ -203,36 +220,48 @@ export const NAV_ITEMS = {
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
   admin: [
-    { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-    { path: '/today', label: 'Today Updates', icon: 'CalendarDays' },
-    { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
-    { path: '/week', label: 'This Week', icon: 'Calendar' },
-    { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
-    { path: '/lines', label: 'Lines', icon: 'Rows3' },
-    { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
-    { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
-    { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
-    { path: '/users', label: 'Users', icon: 'Users' },
-    { path: '/billing-plan', label: 'Billing & Plan', icon: 'CreditCard' },
-    { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
+    { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard', group: 'Production' },
+    { path: '/today', label: 'Today Updates', icon: 'CalendarDays', group: 'Production' },
+    { path: '/lines', label: 'Lines', icon: 'Rows3', group: 'Production' },
+    { path: '/week', label: 'This Week', icon: 'Calendar', group: 'Production' },
+    { path: '/submissions', label: 'All Submissions', icon: 'FileText', group: 'Records' },
+    { path: '/work-orders', label: 'Work Orders', icon: 'Receipt', group: 'Records' },
+    { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle', group: 'Records' },
+    { path: '/insights', label: 'Insights', icon: 'TrendingUp', group: 'Analytics' },
+    { path: '/finances', label: 'Finances', icon: 'DollarSign', group: 'Analytics' },
+    { path: '/dispatch/approvals', label: 'Dispatch Approvals', icon: 'CheckSquare', group: 'Dispatch' },
+    { path: '/dispatch/all', label: 'All Dispatches', icon: 'Archive', group: 'Dispatch' },
+    { path: '/setup/knowledge-base', label: 'Knowledge Base', icon: 'BookOpen' },
+    { path: '/setup/chat-analytics', label: 'Chat Analytics', icon: 'BarChart3' },
+    { path: '/setup/error-logs', label: 'Error Logs', icon: 'Bug' },
+    { path: '/preferences', label: 'My Preferences', icon: 'UserCog', bottom: true },
+    { path: '/billing-plan', label: 'Billing & Plan', icon: 'CreditCard', bottom: true },
+    { path: '/setup', label: 'Factory Setup', icon: 'Settings', bottom: true },
+    { path: '/users', label: 'Users', icon: 'Users', bottom: true },
   ],
   owner: [
-    { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-    { path: '/today', label: 'Today Updates', icon: 'CalendarDays' },
-    { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle' },
-    { path: '/week', label: 'This Week', icon: 'Calendar' },
-    { path: '/submissions', label: 'All Submissions', icon: 'FileText' },
-    { path: '/lines', label: 'Lines', icon: 'Rows3' },
-    { path: '/work-orders', label: 'Work Orders', icon: 'ClipboardList' },
-    { path: '/insights', label: 'Insights', icon: 'TrendingUp' },
-    { path: '/setup', label: 'Factory Setup', icon: 'Settings' },
-    { path: '/users', label: 'Users', icon: 'Users' },
-    { path: '/billing-plan', label: 'Billing & Plan', icon: 'CreditCard' },
-    { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
+    { path: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard', group: 'Production' },
+    { path: '/today', label: 'Today Updates', icon: 'CalendarDays', group: 'Production' },
+    { path: '/lines', label: 'Lines', icon: 'Rows3', group: 'Production' },
+    { path: '/week', label: 'This Week', icon: 'Calendar', group: 'Production' },
+    { path: '/submissions', label: 'All Submissions', icon: 'FileText', group: 'Records' },
+    { path: '/work-orders', label: 'Work Orders', icon: 'Receipt', group: 'Records' },
+    { path: '/blockers', label: 'Blockers', icon: 'AlertTriangle', group: 'Records' },
+    { path: '/insights', label: 'Insights', icon: 'TrendingUp', group: 'Analytics' },
+    { path: '/finances', label: 'Finances', icon: 'DollarSign', group: 'Analytics' },
+    { path: '/dispatch/approvals', label: 'Dispatch Approvals', icon: 'CheckSquare', group: 'Dispatch' },
+    { path: '/dispatch/all', label: 'All Dispatches', icon: 'Archive', group: 'Dispatch' },
+    { path: '/setup/knowledge-base', label: 'Knowledge Base', icon: 'BookOpen' },
+    { path: '/setup/chat-analytics', label: 'Chat Analytics', icon: 'BarChart3' },
+    { path: '/setup/error-logs', label: 'Error Logs', icon: 'Bug' },
+    { path: '/preferences', label: 'My Preferences', icon: 'UserCog', bottom: true },
+    { path: '/billing-plan', label: 'Billing & Plan', icon: 'CreditCard', bottom: true },
+    { path: '/setup', label: 'Factory Setup', icon: 'Settings', bottom: true },
+    { path: '/users', label: 'Users', icon: 'Users', bottom: true },
   ],
   storage: [
-    { path: '/storage', label: 'Bin Card Entry', icon: 'Package' },
-    { path: '/storage/history', label: 'All Bin Cards', icon: 'FileText' },
+    { path: '/storage', label: 'Bin Card Entry', icon: 'Warehouse' },
+    { path: '/storage/history', label: 'All Bin Cards', icon: 'Warehouse' },
     { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
   ],
@@ -242,5 +271,31 @@ export const NAV_ITEMS = {
     { path: '/cutting/submissions', label: 'All Submissions', icon: 'FileText' },
     { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
     { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
+  ],
+  sewing: [
+    { path: '/sewing/morning-targets', label: 'Sewing Morning Targets', icon: 'Crosshair' },
+    { path: '/sewing/end-of-day', label: 'Sewing End of Day', icon: 'ClipboardCheck' },
+    { path: '/sewing/my-submissions', label: 'My Submissions', icon: 'FileText' },
+    { path: '/sewing/cutting-handoffs', label: 'Cutting Handoffs', icon: 'Scissors' },
+    { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
+    { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
+  ],
+  finishing: [
+    { path: '/finishing/daily-target', label: 'Daily Target', icon: 'Crosshair' },
+    { path: '/finishing/daily-output', label: 'End of Day Output', icon: 'ClipboardCheck' },
+    { path: '/finishing/my-submissions', label: 'My Submissions', icon: 'FileText' },
+    { path: '/report-blocker', label: 'Report Blocker', icon: 'AlertTriangle' },
+    { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
+  ],
+  buyer: [
+    { path: '/buyer/dashboard', label: 'PO Overview', icon: 'LayoutDashboard' },
+    { path: '/buyer/today', label: 'Today Updates', icon: 'CalendarDays' },
+    { path: '/buyer/submissions', label: 'All Submissions', icon: 'FileText' },
+    { path: '/preferences', label: 'My Preferences', icon: 'UserCog' },
+  ],
+  gate_officer: [
+    { path: '/dispatch/new', label: 'New Dispatch', icon: 'Truck' },
+    { path: '/dispatch/history', label: 'My Dispatches', icon: 'ClipboardList' },
+    { path: '/preferences', label: 'My Preferences', icon: 'UserCog', bottom: true },
   ],
 };

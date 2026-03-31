@@ -2,11 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeaders } from "../_shared/security.ts";
 
 interface LineData {
   id: string;
@@ -33,6 +29,9 @@ interface LinePerformance {
 
 const handler = async (req: Request): Promise<Response> => {
   console.log("send-insights-report function called");
+
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
 
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -76,7 +75,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Calculate date range based on schedule type
     const now = new Date();
-    const days = scheduleType === "weekly" ? 7 : 1;
+    const days = scheduleType === "monthly" ? 30 : scheduleType === "weekly" ? 7 : 1;
     const startDate = new Date(now);
     startDate.setDate(startDate.getDate() - days);
     const startDateStr = startDate.toISOString().split("T")[0];
@@ -716,20 +715,22 @@ const handler = async (req: Request): Promise<Response> => {
     const csvBase64 = btoa(unescape(encodeURIComponent(csvContent)));
 
     // Send email with both attachments
+    const reportTitle = scheduleType === "monthly" ? "Monthly Production Report" : "Weekly Production Report";
+    const reportPeriod = scheduleType === "monthly" ? "30 Days" : "Week";
     const emailResponse = await resend.emails.send({
       from: "Production Reports <onboarding@resend.dev>",
       to: [email],
-      subject: `Weekly Production Report - ${factoryName} - Week of ${startDateStr}`,
+      subject: `${reportTitle} - ${factoryName} - ${reportPeriod} of ${startDateStr}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 30px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Weekly Production Report</h1>
+            <h1 style="color: white; margin: 0; font-size: 24px;">${reportTitle}</h1>
             <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0;">${factoryName}</p>
             <p style="color: rgba(255,255,255,0.8); margin: 4px 0 0 0; font-size: 14px;">${startDateStr} to ${todayStr}</p>
           </div>
           
           <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none;">
-            <h2 style="color: #1e293b; font-size: 18px; margin: 0 0 20px 0;">📊 Weekly Highlights</h2>
+            <h2 style="color: #1e293b; font-size: 18px; margin: 0 0 20px 0;">📊 ${scheduleType === "monthly" ? "Monthly" : "Weekly"} Highlights</h2>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
               <div style="background: white; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">
@@ -774,7 +775,7 @@ const handler = async (req: Request): Promise<Response> => {
             <div style="margin-top: 20px; padding: 16px; background: white; border-radius: 8px; border: 1px solid #e2e8f0;">
               <p style="margin: 0 0 8px 0; font-weight: 600; color: #1e293b;">📎 Attachments</p>
               <p style="margin: 0; color: #64748b; font-size: 14px;">• <strong>PDF Report</strong> - Detailed insights with charts and analysis</p>
-              <p style="margin: 4px 0 0 0; color: #64748b; font-size: 14px;">• <strong>CSV Data</strong> - All submissions for the week</p>
+              <p style="margin: 4px 0 0 0; color: #64748b; font-size: 14px;">• <strong>CSV Data</strong> - All submissions for the ${scheduleType === "monthly" ? "last 30 days" : "week"}</p>
             </div>
           </div>
           
@@ -785,17 +786,17 @@ const handler = async (req: Request): Promise<Response> => {
       `,
       attachments: [
         {
-          filename: `weekly-insights-${startDateStr}-to-${todayStr}.pdf`,
+          filename: `${scheduleType}-insights-${startDateStr}-to-${todayStr}.pdf`,
           content: pdfBase64,
         },
         {
-          filename: `weekly-submissions-${startDateStr}-to-${todayStr}.csv`,
+          filename: `${scheduleType}-submissions-${startDateStr}-to-${todayStr}.csv`,
           content: csvBase64,
         },
       ],
     });
 
-    console.log("Weekly email sent successfully:", emailResponse);
+    console.log(`${scheduleType.charAt(0).toUpperCase() + scheduleType.slice(1)} email sent successfully:`, emailResponse);
 
     if (userId) {
       await supabase

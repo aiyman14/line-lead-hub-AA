@@ -7,12 +7,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import logoSvg from "@/assets/logo.svg";
+import i18n from "@/i18n/config";
+
+const strongPassword = z.string()
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[a-z]/, "Must contain a lowercase letter")
+  .regex(/[A-Z]/, "Must contain an uppercase letter")
+  .regex(/[0-9]/, "Must contain a number");
 
 const resetSchema = z.object({
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: strongPassword,
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
@@ -22,7 +29,7 @@ const resetSchema = z.object({
 export default function ResetPassword() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { toast } = useToast();
+
 
   const hashParams = useMemo(() => {
     const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
@@ -52,6 +59,21 @@ export default function ResetPassword() {
   const [checkingLink, setCheckingLink] = useState(true);
   const [isInvalidLink, setIsInvalidLink] = useState(false);
 
+  // Force English language on password reset page since it doesn't support translations
+  useEffect(() => {
+    if (i18n.language !== 'en') {
+      i18n.changeLanguage('en');
+    }
+    document.documentElement.lang = 'en';
+
+    return () => {
+      const savedLanguage = localStorage.getItem('app-language');
+      if (savedLanguage && savedLanguage !== 'en') {
+        i18n.changeLanguage(savedLanguage);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -79,7 +101,7 @@ export default function ResetPassword() {
 
       const getSessionOnce = async () => {
         const { data } = await supabase.auth.getSession();
-        return data.session;
+        return data?.session ?? null;
       };
 
       let session = await getSessionOnce();
@@ -131,11 +153,7 @@ export default function ResetPassword() {
     if (error) {
       // Invalid/expired links often end up here because there is no valid session.
       setIsInvalidLink(true);
-      toast({
-        variant: "destructive",
-        title: "Unable to reset password",
-        description: "This reset link is invalid or expired. Please request a new one.",
-      });
+      toast.error("Unable to reset password", { description: "This reset link is invalid or expired. Please request a new one." });
       return;
     }
 
@@ -146,10 +164,7 @@ export default function ResetPassword() {
     // Security: sign out after reset so the user must re-authenticate with the new password.
     await supabase.auth.signOut();
 
-    toast({
-      title: "Password updated",
-      description: "Please sign in with your new password.",
-    });
+    toast.success("Password updated", { description: "Please sign in with your new password." });
 
     // Clear hash to avoid re-entering recovery mode.
     window.history.replaceState(null, "", window.location.pathname);
@@ -158,12 +173,12 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background" style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif" }}>
       <div className="gradient-industrial text-sidebar-foreground py-12 px-4">
         <div className="container mx-auto max-w-6xl">
           <div className="flex items-center gap-3 mb-6">
-            <img src={logoSvg} alt="Production Portal" className="h-12 w-12 rounded-xl" />
-            <h1 className="text-2xl font-bold">Production Portal</h1>
+            <img src={logoSvg} alt="ProductionPortal" className="h-12 w-12 rounded-xl" />
+            <h1 className="text-2xl font-bold">ProductionPortal</h1>
           </div>
           <p className="text-lg text-sidebar-foreground/80 max-w-xl">
             Secure password reset.
@@ -229,8 +244,10 @@ export default function ResetPassword() {
                     <Label htmlFor="new-password">New Password</Label>
                     <Input
                       id="new-password"
+                      name="new-password"
                       type="password"
-                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      placeholder="Enter your new password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="h-11"
@@ -243,8 +260,10 @@ export default function ResetPassword() {
                     <Label htmlFor="confirm-new-password">Confirm New Password</Label>
                     <Input
                       id="confirm-new-password"
+                      name="confirm-password"
                       type="password"
-                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      placeholder="Confirm your new password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       className="h-11"

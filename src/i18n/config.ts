@@ -2,10 +2,11 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import en from './locales/en.json';
 import bn from './locales/bn.json';
+import zh from './locales/zh.json';
 
 // Only use saved language if it's a valid option, default to English
 const savedLanguage = localStorage.getItem('app-language');
-const validLanguages = ['en', 'bn'];
+const validLanguages = ['en', 'bn', 'zh'];
 const initialLanguage = savedLanguage && validLanguages.includes(savedLanguage) ? savedLanguage : 'en';
 
 i18n
@@ -14,6 +15,7 @@ i18n
     resources: {
       en: { translation: en },
       bn: { translation: bn },
+      zh: { translation: zh },
     },
     lng: initialLanguage,
     fallbackLng: 'en',

@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { format } from "date-fns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { getTodayInTimezone } from "@/lib/date-utils";
+import { useOfflineSubmission } from "@/hooks/useOfflineSubmission";
+import { useHeadcountCost } from "@/hooks/useHeadcountCost";
+import { EstimatedCostDisplay } from "@/components/EstimatedCostDisplay";
 
 interface Line {
   id: string;
@@ -51,7 +64,9 @@ interface Floor {
 export default function FinishingEndOfDayForm() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { user, profile, isAdminOrHigher } = useAuth();
+  const { user, profile, factory, isAdminOrHigher } = useAuth();
+  const { submit: offlineSubmit } = useOfflineSubmission();
+  const { calculateEstimatedCost } = useHeadcountCost();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -72,6 +87,7 @@ export default function FinishingEndOfDayForm() {
   const [totalCarton, setTotalCarton] = useState("");
   const [averageProduction, setAverageProduction] = useState("");
   const [mPowerActual, setMPowerActual] = useState("");
+  const [otManpowerActual, setOtManpowerActual] = useState("0");
   const [dayHourActual, setDayHourActual] = useState("");
   const [dayOverTimeActual, setDayOverTimeActual] = useState("0");
   const [totalHour, setTotalHour] = useState("");
@@ -84,6 +100,7 @@ export default function FinishingEndOfDayForm() {
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [poSearchOpen, setPoSearchOpen] = useState(false);
 
   const filteredWorkOrders = useMemo(() => {
     if (!selectedLineId) return workOrders;
@@ -149,22 +166,46 @@ export default function FinishingEndOfDayForm() {
   }
 
   function validateForm(): boolean {
-    const newErrors: Record<string, string> = {};
+    const formSchema = z.object({
+      line: z.string().min(1, t("forms.lineRequired")),
+      workOrder: z.string().min(1, t("forms.poRequired")),
+      dayQcPass: z.number().int().min(0, t("forms.dayQcPassRequired")),
+      totalQcPass: z.number().int().min(0, t("forms.totalQcPassRequired")),
+      dayPoly: z.number().int().min(0, t("forms.dayPolyRequired")),
+      totalPoly: z.number().int().min(0, t("forms.totalPolyRequired")),
+      dayCarton: z.number().int().min(0, t("forms.dayCartonRequired")),
+      totalCarton: z.number().int().min(0, t("forms.totalCartonRequired")),
+      mPowerActual: z.number().int().positive(t("forms.mPowerRequired")),
+      otManpowerActual: z.number().int().min(0, t("forms.otManpowerRequired") || "OT Manpower must be 0 or more"),
+      dayHourActual: z.number().min(0, t("forms.dayHoursRequired")),
+      dayOverTimeActual: z.number().min(0, t("forms.otHoursRequired")),
+    });
 
-    if (!selectedLineId) newErrors.line = t("forms.lineRequired");
-    if (!selectedWorkOrderId) newErrors.workOrder = t("forms.poRequired");
-    if (!dayQcPass || parseInt(dayQcPass) < 0) newErrors.dayQcPass = t("forms.dayQcPassRequired");
-    if (!totalQcPass || parseInt(totalQcPass) < 0) newErrors.totalQcPass = t("forms.totalQcPassRequired");
-    if (!dayPoly || parseInt(dayPoly) < 0) newErrors.dayPoly = t("forms.dayPolyRequired");
-    if (!totalPoly || parseInt(totalPoly) < 0) newErrors.totalPoly = t("forms.totalPolyRequired");
-    if (!dayCarton || parseInt(dayCarton) < 0) newErrors.dayCarton = t("forms.dayCartonRequired");
-    if (!totalCarton || parseInt(totalCarton) < 0) newErrors.totalCarton = t("forms.totalCartonRequired");
-    if (!mPowerActual || parseInt(mPowerActual) <= 0) newErrors.mPowerActual = t("forms.mPowerRequired");
-    if (!dayHourActual || parseFloat(dayHourActual) < 0) newErrors.dayHourActual = t("forms.dayHoursRequired");
-    if (dayOverTimeActual === "" || parseFloat(dayOverTimeActual) < 0) newErrors.dayOverTimeActual = t("forms.otHoursRequired");
+    const result = formSchema.safeParse({
+      line: selectedLineId,
+      workOrder: selectedWorkOrderId,
+      dayQcPass: dayQcPass ? parseInt(dayQcPass) : -1,
+      totalQcPass: totalQcPass ? parseInt(totalQcPass) : -1,
+      dayPoly: dayPoly ? parseInt(dayPoly) : -1,
+      totalPoly: totalPoly ? parseInt(totalPoly) : -1,
+      dayCarton: dayCarton ? parseInt(dayCarton) : -1,
+      totalCarton: totalCarton ? parseInt(totalCarton) : -1,
+      mPowerActual: parseInt(mPowerActual) || 0,
+      otManpowerActual: otManpowerActual === "" ? -1 : parseInt(otManpowerActual),
+      dayHourActual: dayHourActual ? parseFloat(dayHourActual) : -1,
+      dayOverTimeActual: dayOverTimeActual === "" ? -1 : parseFloat(dayOverTimeActual),
+    });
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!result.success) {
+      const newErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) newErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(newErrors);
+      return false;
+    }
+    setErrors({});
+    return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -183,9 +224,11 @@ export default function FinishingEndOfDayForm() {
     setSubmitting(true);
 
     try {
+      const estimatedCost = calculateEstimatedCost(parseInt(mPowerActual), parseFloat(dayHourActual));
+
       const insertData = {
         factory_id: profile.factory_id,
-        production_date: format(new Date(), "yyyy-MM-dd"),
+        production_date: getTodayInTimezone(factory?.timezone || "Asia/Dhaka"),
         submitted_by: user.id,
         line_id: selectedLineId,
         work_order_id: selectedWorkOrderId,
@@ -203,26 +246,41 @@ export default function FinishingEndOfDayForm() {
         total_carton: parseInt(totalCarton),
         average_production: averageProduction ? parseInt(averageProduction) : 0,
         m_power_actual: parseInt(mPowerActual),
+        ot_manpower_actual: parseInt(otManpowerActual) || 0,
         day_hour_actual: parseFloat(dayHourActual),
         day_over_time_actual: parseFloat(dayOverTimeActual),
         total_hour: totalHour ? parseFloat(totalHour) : 0,
         total_over_time: totalOverTime ? parseFloat(totalOverTime) : 0,
         remarks: remarks || null,
+        estimated_cost_value: estimatedCost.value,
+        estimated_cost_currency: estimatedCost.value != null ? estimatedCost.currency : null,
       };
 
-      const { error } = await supabase.from("finishing_actuals").insert(insertData as any);
+      const result = await offlineSubmit("finishing_actuals", "finishing_actuals", insertData as Record<string, unknown>, {
+        showSuccessToast: false,
+        showQueuedToast: true,
+      });
 
-      if (error) {
-        if (error.code === "23505") {
+      if (result.queued) {
+        if (isAdminOrHigher()) {
+          navigate("/dashboard");
+        } else {
+          navigate("/my-submissions");
+        }
+        return;
+      }
+
+      if (!result.success) {
+        if (result.error?.includes("duplicate") || result.error?.includes("23505")) {
           toast.error(t("common.submissionFailed"));
         } else {
-          throw error;
+          throw new Error(result.error);
         }
         return;
       }
 
       toast.success(t("common.submissionSuccess"));
-      
+
       if (isAdminOrHigher()) {
         navigate("/dashboard");
       } else {
@@ -279,18 +337,50 @@ export default function FinishingEndOfDayForm() {
 
           <div className="space-y-2">
             <Label>{t("forms.poNumber")} *</Label>
-            <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-              <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                <SelectValue placeholder={t("forms.selectPO")} />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredWorkOrders.map((wo) => (
-                  <SelectItem key={wo.id} value={wo.id}>
-                    {wo.po_number} - {wo.style}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className={`w-full justify-start ${errors.workOrder ? 'border-destructive' : ''}`}
+                >
+                  <Search className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">
+                    {selectedWorkOrderId
+                      ? (() => {
+                          const wo = filteredWorkOrders.find(w => w.id === selectedWorkOrderId);
+                          return wo ? `${wo.po_number} - ${wo.style}` : t("forms.selectPO");
+                        })()
+                      : t("forms.selectPO")}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[350px] p-0" align="start">
+                <Command shouldFilter={true}>
+                  <CommandInput placeholder={t("forms.selectPO")} />
+                  <CommandList>
+                    <CommandEmpty>No PO found.</CommandEmpty>
+                    <CommandGroup>
+                      {filteredWorkOrders.map((wo) => (
+                        <CommandItem
+                          key={wo.id}
+                          value={`${wo.po_number} ${wo.buyer} ${wo.style} ${wo.item || ''}`}
+                          onSelect={() => {
+                            setSelectedWorkOrderId(wo.id);
+                            setPoSearchOpen(false);
+                          }}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{wo.po_number} - {wo.style}</span>
+                            <span className="text-xs text-muted-foreground">{wo.buyer}{wo.item ? ` / ${wo.item}` : ''}</span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
           </div>
         </CardContent>
@@ -449,6 +539,18 @@ export default function FinishingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
+              <Label>{t("forms.otManpowerActual") || "OT Manpower Actual"}</Label>
+              <Input
+                type="number"
+                value={otManpowerActual}
+                onChange={(e) => setOtManpowerActual(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
               <Label>{t("forms.dayHoursActual")} *</Label>
               <Input
                 type="number"
@@ -498,6 +600,8 @@ export default function FinishingEndOfDayForm() {
               placeholder="0"
             />
           </div>
+
+          <EstimatedCostDisplay manpower={mPowerActual} hours={dayHourActual} />
         </CardContent>
       </Card>
 

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Production Portal</string>
-    <string name="title_activity_main">Production Portal</string>
+    <string name="app_name">ProductionPortal</string>
+    <string name="title_activity_main">ProductionPortal</string>
     <string name="package_name">com.woventex.productionportal</string>
     <string name="custom_url_scheme">com.woventex.productionportal</string>
 </resources>

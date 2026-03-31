@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { 
   Loader2, 
   Settings, 
@@ -34,14 +35,49 @@ import {
 import { BLOCKER_IMPACTS, BLOCKER_IMPACT_LABELS, DEFAULT_STAGES, DEFAULT_BLOCKER_TYPES } from "@/lib/constants";
 import { ActiveLinesMeter } from "@/components/ActiveLinesMeter";
 import { useActiveLines } from "@/hooks/useActiveLines";
+import { isNative } from "@/lib/capacitor";
 import { EmailScheduleSettings } from "@/components/insights/EmailScheduleSettings";
+import { EmptyState } from "@/components/EmptyState";
+
+const unitSchema = z.object({
+  code: z.string().min(1, "Code is required").max(20, "Code too long"),
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+});
+
+const floorSchema = z.object({
+  code: z.string().min(1, "Code is required").max(20, "Code too long"),
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+  unit_id: z.string().min(1, "Unit is required"),
+});
+
+const lineSchema = z.object({
+  line_id: z.string().min(1, "Line ID is required").max(20, "Line ID too long"),
+  name: z.string().max(100, "Name too long").optional().nullable(),
+  unit_id: z.string().optional().nullable(),
+  floor_id: z.string().optional().nullable(),
+  target_per_hour: z.number().min(0, "Cannot be negative").max(100000, "Too high").optional().nullable(),
+  target_per_day: z.number().min(0, "Cannot be negative").max(1000000, "Too high").optional().nullable(),
+});
+
+const stageSchema = z.object({
+  code: z.string().min(1, "Code is required").max(20, "Code too long"),
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+  sequence: z.number().min(0, "Cannot be negative").max(1000, "Too high"),
+});
+
+const blockerTypeSchema = z.object({
+  code: z.string().min(1, "Code is required").max(20, "Code too long"),
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+  default_owner: z.string().max(100, "Owner too long").optional().nullable(),
+  default_impact: z.enum(["low", "medium", "high", "critical"]),
+});
 
 // Types
 interface Unit {
   id: string;
   code: string;
   name: string;
-  is_active: boolean;
+  is_active: boolean | null;
 }
 
 interface Floor {
@@ -49,7 +85,7 @@ interface Floor {
   code: string;
   name: string;
   unit_id: string;
-  is_active: boolean;
+  is_active: boolean | null;
 }
 
 interface Line {
@@ -60,7 +96,7 @@ interface Line {
   floor_id: string | null;
   target_per_hour: number | null;
   target_per_day: number | null;
-  is_active: boolean;
+  is_active: boolean | null;
 }
 
 interface Stage {
@@ -68,7 +104,7 @@ interface Stage {
   code: string;
   name: string;
   sequence: number | null;
-  is_active: boolean;
+  is_active: boolean | null;
 }
 
 interface BlockerType {
@@ -77,14 +113,14 @@ interface BlockerType {
   name: string;
   default_owner: string | null;
   default_impact: string | null;
-  is_active: boolean;
+  is_active: boolean | null;
 }
 
 
 export default function FactorySetup() {
   const { profile, isAdminOrHigher, user, factory } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("units");
 
@@ -116,6 +152,7 @@ export default function FactorySetup() {
   const [bulkStartNumber, setBulkStartNumber] = useState(1);
   const [bulkUnitId, setBulkUnitId] = useState('');
   const [bulkFloorId, setBulkFloorId] = useState('');
+  const [bulkLineNamePattern, setBulkLineNamePattern] = useState('Line {n}');
   const [isBulkAdding, setIsBulkAdding] = useState(false);
 
   // Factory creation state
@@ -222,7 +259,7 @@ export default function FactorySetup() {
           error = res.error;
         }
         if (error) throw error;
-        toast({ title: "Created successfully" });
+        toast.success("Created successfully");
       } else {
         let error: any = null;
         if (activeTab === 'units') {
@@ -242,13 +279,13 @@ export default function FactorySetup() {
           error = res.error;
         }
         if (error) throw error;
-        toast({ title: "Updated successfully" });
+        toast.success("Updated successfully");
       }
 
       setIsDialogOpen(false);
       fetchAllData();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     } finally {
       setIsSaving(false);
     }
@@ -284,22 +321,18 @@ export default function FactorySetup() {
         error = res.error;
       }
       if (error) throw error;
-      toast({ title: "Deleted successfully" });
+      toast.success("Deleted successfully");
       fetchAllData();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     }
   }
 
-  async function toggleActive(id: string, currentValue: boolean) {
+  async function toggleActive(id: string, currentValue: boolean | null) {
     try {
       // For lines: check plan limits before activating
       if (activeTab === 'lines' && !currentValue && !canActivateMore) {
-        toast({ 
-          variant: "destructive", 
-          title: "Plan limit reached", 
-          description: "Upgrade your plan to activate more production lines." 
-        });
+        toast.error("Plan limit reached", { description: "Upgrade your plan to activate more production lines." });
         return;
       }
 
@@ -328,13 +361,9 @@ export default function FactorySetup() {
     } catch (error: any) {
       // Check for plan limit error from trigger
       if (error.message?.includes('Plan limit reached') || error.message?.includes('limit')) {
-        toast({ 
-          variant: "destructive", 
-          title: "Plan limit reached",
-          description: "Upgrade your plan to activate more production lines." 
-        });
+        toast.error("Plan limit reached", { description: "Upgrade your plan to activate more production lines." });
       } else {
-        toast({ variant: "destructive", title: "Error", description: error.message });
+        toast.error("Error", { description: error?.message ?? "An error occurred" });
       }
     }
   }
@@ -371,13 +400,41 @@ export default function FactorySetup() {
 
       if (factoryError) throw factoryError;
 
-      // Update user's profile to assign them to the factory
+      // Update user's profile to assign them to the new factory,
+      // clearing stale fields from any previous factory membership.
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ factory_id: factoryId })
+        .update({
+          factory_id: factoryId,
+          department: null,
+          assigned_unit_id: null,
+          assigned_floor_id: null,
+        })
         .eq('id', user.id);
 
       if (profileError) throw profileError;
+
+      // Verify the profile update actually took effect.
+      // Supabase RLS can silently block updates (returns success but 0 rows affected).
+      const { data: verifyProfile } = await supabase
+        .from('profiles')
+        .select('factory_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (verifyProfile?.factory_id !== factoryId) {
+        throw new Error('Failed to assign factory to your profile. Please try again or contact support.');
+      }
+
+      // Remove any leftover roles from previous factories before assigning owner
+      const { error: deleteRolesError } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (deleteRolesError) {
+        console.error('Error clearing old roles (non-fatal):', deleteRolesError);
+      }
 
       // Assign owner role to the user who created the factory
       const { error: roleError } = await supabase
@@ -389,7 +446,8 @@ export default function FactorySetup() {
         });
 
       if (roleError) {
-        console.error('Error assigning owner role:', roleError);
+        // Owner role is critical — throw so the user knows something went wrong
+        throw new Error(`Factory created but failed to assign owner role: ${roleError.message}`);
       }
 
       // Seed default stages
@@ -439,16 +497,38 @@ export default function FactorySetup() {
       }));
       await supabase.from('blocker_impact_options').insert(blockerImpactData);
 
-      toast({ 
-        title: "Factory created!", 
-        description: "Your 14-day free trial has started. Default settings have been added." 
+      // Try to link factory to existing Stripe subscription (if user came from checkout)
+      let subscriptionLinked = false;
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
+
+        if (accessToken) {
+          const { data: linkResult } = await supabase.functions.invoke('link-factory-subscription', {
+            body: { factory_id: factoryId },
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+
+          if (linkResult?.linked) {
+            subscriptionLinked = true;
+            console.log('Factory linked to Stripe subscription:', linkResult);
+          }
+        }
+      } catch (linkError) {
+        console.error('Error linking subscription (non-fatal):', linkError);
+      }
+
+      toast.success("Factory created!", {
+        description: subscriptionLinked
+          ? "Your subscription has been activated. Default settings have been added."
+          : "Your 14-day free trial has started. Default settings have been added."
       });
-      
-      // Reload the page to refresh auth context
-      window.location.reload();
+
+      // Navigate to dashboard (full reload to refresh auth context with new factory)
+      window.location.href = '/dashboard';
     } catch (error: any) {
       console.error('Error creating factory:', error);
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     } finally {
       setIsCreatingFactory(false);
     }
@@ -456,6 +536,17 @@ export default function FactorySetup() {
 
   async function handleBulkAddLines() {
     if (!profile?.factory_id) return;
+
+    // Validate required fields
+    if (!bulkUnitId) {
+      toast.error("Error", { description: "Unit is required" });
+      return;
+    }
+    if (!bulkFloorId) {
+      toast.error("Error", { description: "Floor is required" });
+      return;
+    }
+
     setIsBulkAdding(true);
 
     try {
@@ -466,24 +557,44 @@ export default function FactorySetup() {
       const linesToCreate = Math.min(bulkLineCount, availableSlots);
 
       if (linesToCreate <= 0) {
-        toast({
-          variant: "destructive",
-          title: "Plan limit reached",
-          description: "Upgrade your plan to add more production lines."
-        });
+        toast.error("Plan limit reached", { description: "Upgrade your plan to add more production lines." });
         return;
       }
 
       // Generate line data
       const newLines = [];
+      const hasPlaceholder = /\{n\}|\{number\}/i.test(bulkLineNamePattern);
+
       for (let i = 0; i < linesToCreate; i++) {
         const lineNum = bulkStartNumber + i;
+        let lineName: string;
+
+        if (hasPlaceholder) {
+          // Replace {n} or {number} in the pattern with the line number
+          lineName = bulkLineNamePattern
+            .replace(/\{n\}/gi, lineNum.toString())
+            .replace(/\{number\}/gi, lineNum.toString());
+        } else {
+          // No placeholder found - intelligently insert the number
+          // Check if pattern ends with letter(s) like "Line A" or "LineA"
+          const trailingLettersMatch = bulkLineNamePattern.match(/^(.*?)([A-Za-z]+)$/);
+          if (trailingLettersMatch && trailingLettersMatch[1].trim()) {
+            // Pattern like "Line A" -> "Line 1A", "Line 2A"
+            const prefix = trailingLettersMatch[1].trimEnd();
+            const suffix = trailingLettersMatch[2];
+            lineName = `${prefix} ${lineNum}${suffix}`;
+          } else {
+            // No trailing letters or just letters, append number at end
+            lineName = `${bulkLineNamePattern} ${lineNum}`;
+          }
+        }
+
         newLines.push({
           factory_id: profile.factory_id,
           line_id: `L${lineNum}`,
-          name: `Line ${lineNum}`,
-          unit_id: bulkUnitId || null,
-          floor_id: bulkFloorId || null,
+          name: lineName,
+          unit_id: bulkUnitId,
+          floor_id: bulkFloorId,
           is_active: true,
         });
       }
@@ -491,9 +602,8 @@ export default function FactorySetup() {
       const { error } = await supabase.from('lines').insert(newLines);
       if (error) throw error;
 
-      toast({
-        title: `${linesToCreate} lines created`,
-        description: linesToCreate < bulkLineCount 
+      toast.success(`${linesToCreate} lines created`, {
+        description: linesToCreate < bulkLineCount
           ? `Only ${linesToCreate} lines added due to plan limits.`
           : `Lines L${bulkStartNumber} to L${bulkStartNumber + linesToCreate - 1} created.`
       });
@@ -502,7 +612,7 @@ export default function FactorySetup() {
       fetchAllData();
       refreshLineStatus();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     } finally {
       setIsBulkAdding(false);
     }
@@ -518,9 +628,9 @@ export default function FactorySetup() {
         .eq('id', profile.factory_id);
       
       if (error) throw error;
-      toast({ title: "Storage settings saved" });
+      toast.success("Storage settings saved");
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     } finally {
       setIsSavingStorage(false);
     }
@@ -536,12 +646,12 @@ export default function FactorySetup() {
         .eq('id', profile.factory_id);
       
       if (error) throw error;
-      toast({ title: "Factory name updated" });
+      toast.success("Factory name updated");
       setIsEditingFactoryName(false);
       // Reload to update auth context
       window.location.reload();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+      toast.error("Error", { description: error?.message ?? "An error occurred" });
     } finally {
       setIsSavingFactoryName(false);
     }
@@ -619,35 +729,28 @@ export default function FactorySetup() {
 
   if (!isAdminOrHigher()) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-4">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <AlertTriangle className="h-12 w-12 text-warning mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground text-sm">
-              You need admin permissions to access factory setup.
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/dashboard')}>
-              Go to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title="Access Denied"
+        description="You need admin permissions to access factory setup."
+        iconClassName="text-warning"
+        action={{ label: "Go to Dashboard", onClick: () => navigate('/dashboard') }}
+      />
     );
   }
 
   return (
-    <div className="p-4 lg:p-6">
+    <div className="py-3 md:py-4 lg:py-6 space-y-5 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/setup')}>
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/setup')} className="shrink-0">
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Settings className="h-5 w-5 text-primary" />
+        <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+          <Rows3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         </div>
         <div>
-          <h1 className="text-xl font-bold">Lines, Units, Floors & Storage</h1>
+          <h1 className="text-xl md:text-2xl font-bold">Lines, Units & Floors</h1>
           <p className="text-sm text-muted-foreground">
             Manage production lines and factory structure
           </p>
@@ -655,10 +758,10 @@ export default function FactorySetup() {
       </div>
 
       {/* Factory Name Card */}
-      <Card className="mb-6">
+      <Card className="border-border/50">
         <CardHeader className="flex flex-row items-center justify-between py-4">
           <div className="flex items-center gap-3">
-            <Factory className="h-5 w-5 text-primary" />
+            <Factory className="h-5 w-5 text-muted-foreground" />
             <div>
               <CardTitle className="text-base">Factory Name</CardTitle>
               <CardDescription className="text-xs">
@@ -705,46 +808,38 @@ export default function FactorySetup() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5 mb-6">
-          <TabsTrigger value="units" className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Units</span>
+        <TabsList className="w-full grid grid-cols-3 h-auto p-1 rounded-xl bg-muted/60 border border-border/50 mb-5">
+          <TabsTrigger value="lines" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2.5 rounded-lg data-[state=active]:shadow-sm data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 dark:data-[state=active]:bg-blue-950/40 dark:data-[state=active]:text-blue-300">
+            <Rows3 className="h-3.5 w-3.5" />
+            Lines
           </TabsTrigger>
-          <TabsTrigger value="floors" className="flex items-center gap-2">
-            <Layers className="h-4 w-4" />
-            <span className="hidden sm:inline">Floors</span>
+          <TabsTrigger value="units" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2.5 rounded-lg data-[state=active]:shadow-sm data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 dark:data-[state=active]:bg-blue-950/40 dark:data-[state=active]:text-blue-300">
+            <Building2 className="h-3.5 w-3.5" />
+            Units
           </TabsTrigger>
-          <TabsTrigger value="lines" className="flex items-center gap-2">
-            <Rows3 className="h-4 w-4" />
-            <span className="hidden sm:inline">Lines</span>
-          </TabsTrigger>
-          <TabsTrigger value="stages" className="flex items-center gap-2">
-            <ListOrdered className="h-4 w-4" />
-            <span className="hidden sm:inline">Stages</span>
-          </TabsTrigger>
-          <TabsTrigger value="blockerTypes" className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
-            <span className="hidden sm:inline">Blockers</span>
+          <TabsTrigger value="floors" className="flex items-center justify-center gap-1.5 text-xs sm:text-sm px-2 py-2.5 rounded-lg data-[state=active]:shadow-sm data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 dark:data-[state=active]:bg-blue-950/40 dark:data-[state=active]:text-blue-300">
+            <Layers className="h-3.5 w-3.5" />
+            Floors
           </TabsTrigger>
         </TabsList>
 
         {/* Units Tab */}
         <TabsContent value="units">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+          <Card className="border-border/50">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
-                <CardTitle>Units</CardTitle>
-                <CardDescription>Manage factory units (e.g., Unit A, Unit B)</CardDescription>
+                <CardTitle className="text-base">Units</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Manage factory units (e.g., Unit A, Unit B)</p>
               </div>
               <Button onClick={openCreateDialog} size="sm">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Unit
               </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/50">
                     <TableHead>Code</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Active</TableHead>
@@ -754,18 +849,20 @@ export default function FactorySetup() {
                 <TableBody>
                   {units.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        No units found. Add your first unit.
+                      <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                        <Building2 className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p>No units yet</p>
+                        <p className="text-xs mt-1">Add your first unit to organize your factory</p>
                       </TableCell>
                     </TableRow>
                   ) : (
                     units.map((unit) => (
-                      <TableRow key={unit.id}>
+                      <TableRow key={unit.id} className="hover:bg-muted/50">
                         <TableCell className="font-mono">{unit.code}</TableCell>
                         <TableCell>{unit.name}</TableCell>
                         <TableCell>
                           <Switch
-                            checked={unit.is_active}
+                            checked={unit.is_active ?? true}
                             onCheckedChange={() => toggleActive(unit.id, unit.is_active)}
                           />
                         </TableCell>
@@ -788,21 +885,21 @@ export default function FactorySetup() {
 
         {/* Floors Tab */}
         <TabsContent value="floors">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+          <Card className="border-border/50">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
-                <CardTitle>Floors</CardTitle>
-                <CardDescription>Manage floors within each unit</CardDescription>
+                <CardTitle className="text-base">Floors</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Manage floors within each unit</p>
               </div>
               <Button onClick={openCreateDialog} size="sm">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Floor
               </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/50">
                     <TableHead>Code</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Unit</TableHead>
@@ -813,19 +910,21 @@ export default function FactorySetup() {
                 <TableBody>
                   {floors.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
-                        No floors found. Add your first floor.
+                      <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                        <Layers className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p>No floors yet</p>
+                        <p className="text-xs mt-1">Add floors within your units</p>
                       </TableCell>
                     </TableRow>
                   ) : (
                     floors.map((floor) => (
-                      <TableRow key={floor.id}>
+                      <TableRow key={floor.id} className="hover:bg-muted/50">
                         <TableCell className="font-mono">{floor.code}</TableCell>
                         <TableCell>{floor.name}</TableCell>
                         <TableCell>{units.find(u => u.id === floor.unit_id)?.name || '-'}</TableCell>
                         <TableCell>
                           <Switch
-                            checked={floor.is_active}
+                            checked={floor.is_active ?? true}
                             onCheckedChange={() => toggleActive(floor.id, floor.is_active)}
                           />
                         </TableCell>
@@ -850,14 +949,14 @@ export default function FactorySetup() {
         <TabsContent value="lines">
           {/* Active Lines Meter */}
           <div className="mb-4">
-            <ActiveLinesMeter />
+            <ActiveLinesMeter showUpgrade={!isNative} />
           </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+          <Card className="border-border/50">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
-                <CardTitle>Production Lines</CardTitle>
-                <CardDescription>Manage production lines (e.g., L1, L2, L3)</CardDescription>
+                <CardTitle className="text-base">Production Lines</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Manage production lines (e.g., L1, L2, L3)</p>
               </div>
               <div className="flex gap-2">
                 <Button 
@@ -889,10 +988,10 @@ export default function FactorySetup() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/50">
                     <TableHead>Line ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Unit</TableHead>
@@ -905,8 +1004,10 @@ export default function FactorySetup() {
                 <TableBody>
                   {lines.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
-                        No lines found. Add your first production line.
+                      <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                        <Rows3 className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p>No lines yet</p>
+                        <p className="text-xs mt-1">Add your first production line</p>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -919,7 +1020,7 @@ export default function FactorySetup() {
                         <TableCell>{line.target_per_day?.toLocaleString() || '-'}</TableCell>
                         <TableCell>
                           <Switch
-                            checked={line.is_active}
+                            checked={line.is_active ?? true}
                             onCheckedChange={() => toggleActive(line.id, line.is_active)}
                             disabled={!line.is_active && !canActivateMore}
                             title={!line.is_active && !canActivateMore ? "Plan limit reached" : ""}
@@ -942,168 +1043,8 @@ export default function FactorySetup() {
           </Card>
         </TabsContent>
 
-        {/* Stages Tab */}
-        <TabsContent value="stages">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Production Stages</CardTitle>
-                <CardDescription>Define workflow stages (e.g., Cutting, Sewing, QC)</CardDescription>
-              </div>
-              <Button onClick={openCreateDialog} size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Stage
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Sequence</TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Active</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stages.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
-                        No stages found. Add your first production stage.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    stages.map((stage) => (
-                      <TableRow key={stage.id}>
-                        <TableCell className="font-mono">{stage.sequence}</TableCell>
-                        <TableCell className="font-mono">{stage.code}</TableCell>
-                        <TableCell>{stage.name}</TableCell>
-                        <TableCell>
-                          <Switch
-                            checked={stage.is_active}
-                            onCheckedChange={() => toggleActive(stage.id, stage.is_active)}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(stage)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(stage.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Blocker Types Tab */}
-        <TabsContent value="blockerTypes">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Blocker Types</CardTitle>
-                <CardDescription>Define types of blockers (e.g., Material, Machine)</CardDescription>
-              </div>
-              <Button onClick={openCreateDialog} size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Blocker Type
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Default Owner</TableHead>
-                    <TableHead>Default Impact</TableHead>
-                    <TableHead>Active</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {blockerTypes.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        No blocker types found. Add your first blocker type.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    blockerTypes.map((bt) => (
-                      <TableRow key={bt.id}>
-                        <TableCell className="font-mono">{bt.code}</TableCell>
-                        <TableCell>{bt.name}</TableCell>
-                        <TableCell>{bt.default_owner || '-'}</TableCell>
-                        <TableCell>
-                          {bt.default_impact ? BLOCKER_IMPACT_LABELS[bt.default_impact as keyof typeof BLOCKER_IMPACT_LABELS] : '-'}
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            checked={bt.is_active}
-                            onCheckedChange={() => toggleActive(bt.id, bt.is_active)}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(bt)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(bt.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
       </Tabs>
 
-      {/* Storage Settings Section */}
-      <Card className="mt-6">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Package className="h-5 w-5 text-primary" />
-            <CardTitle className="text-lg">Storage</CardTitle>
-          </div>
-          <CardDescription>Configure storage and inventory settings</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="lowStockThreshold">Low Stock Threshold</Label>
-              <Input
-                id="lowStockThreshold"
-                type="number"
-                min={0}
-                value={lowStockThreshold}
-                onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 0)}
-                placeholder="e.g., 10"
-                className="max-w-[200px]"
-              />
-              <p className="text-xs text-muted-foreground">
-                Items with balance at or below this value will be flagged as low stock
-              </p>
-            </div>
-            <Button 
-              onClick={handleSaveStorageSettings} 
-              disabled={isSavingStorage}
-            >
-              {isSavingStorage && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
@@ -1182,10 +1123,10 @@ export default function FactorySetup() {
           <DialogHeader>
             <DialogTitle>Bulk Add Lines</DialogTitle>
             <DialogDescription>
-              Quickly create multiple production lines at once. Lines will be named numerically (e.g., Line 1, Line 2, etc.)
+              Quickly create multiple production lines at once with custom naming.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1214,11 +1155,22 @@ export default function FactorySetup() {
             </div>
 
             <div className="space-y-2">
-              <Label>Unit (optional)</Label>
-              <Select value={bulkUnitId || "none"} onValueChange={(v) => { setBulkUnitId(v === "none" ? "" : v); setBulkFloorId(''); }}>
+              <Label>Naming Pattern *</Label>
+              <Input
+                value={bulkLineNamePattern}
+                onChange={(e) => setBulkLineNamePattern(e.target.value)}
+                placeholder="e.g., Line {n} or Line{n}A"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use {`{n}`} for custom placement, or enter a label like "Line A" to auto-generate "Line 1A, Line 2A..."
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Unit *</Label>
+              <Select value={bulkUnitId} onValueChange={(v) => { setBulkUnitId(v); setBulkFloorId(''); }}>
                 <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No unit</SelectItem>
                   {units.filter(u => u.is_active).map(u => (
                     <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                   ))}
@@ -1226,29 +1178,44 @@ export default function FactorySetup() {
               </Select>
             </div>
 
-            {bulkUnitId && (
-              <div className="space-y-2">
-                <Label>Floor (optional)</Label>
-                <Select value={bulkFloorId || "none"} onValueChange={(v) => setBulkFloorId(v === "none" ? "" : v)}>
-                  <SelectTrigger><SelectValue placeholder="Select floor" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No floor</SelectItem>
-                    {floors.filter(f => f.is_active && f.unit_id === bulkUnitId).map(f => (
-                      <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label>Floor *</Label>
+              <Select value={bulkFloorId} onValueChange={setBulkFloorId} disabled={!bulkUnitId}>
+                <SelectTrigger><SelectValue placeholder="Select floor" /></SelectTrigger>
+                <SelectContent>
+                  {floors.filter(f => f.is_active && f.unit_id === bulkUnitId).map(f => (
+                    <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {lineStatus && (
-              <div className="bg-muted/50 rounded-lg p-3 text-sm">
+              <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
                 <p className="font-medium">Preview</p>
                 <p className="text-muted-foreground">
                   Will create lines: L{bulkStartNumber} to L{bulkStartNumber + bulkLineCount - 1}
                 </p>
                 <p className="text-muted-foreground">
-                  Available slots: {lineStatus.maxLines !== null 
+                  Names: {(() => {
+                    const hasPlaceholder = /\{n\}|\{number\}/i.test(bulkLineNamePattern);
+                    const generateName = (num: number) => {
+                      if (hasPlaceholder) {
+                        return bulkLineNamePattern.replace(/\{n\}/gi, num.toString()).replace(/\{number\}/gi, num.toString());
+                      }
+                      const trailingLettersMatch = bulkLineNamePattern.match(/^(.*?)([A-Za-z]+)$/);
+                      if (trailingLettersMatch && trailingLettersMatch[1].trim()) {
+                        const prefix = trailingLettersMatch[1].trimEnd();
+                        const suffix = trailingLettersMatch[2];
+                        return `${prefix} ${num}${suffix}`;
+                      }
+                      return `${bulkLineNamePattern} ${num}`;
+                    };
+                    return `${generateName(bulkStartNumber)}, ${generateName(bulkStartNumber + 1)}, ...`;
+                  })()}
+                </p>
+                <p className="text-muted-foreground">
+                  Available slots: {lineStatus.maxLines !== null
                     ? Math.max(0, lineStatus.maxLines - lineStatus.activeCount)
                     : 'Unlimited'}
                 </p>
@@ -1258,12 +1225,15 @@ export default function FactorySetup() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsBulkAddOpen(false)}>Cancel</Button>
-            <Button 
-              onClick={handleBulkAddLines} 
-              disabled={isBulkAdding || bulkLineCount < 1}
+            <Button
+              onClick={handleBulkAddLines}
+              disabled={isBulkAdding || bulkLineCount < 1 || !bulkUnitId || !bulkFloorId || !bulkLineNamePattern.trim()}
             >
-              {isBulkAdding && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create {bulkLineCount} Lines
+              {isBulkAdding ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</>
+              ) : (
+                `Create ${bulkLineCount} Lines`
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1276,22 +1246,42 @@ export default function FactorySetup() {
 function UnitForm({ initialData, onSave, onCancel, isSaving }: { initialData?: Unit, onSave: (data: any) => void, onCancel: () => void, isSaving: boolean }) {
   const [code, setCode] = useState(initialData?.code || '');
   const [name, setName] = useState(initialData?.name || '');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSave = () => {
+    const result = unitSchema.safeParse({ code, name });
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) fieldErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+    onSave(result.data);
+  };
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Code *</Label>
         <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g., UNIT-A" />
+        {errors.code && <p className="text-sm text-destructive">{errors.code}</p>}
       </div>
       <div className="space-y-2">
         <Label>Name *</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Unit Alpha" />
+        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button onClick={() => onSave({ code, name })} disabled={!code || !name || isSaving}>
-          {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+          ) : (
+            'Save'
+          )}
         </Button>
       </DialogFooter>
     </div>
@@ -1302,16 +1292,33 @@ function FloorForm({ initialData, units, onSave, onCancel, isSaving }: { initial
   const [code, setCode] = useState(initialData?.code || '');
   const [name, setName] = useState(initialData?.name || '');
   const [unitId, setUnitId] = useState(initialData?.unit_id || '');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSave = () => {
+    const result = floorSchema.safeParse({ code, name, unit_id: unitId });
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) fieldErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+    onSave(result.data);
+  };
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Code *</Label>
         <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g., 1F" />
+        {errors.code && <p className="text-sm text-destructive">{errors.code}</p>}
       </div>
       <div className="space-y-2">
         <Label>Name *</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., First Floor" />
+        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
       </div>
       <div className="space-y-2">
         <Label>Unit *</Label>
@@ -1323,12 +1330,16 @@ function FloorForm({ initialData, units, onSave, onCancel, isSaving }: { initial
             ))}
           </SelectContent>
         </Select>
+        {errors.unit_id && <p className="text-sm text-destructive">{errors.unit_id}</p>}
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button onClick={() => onSave({ code, name, unit_id: unitId })} disabled={!code || !name || !unitId || isSaving}>
-          {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+          ) : (
+            'Save'
+          )}
         </Button>
       </DialogFooter>
     </div>
@@ -1342,18 +1353,43 @@ function LineForm({ initialData, units, floors, onSave, onCancel, isSaving }: { 
   const [floorId, setFloorId] = useState(initialData?.floor_id || '');
   const [targetPerHour, setTargetPerHour] = useState(initialData?.target_per_hour?.toString() || '');
   const [targetPerDay, setTargetPerDay] = useState(initialData?.target_per_day?.toString() || '');
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const filteredFloors = floors.filter(f => !unitId || f.unit_id === unitId);
+
+  const handleSave = () => {
+    const data = {
+      line_id: lineId,
+      name: name || null,
+      unit_id: unitId || null,
+      floor_id: floorId || null,
+      target_per_hour: targetPerHour ? parseInt(targetPerHour) : null,
+      target_per_day: targetPerDay ? parseInt(targetPerDay) : null,
+    };
+    const result = lineSchema.safeParse(data);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) fieldErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+    onSave(result.data);
+  };
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Line ID *</Label>
         <Input value={lineId} onChange={(e) => setLineId(e.target.value.toUpperCase())} placeholder="e.g., L1" />
+        {errors.line_id && <p className="text-sm text-destructive">{errors.line_id}</p>}
       </div>
       <div className="space-y-2">
         <Label>Name</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Line 1 - Jackets" />
+        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -1383,24 +1419,22 @@ function LineForm({ initialData, units, floors, onSave, onCancel, isSaving }: { 
         <div className="space-y-2">
           <Label>Target/Hour</Label>
           <Input type="number" value={targetPerHour} onChange={(e) => setTargetPerHour(e.target.value)} placeholder="0" />
+          {errors.target_per_hour && <p className="text-sm text-destructive">{errors.target_per_hour}</p>}
         </div>
         <div className="space-y-2">
           <Label>Target/Day</Label>
           <Input type="number" value={targetPerDay} onChange={(e) => setTargetPerDay(e.target.value)} placeholder="0" />
+          {errors.target_per_day && <p className="text-sm text-destructive">{errors.target_per_day}</p>}
         </div>
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button onClick={() => onSave({ 
-          line_id: lineId, 
-          name: name || null, 
-          unit_id: unitId || null, 
-          floor_id: floorId || null,
-          target_per_hour: parseInt(targetPerHour) || null,
-          target_per_day: parseInt(targetPerDay) || null
-        })} disabled={!lineId || isSaving}>
-          {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+          ) : (
+            'Save'
+          )}
         </Button>
       </DialogFooter>
     </div>
@@ -1411,26 +1445,48 @@ function StageForm({ initialData, onSave, onCancel, isSaving }: { initialData?: 
   const [code, setCode] = useState(initialData?.code || '');
   const [name, setName] = useState(initialData?.name || '');
   const [sequence, setSequence] = useState(initialData?.sequence?.toString() || '');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSave = () => {
+    const data = { code, name, sequence: parseInt(sequence) || 0 };
+    const result = stageSchema.safeParse(data);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) fieldErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+    onSave(result.data);
+  };
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Code *</Label>
         <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g., SEW" />
+        {errors.code && <p className="text-sm text-destructive">{errors.code}</p>}
       </div>
       <div className="space-y-2">
         <Label>Name *</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Sewing" />
+        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
       </div>
       <div className="space-y-2">
         <Label>Sequence</Label>
         <Input type="number" value={sequence} onChange={(e) => setSequence(e.target.value)} placeholder="1" />
+        {errors.sequence && <p className="text-sm text-destructive">{errors.sequence}</p>}
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button onClick={() => onSave({ code, name, sequence: parseInt(sequence) || 0 })} disabled={!code || !name || isSaving}>
-          {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+          ) : (
+            'Save'
+          )}
         </Button>
       </DialogFooter>
     </div>
@@ -1442,20 +1498,44 @@ function BlockerTypeForm({ initialData, onSave, onCancel, isSaving }: { initialD
   const [name, setName] = useState(initialData?.name || '');
   const [defaultOwner, setDefaultOwner] = useState(initialData?.default_owner || '');
   const [defaultImpact, setDefaultImpact] = useState(initialData?.default_impact || 'medium');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSave = () => {
+    const data = {
+      code,
+      name,
+      default_owner: defaultOwner || null,
+      default_impact: defaultImpact as "low" | "medium" | "high" | "critical",
+    };
+    const result = blockerTypeSchema.safeParse(data);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) fieldErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+    onSave(result.data);
+  };
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Code *</Label>
         <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g., MATERIAL" />
+        {errors.code && <p className="text-sm text-destructive">{errors.code}</p>}
       </div>
       <div className="space-y-2">
         <Label>Name *</Label>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Material Shortage" />
+        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
       </div>
       <div className="space-y-2">
         <Label>Default Owner</Label>
         <Input value={defaultOwner} onChange={(e) => setDefaultOwner(e.target.value)} placeholder="e.g., Procurement" />
+        {errors.default_owner && <p className="text-sm text-destructive">{errors.default_owner}</p>}
       </div>
       <div className="space-y-2">
         <Label>Default Impact</Label>
@@ -1467,12 +1547,16 @@ function BlockerTypeForm({ initialData, onSave, onCancel, isSaving }: { initialD
             ))}
           </SelectContent>
         </Select>
+        {errors.default_impact && <p className="text-sm text-destructive">{errors.default_impact}</p>}
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button onClick={() => onSave({ code, name, default_owner: defaultOwner || null, default_impact: defaultImpact })} disabled={!code || !name || isSaving}>
-          {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+          ) : (
+            'Save'
+          )}
         </Button>
       </DialogFooter>
     </div>

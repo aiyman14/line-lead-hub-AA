@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { getTodayInTimezone } from "@/lib/date-utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
@@ -16,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { format } from "date-fns";
 import { useTranslation } from "react-i18next";
 
 interface Line {
@@ -55,7 +55,7 @@ interface DropdownOption {
 
 export default function FinishingEndOfDay() {
   const navigate = useNavigate();
-  const { user, profile, isAdminOrHigher } = useAuth();
+  const { user, profile, factory, isAdminOrHigher } = useAuth();
   const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -192,7 +192,7 @@ export default function FinishingEndOfDay() {
     try {
       const insertData = {
         factory_id: profile.factory_id,
-        production_date: format(new Date(), "yyyy-MM-dd"),
+        production_date: getTodayInTimezone(factory?.timezone || "Asia/Dhaka"),
         submitted_by: user.id,
         line_id: selectedLineId,
         work_order_id: selectedWorkOrderId,
@@ -237,7 +237,7 @@ export default function FinishingEndOfDay() {
       }
     } catch (error: any) {
       console.error("Error submitting actuals:", error);
-      toast.error(error.message || t("forms.actualsSubmitError"));
+      toast.error(error?.message || t("forms.actualsSubmitError"));
     } finally {
       setSubmitting(false);
     }
@@ -267,7 +267,7 @@ export default function FinishingEndOfDay() {
         </Button>
         <div>
           <h1 className="text-xl font-bold">{t("forms.finishingEndOfDayTitle")}</h1>
-          <p className="text-sm text-muted-foreground">{new Date().toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p className="text-sm text-muted-foreground">{new Date(getTodayInTimezone(factory?.timezone || "Asia/Dhaka") + "T00:00:00").toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
       </div>
 

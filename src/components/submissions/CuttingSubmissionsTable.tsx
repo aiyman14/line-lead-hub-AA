@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { getTodayInTimezone } from "@/lib/date-utils";
 import { format, subDays } from "date-fns";
 import { toast } from "sonner";
-import { Loader2, Search, Scissors, Package } from "lucide-react";
+import { Search, Scissors, Package, Download, X, TrendingUp, Target } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { TableSkeleton, StatsCardsSkeleton } from "@/components/ui/table-skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,17 +21,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useSortableTable } from "@/hooks/useSortableTable";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
+import { CuttingSubmissionView } from "@/components/CuttingSubmissionView";
+import { EditCuttingTargetModal } from "@/components/EditCuttingTargetModal";
+import { EditCuttingActualModal } from "@/components/EditCuttingActualModal";
 
 interface CuttingSubmission {
   id: string;
   production_date: string;
-  submitted_at: string;
+  submitted_at: string | null;
   line_id: string;
   work_order_id: string;
   buyer: string | null;
@@ -64,9 +68,16 @@ export function CuttingSubmissionsTable({
   searchTerm,
   onSearchChange,
 }: CuttingSubmissionsTableProps) {
+  const { factory, isAdminOrHigher } = useAuth();
+  const isAdmin = isAdminOrHigher();
   const [loading, setLoading] = useState(true);
   const [submissions, setSubmissions] = useState<CuttingSubmission[]>([]);
+  const [targetsMap, setTargetsMap] = useState<Map<string, any>>(new Map());
+  const [actualsMap, setActualsMap] = useState<Map<string, any>>(new Map());
   const [selectedSubmission, setSelectedSubmission] = useState<CuttingSubmission | null>(null);
+  const [editingTarget, setEditingTarget] = useState<any>(null);
+  const [editingActual, setEditingActual] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(25);
   useEffect(() => {
     fetchData();
@@ -94,15 +105,26 @@ export function CuttingSubmissionsTable({
           .lte("production_date", format(endDate, "yyyy-MM-dd")),
       ]);
 
-      const targetsMap = new Map<string, any>();
+      const tgtMap = new Map<string, any>();
       (targetsRes.data || []).forEach(t => {
         const key = `${t.production_date}-${t.line_id}-${t.work_order_id}`;
-        targetsMap.set(key, t);
+        tgtMap.set(key, t);
       });
+      setTargetsMap(tgtMap);
+
+      const actMap = new Map<string, any>();
+      (actualsRes.data || []).forEach(a => {
+        const key = `${a.production_date}-${a.line_id}-${a.work_order_id}`;
+        actMap.set(key, a);
+      });
+      setActualsMap(actMap);
+
+      const matchedTargetKeys = new Set<string>();
 
       const mergedSubmissions: CuttingSubmission[] = (actualsRes.data || []).map(actual => {
         const key = `${actual.production_date}-${actual.line_id}-${actual.work_order_id}`;
-        const target = targetsMap.get(key);
+        const target = tgtMap.get(key);
+        if (target) matchedTargetKeys.add(key);
         return {
           id: actual.id,
           production_date: actual.production_date,
@@ -132,6 +154,43 @@ export function CuttingSubmissionsTable({
         };
       });
 
+      // Include targets that have no matching actuals
+      (targetsRes.data || []).forEach((target: any) => {
+        const key = `${target.production_date}-${target.line_id}-${target.work_order_id}`;
+        if (!matchedTargetKeys.has(key)) {
+          mergedSubmissions.push({
+            id: target.id,
+            production_date: target.production_date,
+            submitted_at: target.submitted_at,
+            line_id: target.line_id,
+            work_order_id: target.work_order_id,
+            buyer: target.work_orders?.buyer || null,
+            style: target.work_orders?.style || null,
+            po_no: target.work_orders?.po_number || null,
+            colour: null,
+            order_qty: target.order_qty || null,
+            man_power: target.man_power || 0,
+            marker_capacity: target.marker_capacity || 0,
+            lay_capacity: target.lay_capacity || 0,
+            cutting_capacity: target.cutting_capacity || 0,
+            under_qty: target.under_qty || null,
+            day_cutting: 0,
+            total_cutting: null,
+            day_input: 0,
+            total_input: null,
+            balance: null,
+            leftover_recorded: null,
+            leftover_quantity: null,
+            leftover_unit: null,
+            lines: target.lines,
+            work_orders: target.work_orders,
+          });
+        }
+      });
+
+      // Sort by production_date descending
+      mergedSubmissions.sort((a, b) => b.production_date.localeCompare(a.production_date));
+
       setSubmissions(mergedSubmissions);
     } catch (error) {
       console.error("Error fetching cutting data:", error);
@@ -151,6 +210,8 @@ export function CuttingSubmissionsTable({
     );
   }, [submissions, searchTerm]);
 
+  const { sortedData, sortConfig, requestSort } = useSortableTable(filteredSubmissions, { column: "production_date", direction: "desc" });
+
   const {
     currentPage,
     totalPages,
@@ -164,9 +225,9 @@ export function CuttingSubmissionsTable({
     canGoPrevious,
     startIndex,
     endIndex,
-  } = usePagination(filteredSubmissions, { pageSize });
+  } = usePagination(sortedData, { pageSize });
   const stats = useMemo(() => {
-    const today = format(new Date(), "yyyy-MM-dd");
+    const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
     const todaySubmissions = submissions.filter(s => s.production_date === today);
     
     // Calculate total leftover fabric in yards
@@ -192,10 +253,60 @@ export function CuttingSubmissionsTable({
     };
   }, [submissions]);
 
+  const allPageSelected = paginatedData.length > 0 && paginatedData.every(s => selectedIds.has(s.id));
+  const somePageSelected = paginatedData.some(s => selectedIds.has(s.id));
+
+  function toggleSelectAll() {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        paginatedData.forEach(s => next.delete(s.id));
+      } else {
+        paginatedData.forEach(s => next.add(s.id));
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectRow(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function exportSelectedCsv() {
+    const rows = sortedData.filter(s => selectedIds.has(s.id));
+    const headers = ["Date", "Line", "PO", "Buyer", "Order Qty", "Target", "Day Cutting", "Total Cutting", "Day Input", "Total Input", "Balance"];
+    const csvRows = [headers.join(",")];
+    rows.forEach(s => {
+      csvRows.push([
+        s.production_date,
+        `"${s.lines?.name || s.lines?.line_id || ""}"`,
+        `"${s.work_orders?.po_number || s.po_no || ""}"`,
+        `"${s.work_orders?.buyer || s.buyer || ""}"`,
+        s.order_qty ?? "",
+        s.cutting_capacity || "",
+        s.day_cutting,
+        s.total_cutting ?? "",
+        s.day_input,
+        s.total_input ?? "",
+        s.balance ?? "",
+      ].join(","));
+    });
+    const { downloadFile } = await import("@/lib/capacitor");
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    await downloadFile(blob, `cutting-submissions-${format(new Date(), "yyyy-MM-dd")}.csv`);
+    toast.success(`Exported ${rows.length} rows`);
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <div className="space-y-4">
+        <StatsCardsSkeleton count={4} />
+        <TableSkeleton columns={9} rows={6} headers={["Date", "Line", "PO", "Buyer", "Order Qty", "Target", "Actual", "%", "Balance"]} />
       </div>
     );
   }
@@ -204,31 +315,48 @@ export function CuttingSubmissionsTable({
     <div className="space-y-4">
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground uppercase">Total Submissions</p>
-            <p className="text-xl font-bold">{stats.total}</p>
+        <Card className="bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 dark:from-emerald-950/40 dark:via-card dark:to-emerald-950/20 border-emerald-200/60 dark:border-emerald-800/40 hover:shadow-lg transition-all duration-300">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 shadow-md shadow-emerald-500/20 flex items-center justify-center">
+                <Scissors className="h-3.5 w-3.5 text-white" />
+              </div>
+              <p className="text-[11px] text-muted-foreground font-medium">Submissions</p>
+            </div>
+            <div className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{stats.total}</div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-amber-500">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground uppercase flex items-center gap-1">
-              <Package className="h-3 w-3" />
-              Left Over Fabric
-            </p>
-            <p className="text-xl font-bold">{stats.totalLeftoverYards.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">yards</span></p>
+        <Card className="bg-gradient-to-br from-amber-50 via-white to-amber-50/50 dark:from-amber-950/40 dark:via-card dark:to-amber-950/20 border-amber-200/60 dark:border-amber-800/40 hover:shadow-lg transition-all duration-300">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 shadow-md shadow-amber-500/20 flex items-center justify-center">
+                <Package className="h-3.5 w-3.5 text-white" />
+              </div>
+              <p className="text-[11px] text-muted-foreground font-medium">Left Over Fabric</p>
+            </div>
+            <div className="text-xl font-bold text-amber-700 dark:text-amber-300 font-mono tabular-nums">{stats.totalLeftoverYards.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})} <span className="text-sm font-normal text-muted-foreground">yards</span></div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-green-500">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground uppercase">Total Cutting</p>
-            <p className="text-xl font-bold">{stats.totalCutting.toLocaleString()}</p>
+        <Card className="bg-gradient-to-br from-green-50 via-white to-green-50/50 dark:from-green-950/40 dark:via-card dark:to-green-950/20 border-green-200/60 dark:border-green-800/40 hover:shadow-lg transition-all duration-300">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-green-500 to-teal-600 shadow-md shadow-green-500/20 flex items-center justify-center">
+                <TrendingUp className="h-3.5 w-3.5 text-white" />
+              </div>
+              <p className="text-[11px] text-muted-foreground font-medium">Total Cutting</p>
+            </div>
+            <div className="text-xl font-bold text-green-700 dark:text-green-300 font-mono tabular-nums">{stats.totalCutting.toLocaleString()}</div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-blue-500">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground uppercase">Total Input</p>
-            <p className="text-xl font-bold">{stats.totalInput.toLocaleString()}</p>
+        <Card className="bg-gradient-to-br from-blue-50 via-white to-blue-50/50 dark:from-blue-950/40 dark:via-card dark:to-blue-950/20 border-blue-200/60 dark:border-blue-800/40 hover:shadow-lg transition-all duration-300">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-500/20 flex items-center justify-center">
+                <Target className="h-3.5 w-3.5 text-white" />
+              </div>
+              <p className="text-[11px] text-muted-foreground font-medium">Total Input</p>
+            </div>
+            <div className="text-xl font-bold text-blue-700 dark:text-blue-300 font-mono tabular-nums">{stats.totalInput.toLocaleString()}</div>
           </CardContent>
         </Card>
       </div>
@@ -254,24 +382,46 @@ export function CuttingSubmissionsTable({
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border-b">
+              <span className="text-sm font-medium">{selectedIds.size} selected</span>
+              <Button variant="outline" size="sm" onClick={exportSelectedCsv}>
+                <Download className="h-3.5 w-3.5 mr-1" />
+                Export CSV
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                <X className="h-3.5 w-3.5 mr-1" />
+                Clear
+              </Button>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead>Date</TableHead>
-                  <TableHead>Line</TableHead>
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={allPageSelected}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Select all"
+                      {...(somePageSelected && !allPageSelected ? { "data-state": "indeterminate" } : {})}
+                    />
+                  </TableHead>
+                  <SortableTableHead column="production_date" sortConfig={sortConfig} onSort={requestSort}>Date</SortableTableHead>
+                  <SortableTableHead column="lines.name" sortConfig={sortConfig} onSort={requestSort}>Line</SortableTableHead>
                   <TableHead>PO</TableHead>
-                  <TableHead className="text-right">Order Qty</TableHead>
-                  <TableHead className="text-right">Target</TableHead>
-                  <TableHead className="text-right">Actual</TableHead>
+                  <SortableTableHead column="work_orders.buyer" sortConfig={sortConfig} onSort={requestSort}>Buyer</SortableTableHead>
+                  <SortableTableHead column="order_qty" sortConfig={sortConfig} onSort={requestSort} className="text-right">Order Qty</SortableTableHead>
+                  <SortableTableHead column="cutting_capacity" sortConfig={sortConfig} onSort={requestSort} className="text-right">Target</SortableTableHead>
+                  <SortableTableHead column="day_cutting" sortConfig={sortConfig} onSort={requestSort} className="text-right">Actual</SortableTableHead>
                   <TableHead className="text-right">%</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
+                  <SortableTableHead column="balance" sortConfig={sortConfig} onSort={requestSort} className="text-right">Balance</SortableTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       No cutting submissions found
                     </TableCell>
                   </TableRow>
@@ -281,9 +431,16 @@ export function CuttingSubmissionsTable({
                     return (
                       <TableRow
                         key={s.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={`cursor-pointer hover:bg-muted/50 ${selectedIds.has(s.id) ? "bg-primary/5" : ""}`}
                         onClick={() => setSelectedSubmission(s)}
                       >
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedIds.has(s.id)}
+                            onCheckedChange={() => toggleSelectRow(s.id)}
+                            aria-label={`Select row`}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono text-sm">
                           {format(new Date(s.production_date), "MMM d")}
                         </TableCell>
@@ -291,6 +448,7 @@ export function CuttingSubmissionsTable({
                           <Badge variant="outline">{s.lines?.name || s.lines?.line_id || "—"}</Badge>
                         </TableCell>
                         <TableCell>{s.work_orders?.po_number || s.po_no || "—"}</TableCell>
+                        <TableCell>{s.work_orders?.buyer || s.buyer || "—"}</TableCell>
                         <TableCell className="text-right">{s.order_qty?.toLocaleString() || "—"}</TableCell>
                         <TableCell className="text-right font-mono text-muted-foreground">
                           {s.cutting_capacity > 0 ? s.cutting_capacity.toLocaleString() : "—"}
@@ -333,65 +491,101 @@ export function CuttingSubmissionsTable({
       </Card>
 
       {/* Detail Modal */}
-      <Dialog open={!!selectedSubmission} onOpenChange={() => setSelectedSubmission(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Scissors className="h-5 w-5" />
-              Cutting Details
-            </DialogTitle>
-          </DialogHeader>
-          {selectedSubmission && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Date</p>
-                  <p className="font-medium">{format(new Date(selectedSubmission.production_date), "MMM d, yyyy")}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Line</p>
-                  <p className="font-medium">{selectedSubmission.lines?.name || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">PO Number</p>
-                  <p className="font-medium">{selectedSubmission.work_orders?.po_number || selectedSubmission.po_no || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">Buyer</p>
-                  <p className="font-medium">{selectedSubmission.work_orders?.buyer || selectedSubmission.buyer || "—"}</p>
-                </div>
-              </div>
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium mb-3">Production Data</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Day Cutting</p>
-                    <p className="font-medium text-lg">{selectedSubmission.day_cutting}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Total Cutting</p>
-                    <p className="font-medium text-lg text-primary">{selectedSubmission.total_cutting?.toLocaleString() || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Day Input</p>
-                    <p className="font-medium text-lg">{selectedSubmission.day_input}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Total Input</p>
-                    <p className="font-medium text-lg">{selectedSubmission.total_input?.toLocaleString() || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Balance</p>
-                    <p className={`font-medium text-lg ${selectedSubmission.balance && selectedSubmission.balance < 0 ? "text-destructive" : ""}`}>
-                      {selectedSubmission.balance?.toLocaleString() || "—"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {(() => {
+        if (!selectedSubmission) return null;
+        const key = `${selectedSubmission.production_date}-${selectedSubmission.line_id}-${selectedSubmission.work_order_id}`;
+        const rawTarget = targetsMap.get(key);
+        const rawActual = actualsMap.get(key);
+        const lineName = selectedSubmission.lines?.name || selectedSubmission.lines?.line_id || "—";
+        const buyer = selectedSubmission.work_orders?.buyer || selectedSubmission.buyer || null;
+        const style = selectedSubmission.work_orders?.style || selectedSubmission.style || null;
+        const poNumber = selectedSubmission.work_orders?.po_number || selectedSubmission.po_no || null;
+
+        return (
+          <CuttingSubmissionView
+            target={rawTarget ? {
+              id: rawTarget.id,
+              production_date: rawTarget.production_date,
+              line_name: rawTarget.lines?.name || rawTarget.lines?.line_id || lineName,
+              buyer: rawTarget.work_orders?.buyer || rawTarget.buyer || buyer,
+              style: rawTarget.work_orders?.style || rawTarget.style || style,
+              po_number: rawTarget.work_orders?.po_number || rawTarget.po_no || poNumber,
+              colour: rawTarget.colour || null,
+              order_qty: rawTarget.order_qty || selectedSubmission.order_qty,
+              submitted_at: rawTarget.submitted_at,
+              man_power: rawTarget.man_power,
+              marker_capacity: rawTarget.marker_capacity,
+              lay_capacity: rawTarget.lay_capacity,
+              cutting_capacity: rawTarget.cutting_capacity,
+              under_qty: rawTarget.under_qty,
+              day_cutting: rawTarget.day_cutting,
+              day_input: rawTarget.day_input,
+              ot_hours_planned: rawTarget.ot_hours_planned ?? null,
+              ot_manpower_planned: rawTarget.ot_manpower_planned ?? null,
+              hours_planned: rawTarget.hours_planned ?? null,
+              target_per_hour: rawTarget.target_per_hour ?? null,
+            } : null}
+            actual={rawActual ? {
+              id: rawActual.id,
+              production_date: rawActual.production_date,
+              line_name: rawActual.lines?.name || rawActual.lines?.line_id || lineName,
+              buyer: rawActual.work_orders?.buyer || rawActual.buyer || buyer,
+              style: rawActual.work_orders?.style || rawActual.style || style,
+              po_number: rawActual.work_orders?.po_number || rawActual.po_no || poNumber,
+              colour: rawActual.colour || null,
+              order_qty: rawActual.order_qty || selectedSubmission.order_qty,
+              submitted_at: rawActual.submitted_at,
+              man_power: rawActual.man_power,
+              marker_capacity: rawActual.marker_capacity,
+              lay_capacity: rawActual.lay_capacity,
+              cutting_capacity: rawActual.cutting_capacity,
+              under_qty: rawActual.under_qty,
+              day_cutting: rawActual.day_cutting,
+              day_input: rawActual.day_input,
+              total_cutting: rawActual.total_cutting,
+              total_input: rawActual.total_input,
+              balance: rawActual.balance,
+              ot_hours_actual: rawActual.ot_hours_actual ?? null,
+              ot_manpower_actual: rawActual.ot_manpower_actual ?? null,
+              hours_actual: rawActual.hours_actual ?? null,
+              actual_per_hour: rawActual.actual_per_hour ?? null,
+              leftover_recorded: rawActual.leftover_recorded,
+              leftover_type: rawActual.leftover_type,
+              leftover_unit: rawActual.leftover_unit,
+              leftover_quantity: rawActual.leftover_quantity,
+              leftover_notes: rawActual.leftover_notes,
+              leftover_location: rawActual.leftover_location,
+              leftover_photo_urls: rawActual.leftover_photo_urls,
+            } : null}
+            open={!!selectedSubmission}
+            onOpenChange={(open) => !open && setSelectedSubmission(null)}
+            onEditTarget={isAdmin && rawTarget ? () => {
+              setEditingTarget(rawTarget);
+              setSelectedSubmission(null);
+            } : undefined}
+            onEditActual={isAdmin && rawActual ? () => {
+              setEditingActual(rawActual);
+              setSelectedSubmission(null);
+            } : undefined}
+            onDeleteTarget={isAdmin && rawTarget ? () => fetchData() : undefined}
+            onDeleteActual={isAdmin && rawActual ? () => fetchData() : undefined}
+          />
+        );
+      })()}
+
+      {/* Cutting Edit Modals */}
+      <EditCuttingTargetModal
+        target={editingTarget}
+        open={!!editingTarget}
+        onOpenChange={(open) => !open && setEditingTarget(null)}
+        onSaved={fetchData}
+      />
+      <EditCuttingActualModal
+        submission={editingActual}
+        open={!!editingActual}
+        onOpenChange={(open) => !open && setEditingActual(null)}
+        onSaved={fetchData}
+      />
     </div>
   );
 }

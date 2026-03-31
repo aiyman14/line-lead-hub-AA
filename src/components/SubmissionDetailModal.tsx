@@ -1,13 +1,17 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Clock, Factory, Package, AlertTriangle, User, CalendarDays, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Clock, Package, Scissors, Warehouse, AlertTriangle, User, CalendarDays, Pencil, Trash2, Loader2 } from "lucide-react";
+import { SewingMachine } from "@/components/icons/SewingMachine";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { EditSubmissionModal } from "./EditSubmissionModal";
+import { formatDate, formatDateTimeInTimezone } from "@/lib/date-utils";
+import { useHeadcountCost } from "@/hooks/useHeadcountCost";
 
 interface SewingSubmission {
   id: string;
@@ -21,9 +25,13 @@ interface SewingSubmission {
   manpower: number | null;
   reject_qty: number | null;
   rework_qty: number | null;
+  stage_name?: string | null;
   stage_progress: number | null;
+  next_milestone?: string | null;
   ot_hours: number | null;
   ot_manpower: number | null;
+  estimated_cost_value: number | null;
+  estimated_cost_currency: string | null;
   has_blocker: boolean;
   blocker_description: string | null;
   blocker_impact: string | null;
@@ -58,6 +66,9 @@ interface FinishingSubmission {
   total_hour: number | null;
   day_carton: number | null;
   total_carton: number | null;
+  ot_manpower_actual: number | null;
+  estimated_cost_value: number | null;
+  estimated_cost_currency: string | null;
   remarks: string | null;
   has_blocker: boolean;
   blocker_description: string | null;
@@ -79,25 +90,20 @@ interface SubmissionDetailModalProps {
 }
 
 export function SubmissionDetailModal({ submission, open, onOpenChange, onDeleted, onUpdated }: SubmissionDetailModalProps) {
-  const { isAdminOrHigher } = useAuth();
+  const { t } = useTranslation();
+  const { isAdminOrHigher, factory } = useAuth();
+  const { calculateEstimatedCost, getCurrencySymbol, isConfigured: costConfigured } = useHeadcountCost();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  if (!submission) return null;
-
+  // Helper to format datetime in factory timezone
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
+    const timezone = factory?.timezone || "Asia/Dhaka";
+    return formatDateTimeInTimezone(dateString, timezone);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      dateStyle: 'medium',
-    });
-  };
+  if (!submission) return null;
 
   const isSewing = submission.type === 'sewing';
   const isAdmin = isAdminOrHigher();
@@ -113,13 +119,13 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onDelete
 
       if (error) throw error;
 
-      toast.success("Submission deleted successfully");
+      toast.success(t('modals.submissionDeletedSuccess'));
       setDeleteDialogOpen(false);
       onOpenChange(false);
       onDeleted?.();
     } catch (error: any) {
       console.error('Error deleting submission:', error);
-      toast.error(error.message || "Failed to delete submission");
+      toast.error(error?.message || t('modals.failedToDeleteSubmission'));
     } finally {
       setDeleting(false);
     }
@@ -136,10 +142,10 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onDelete
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {isSewing ? (
-                <Factory className="h-5 w-5 text-primary" />
+              {submission.type === 'sewing' ? (
+                <SewingMachine className="h-5 w-5 text-primary" />
               ) : (
-                <Package className="h-5 w-5 text-info" />
+                <Package className="h-5 w-5 text-violet-600" />
               )}
               {submission.line_name}
               <StatusBadge variant={submission.type} size="sm">{submission.type}</StatusBadge>
@@ -162,33 +168,33 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onDelete
             {/* Order Info */}
             {submission.po_number && (
               <div className="p-3 bg-muted/50 rounded-lg space-y-2">
-                <p className="text-sm font-medium">Order Details</p>
+                <p className="text-sm font-medium">{t('modals.orderDetails')}</p>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
-                    <span className="text-muted-foreground">PO: </span>
+                    <span className="text-muted-foreground">{t('modals.poNumber')}: </span>
                     <span className="font-mono">{submission.po_number}</span>
                   </div>
                   {isSewing && (submission as SewingSubmission).buyer && (
                     <div>
-                      <span className="text-muted-foreground">Buyer: </span>
+                      <span className="text-muted-foreground">{t('modals.buyer')}: </span>
                       <span>{(submission as SewingSubmission).buyer}</span>
                     </div>
                   )}
                   {!isSewing && (submission as FinishingSubmission).buyer_name && (
                     <div>
-                      <span className="text-muted-foreground">Buyer: </span>
+                      <span className="text-muted-foreground">{t('modals.buyer')}: </span>
                       <span>{(submission as FinishingSubmission).buyer_name}</span>
                     </div>
                   )}
                   {isSewing && (submission as SewingSubmission).style && (
                     <div>
-                      <span className="text-muted-foreground">Style: </span>
+                      <span className="text-muted-foreground">{t('modals.style')}: </span>
                       <span>{(submission as SewingSubmission).style}</span>
                     </div>
                   )}
                   {!isSewing && (submission as FinishingSubmission).style_no && (
                     <div>
-                      <span className="text-muted-foreground">Style: </span>
+                      <span className="text-muted-foreground">{t('modals.style')}: </span>
                       <span>{(submission as FinishingSubmission).style_no}</span>
                     </div>
                   )}
@@ -204,35 +210,52 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onDelete
 
             {/* Production Metrics */}
             <div>
-              <p className="text-sm font-medium mb-2">Production Metrics</p>
+              <p className="text-sm font-medium mb-2">{t('modals.productionMetrics')}</p>
               <div className="grid grid-cols-2 gap-3">
                 {isSewing ? (
                   <>
-                    <MetricCard label="Output" value={(submission as SewingSubmission).output_qty} />
-                    <MetricCard label="Target" value={(submission as SewingSubmission).target_qty} />
-                    <MetricCard label="Manpower" value={(submission as SewingSubmission).manpower} />
-                    <MetricCard label="Progress" value={(submission as SewingSubmission).stage_progress} suffix="%" />
-                    <MetricCard label="Reject" value={(submission as SewingSubmission).reject_qty} />
-                    <MetricCard label="Rework" value={(submission as SewingSubmission).rework_qty} />
-                    <MetricCard label="OT Hours" value={(submission as SewingSubmission).ot_hours} />
-                    <MetricCard label="OT Manpower" value={(submission as SewingSubmission).ot_manpower} />
+                    {((submission as SewingSubmission).stage_name || (submission as SewingSubmission).next_milestone) && (
+                      <div className="col-span-2 p-2 bg-primary/10 rounded-lg flex gap-6">
+                        {(submission as SewingSubmission).stage_name && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">{t('modals.plannedStage')}</p>
+                            <p className="font-semibold">{(submission as SewingSubmission).stage_name}</p>
+                          </div>
+                        )}
+                        {(submission as SewingSubmission).next_milestone && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">{t('modals.nextMilestone')}</p>
+                            <p className="font-semibold">{(submission as SewingSubmission).next_milestone}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <MetricCard label={t('modals.output')} value={(submission as SewingSubmission).output_qty} />
+                    <MetricCard label={t('modals.target')} value={(submission as SewingSubmission).target_qty} />
+                    <MetricCard label={t('modals.manpower')} value={(submission as SewingSubmission).manpower} />
+                    <MetricCard label={t('modals.progress')} value={(submission as SewingSubmission).stage_progress} suffix="%" />
+                    <MetricCard label={t('modals.reject')} value={(submission as SewingSubmission).reject_qty} />
+                    <MetricCard label={t('modals.rework')} value={(submission as SewingSubmission).rework_qty} />
+                    <MetricCard label={t('modals.otHoursActual')} value={(submission as SewingSubmission).ot_hours} />
+                    <MetricCard label={t('modals.otManpowerActual')} value={(submission as SewingSubmission).ot_manpower} />
                   </>
                 ) : (
                   <>
-                    <MetricCard label="M Power" value={(submission as FinishingSubmission).m_power} />
-                    <MetricCard label="Per Hour Target" value={(submission as FinishingSubmission).per_hour_target} />
-                    <MetricCard label="Day QC Pass" value={(submission as FinishingSubmission).day_qc_pass} />
-                    <MetricCard label="Total QC Pass" value={(submission as FinishingSubmission).total_qc_pass} />
-                    <MetricCard label="Day Poly" value={(submission as FinishingSubmission).day_poly} />
-                    <MetricCard label="Total Poly" value={(submission as FinishingSubmission).total_poly} />
-                    <MetricCard label="Avg Production" value={(submission as FinishingSubmission).average_production} />
-                    <MetricCard label="Day OT" value={(submission as FinishingSubmission).day_over_time} />
-                    <MetricCard label="Total OT" value={(submission as FinishingSubmission).total_over_time} />
-                    <MetricCard label="Day Hour" value={(submission as FinishingSubmission).day_hour} />
-                    <MetricCard label="Total Hour" value={(submission as FinishingSubmission).total_hour} />
-                    <MetricCard label="Day Carton" value={(submission as FinishingSubmission).day_carton} />
-                    <MetricCard label="Total Carton" value={(submission as FinishingSubmission).total_carton} />
-                    <MetricCard label="Order Qty" value={(submission as FinishingSubmission).order_quantity} />
+                    <MetricCard label={t('modals.mPower')} value={(submission as FinishingSubmission).m_power} />
+                    <MetricCard label={t('modals.perHourTarget')} value={(submission as FinishingSubmission).per_hour_target} />
+                    <MetricCard label={t('modals.dayQcPass')} value={(submission as FinishingSubmission).day_qc_pass} />
+                    <MetricCard label={t('modals.totalQcPass')} value={(submission as FinishingSubmission).total_qc_pass} />
+                    <MetricCard label={t('modals.dayPoly')} value={(submission as FinishingSubmission).day_poly} />
+                    <MetricCard label={t('modals.totalPoly')} value={(submission as FinishingSubmission).total_poly} />
+                    <MetricCard label={t('modals.avgProduction')} value={(submission as FinishingSubmission).average_production} />
+                    <MetricCard label={t('modals.dayOT')} value={(submission as FinishingSubmission).day_over_time} />
+                    <MetricCard label={t('modals.totalOT')} value={(submission as FinishingSubmission).total_over_time} />
+                    <MetricCard label={t('modals.dayHour')} value={(submission as FinishingSubmission).day_hour} />
+                    <MetricCard label={t('modals.totalHour')} value={(submission as FinishingSubmission).total_hour} />
+                    <MetricCard label={t('modals.dayCarton')} value={(submission as FinishingSubmission).day_carton} />
+                    <MetricCard label={t('modals.totalCarton')} value={(submission as FinishingSubmission).total_carton} />
+                    <MetricCard label={t('modals.otManpowerActual')} value={(submission as FinishingSubmission).ot_manpower_actual} />
+                    <MetricCard label={t('modals.orderQty')} value={(submission as FinishingSubmission).order_quantity} />
                   </>
                 )}
               </div>
@@ -248,7 +271,7 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onDelete
               }`}>
                 <div className="flex items-center gap-2 mb-2">
                   <AlertTriangle className="h-4 w-4 text-warning" />
-                  <span className="font-medium text-sm">Blocker</span>
+                  <span className="font-medium text-sm">{t('modals.blocker')}</span>
                   {submission.blocker_impact && (
                     <StatusBadge variant={submission.blocker_impact as any} size="sm">
                       {submission.blocker_impact}
@@ -260,20 +283,88 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onDelete
                     </StatusBadge>
                   )}
                 </div>
-                <p className="text-sm mb-2">{submission.blocker_description || 'No description'}</p>
+                <p className="text-sm mb-2">{submission.blocker_description || t('modals.noDescription')}</p>
                 {submission.blocker_owner && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <User className="h-3 w-3" />
-                    Owner: {submission.blocker_owner}
+                    {t('modals.owner')}: {submission.blocker_owner}
                   </p>
                 )}
               </div>
             )}
 
+            {/* Cost Estimate */}
+            {(() => {
+              const fmt = (v: number, sym: string) => `${sym}${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              let regularCost: number | null = null;
+              let otCost: number | null = null;
+              let currency = 'BDT';
+              let isLive = false;
+
+              if (isSewing) {
+                const s = submission as SewingSubmission;
+                if (s.estimated_cost_value != null) {
+                  regularCost = s.estimated_cost_value;
+                  currency = s.estimated_cost_currency || 'BDT';
+                } else if (costConfigured) {
+                  const live = calculateEstimatedCost(s.manpower, s.ot_hours);
+                  if (live.value != null) { regularCost = live.value; currency = live.currency; isLive = true; }
+                }
+                if (costConfigured && s.ot_hours && s.ot_manpower) {
+                  const ot = calculateEstimatedCost(s.ot_manpower, s.ot_hours);
+                  if (ot.value != null) otCost = ot.value;
+                }
+              } else {
+                const f = submission as FinishingSubmission;
+                if (f.estimated_cost_value != null) {
+                  regularCost = f.estimated_cost_value;
+                  currency = f.estimated_cost_currency || 'BDT';
+                } else if (costConfigured) {
+                  const live = calculateEstimatedCost(f.m_power, f.day_hour);
+                  if (live.value != null) { regularCost = live.value; currency = live.currency; isLive = true; }
+                }
+                if (costConfigured && f.day_over_time && f.ot_manpower_actual) {
+                  const ot = calculateEstimatedCost(f.ot_manpower_actual, f.day_over_time);
+                  if (ot.value != null) otCost = ot.value;
+                }
+              }
+
+              if (regularCost == null && otCost == null) return null;
+
+              const sym = currency === 'USD' ? '$' : '৳';
+              return (
+                <div className="p-3 rounded-lg border border-primary/20 bg-primary/5">
+                  <p className="text-sm font-medium mb-2">
+                    Cost Estimate{isLive ? ' (current rate)' : ''}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {regularCost != null && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Regular Cost</p>
+                        <p className="font-mono font-semibold">{fmt(regularCost, sym)} {currency}</p>
+                      </div>
+                    )}
+                    {otCost != null && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">OT Cost</p>
+                        <p className="font-mono font-semibold">{fmt(otCost, sym)} {currency}</p>
+                      </div>
+                    )}
+                  </div>
+                  {regularCost != null && otCost != null && (
+                    <div className="mt-2 pt-2 border-t border-primary/10">
+                      <p className="text-xs text-muted-foreground">Total Cost</p>
+                      <p className="font-mono font-semibold text-lg">{fmt(regularCost + otCost, sym)} {currency}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Notes/Remarks */}
             {(isSewing ? (submission as SewingSubmission).notes : (submission as FinishingSubmission).remarks) && (
               <div className="p-3 bg-muted/50 rounded-lg">
-                <p className="text-sm font-medium mb-1">Notes</p>
+                <p className="text-sm font-medium mb-1">{t('modals.notes')}</p>
                 <p className="text-sm text-muted-foreground">
                   {isSewing ? (submission as SewingSubmission).notes : (submission as FinishingSubmission).remarks}
                 </p>
@@ -286,11 +377,11 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onDelete
             <DialogFooter className="mt-4 pt-4 border-t">
               <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
                 <Pencil className="h-4 w-4 mr-1" />
-                Edit
+                {t('modals.edit')}
               </Button>
               <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)}>
                 <Trash2 className="h-4 w-4 mr-1" />
-                Delete
+                {t('modals.delete')}
               </Button>
             </DialogFooter>
           )}
@@ -301,21 +392,23 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onDelete
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Submission</AlertDialogTitle>
+            <AlertDialogTitle>{t('modals.deleteSubmission')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this {isSewing ? 'sewing' : 'finishing'} submission? 
-              This action cannot be undone.
+              {t('modals.deleteSubmissionTypeConfirm', { type: isSewing ? t('forms.sewing') : t('forms.finishing') })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t('modals.cancel')}</AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleDelete} 
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Delete
+              {deleting ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('modals.deleting')}</>
+              ) : (
+                t('modals.delete')
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

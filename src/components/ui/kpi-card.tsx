@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 interface KPICardProps {
   title: string;
-  value: string | number;
+  value: React.ReactNode;
   subtitle?: string;
   icon?: LucideIcon;
   trend?: {

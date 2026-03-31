@@ -53,32 +53,53 @@ export function LineDrillDown({ lineId, lineName, factoryId, startDate, endDate,
     setLoading(true);
 
     try {
-      const { data: sewingData } = await supabase
-        .from('production_updates_sewing')
-        .select('*')
-        .eq('factory_id', factoryId)
-        .eq('line_id', lineId)
-        .gte('production_date', startDate)
-        .lte('production_date', endDate)
-        .order('production_date', { ascending: true });
+      const [actualsRes, targetsRes] = await Promise.all([
+        supabase
+          .from('sewing_actuals')
+          .select('production_date, good_today, manpower_actual, has_blocker')
+          .eq('factory_id', factoryId)
+          .eq('line_id', lineId)
+          .gte('production_date', startDate)
+          .lte('production_date', endDate)
+          .order('production_date', { ascending: true }),
+        supabase
+          .from('sewing_targets')
+          .select('production_date, per_hour_target')
+          .eq('factory_id', factoryId)
+          .eq('line_id', lineId)
+          .gte('production_date', startDate)
+          .lte('production_date', endDate),
+      ]);
+
+      const sewingActuals = actualsRes.data || [];
+      const sewingTargets = targetsRes.data || [];
 
       const dailyMap = new Map<string, DailyLineData>();
 
-      sewingData?.forEach(u => {
-        const existing = dailyMap.get(u.production_date) || {
-          date: u.production_date,
-          displayDate: new Date(u.production_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          output: 0,
-          target: 0,
-          efficiency: 0,
-          manpower: 0,
-          blockers: 0,
-        };
-        existing.output += u.output_qty || 0;
-        existing.target += u.target_qty || 0;
-        existing.manpower += u.manpower || 0;
+      const getOrCreate = (date: string) => dailyMap.get(date) || {
+        date,
+        displayDate: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        output: 0,
+        target: 0,
+        efficiency: 0,
+        manpower: 0,
+        blockers: 0,
+      };
+
+      sewingActuals.forEach(u => {
+        const existing = getOrCreate(u.production_date);
+        existing.output += u.good_today || 0;
+        existing.manpower += u.manpower_actual || 0;
         if (u.has_blocker) existing.blockers += 1;
         dailyMap.set(u.production_date, existing);
+      });
+
+      // Only include targets for dates that have matching actuals
+      const actualDates = new Set(sewingActuals.map(u => u.production_date));
+      sewingTargets.filter(t => actualDates.has(t.production_date)).forEach(t => {
+        const existing = getOrCreate(t.production_date);
+        existing.target += (t.per_hour_target || 0) * 8;
+        dailyMap.set(t.production_date, existing);
       });
 
       const dailyDataArray = Array.from(dailyMap.values()).map(d => ({

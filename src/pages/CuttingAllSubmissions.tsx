@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { format, subDays, isToday, parseISO } from "date-fns";
+import { format, subDays, parseISO } from "date-fns";
+import { getTodayInTimezone, isTodayInTimezone } from "@/lib/date-utils";
 import { toast } from "sonner";
-import { Loader2, Download, RefreshCw, Scissors, Target, ClipboardCheck, Pencil, Package, Trash2 } from "lucide-react";
+import { Loader2, Download, RefreshCw, Scissors, Target, ClipboardCheck, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,9 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { EditCuttingActualModal } from "@/components/EditCuttingActualModal";
-import { CuttingDetailModal } from "@/components/CuttingDetailModal";
-import { useEditPermission } from "@/hooks/useEditPermission";
+import { CuttingSubmissionView } from "@/components/CuttingSubmissionView";
 
 interface CuttingTarget {
   id: string;
@@ -40,6 +40,10 @@ interface CuttingTarget {
   under_qty: number | null;
   day_cutting: number;
   day_input: number;
+  hours_planned: number | null;
+  ot_hours_planned: number | null;
+  ot_manpower_planned: number | null;
+  target_per_hour: number | null;
   lines?: { line_id: string; name: string | null };
   work_orders?: { po_number: string; buyer: string; style: string };
 }
@@ -72,6 +76,10 @@ interface CuttingActual {
   leftover_notes: string | null;
   leftover_location: string | null;
   leftover_photo_urls: string[] | null;
+  ot_hours_actual: number | null;
+  ot_manpower_actual: number | null;
+  hours_actual: number | null;
+  actual_per_hour: number | null;
   lines?: { line_id: string; name: string | null };
   work_orders?: { po_number: string; buyer: string; style: string };
 }
@@ -83,18 +91,17 @@ interface Line {
 }
 
 export default function CuttingAllSubmissions() {
-  const { profile } = useAuth();
-  const { canEditSubmission } = useEditPermission();
+  const { profile, factory } = useAuth();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [targets, setTargets] = useState<CuttingTarget[]>([]);
   const [actuals, setActuals] = useState<CuttingActual[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
   const [activeTab, setActiveTab] = useState("actuals");
-  
+
   // Modals
   const [selectedTarget, setSelectedTarget] = useState<CuttingTarget | null>(null);
   const [selectedActual, setSelectedActual] = useState<CuttingActual | null>(null);
-  const [editingActual, setEditingActual] = useState<any>(null);
 
   // Filters
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
@@ -239,7 +246,7 @@ export default function CuttingAllSubmissions() {
   }
 
   const stats = useMemo(() => {
-    const today = format(new Date(), "yyyy-MM-dd");
+    const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
     const todayTargets = targets.filter(s => s.production_date === today);
     const todayActuals = actuals.filter(s => s.production_date === today);
     return {
@@ -286,14 +293,10 @@ export default function CuttingAllSubmissions() {
     downloadCSV(csv, `cutting-${activeTab}-${dateFrom}-to-${dateTo}.csv`);
   }
 
-  function downloadCSV(csv: string, filename: string) {
+  async function downloadCSV(csv: string, filename: string) {
+    const { downloadFile } = await import("@/lib/capacitor");
     const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadFile(blob, filename);
   }
 
   if (loading) {
@@ -305,108 +308,88 @@ export default function CuttingAllSubmissions() {
   }
 
   return (
-    <div className="container py-4 px-4 pb-8 space-y-6">
+    <div className="py-3 md:py-4 lg:py-6 space-y-5 md:space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Scissors className="h-5 w-5 text-primary" />
+          <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+            <Scissors className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">All Cutting Submissions</h1>
-            <p className="text-sm text-muted-foreground">View targets and actuals</p>
+            <h1 className="text-xl md:text-2xl font-bold">{t('cutting.allCuttingSubmissions')}</h1>
+            <p className="text-sm text-muted-foreground">{t('cutting.viewTargetsAndActuals')}</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => fetchData()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {t('cutting.refresh')}
           </Button>
           <Button variant="outline" size="sm" onClick={exportToCSV}>
             <Download className="h-4 w-4 mr-2" />
-            Export
+            {t('cutting.export')}
           </Button>
         </div>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label>From Date</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>To Date</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Line</Label>
-              <Select value={selectedLine} onValueChange={setSelectedLine}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Lines" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Lines</SelectItem>
-                  {lines.map(l => (
-                    <SelectItem key={l.id} value={l.id}>{l.name || l.line_id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>PO Number</Label>
-              <Select value={selectedPO} onValueChange={setSelectedPO}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All POs" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All POs</SelectItem>
-                  {uniquePOs.map(po => (
-                    <SelectItem key={po} value={po}>{po}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">{t('cutting.from')}</Label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">{t('cutting.to')}</Label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">{t('cutting.line')}</Label>
+          <Select value={selectedLine} onValueChange={setSelectedLine}>
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder={t('cutting.allLines')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('cutting.allLines')}</SelectItem>
+              {lines.map(l => (
+                <SelectItem key={l.id} value={l.id}>{l.name || l.line_id}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">{t('cutting.po')}</Label>
+          <Select value={selectedPO} onValueChange={setSelectedPO}>
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder={t('cutting.allPOs')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('cutting.allPOs')}</SelectItem>
+              {uniquePOs.map(po => (
+                <SelectItem key={po} value={po}>{po}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-l-4 border-l-primary">
-          <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Targets Today</p>
-            <p className="text-2xl font-bold">{stats.targetsToday}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-success">
-          <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Actuals Today</p>
-            <p className="text-2xl font-bold">{stats.actualsToday}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-info">
-          <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Target Cutting</p>
-            <p className="text-2xl font-bold">{stats.targetCuttingToday.toLocaleString()}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-warning">
-          <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Actual Cutting</p>
-            <p className="text-2xl font-bold">{stats.actualCuttingToday.toLocaleString()}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="relative overflow-hidden rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50 via-white to-green-50/50 dark:from-emerald-950/40 dark:via-card dark:to-green-950/20 p-4 transition-all duration-300 hover:shadow-lg">
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-emerald-600/70 dark:text-emerald-400/70">{t('cutting.targetsToday')}</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-emerald-900 dark:text-emerald-100 mt-1">{stats.targetsToday}</p>
+        </div>
+        <div className="relative overflow-hidden rounded-xl border border-blue-200/60 dark:border-blue-800/40 bg-gradient-to-br from-blue-50 via-white to-blue-50/50 dark:from-blue-950/40 dark:via-card dark:to-blue-950/20 p-4 transition-all duration-300 hover:shadow-lg">
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-blue-600/70 dark:text-blue-400/70">{t('cutting.actualsToday')}</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-blue-900 dark:text-blue-100 mt-1">{stats.actualsToday}</p>
+        </div>
+        <div className="relative overflow-hidden rounded-xl border border-indigo-200/60 dark:border-indigo-800/40 bg-gradient-to-br from-indigo-50 via-white to-indigo-50/50 dark:from-indigo-950/40 dark:via-card dark:to-indigo-950/20 p-4 transition-all duration-300 hover:shadow-lg">
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-indigo-600/70 dark:text-indigo-400/70">{t('cutting.targetDailyOutput')}</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-indigo-900 dark:text-indigo-100 mt-1">{stats.targetCuttingToday.toLocaleString()}</p>
+        </div>
+        <div className="relative overflow-hidden rounded-xl border border-amber-200/60 dark:border-amber-800/40 bg-gradient-to-br from-amber-50 via-white to-orange-50/50 dark:from-amber-950/40 dark:via-card dark:to-orange-950/20 p-4 transition-all duration-300 hover:shadow-lg">
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-amber-600/70 dark:text-amber-400/70">{t('cutting.actualDailyOutput')}</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-amber-900 dark:text-amber-100 mt-1">{stats.actualCuttingToday.toLocaleString()}</p>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -414,15 +397,15 @@ export default function CuttingAllSubmissions() {
         <TabsList className="grid w-full grid-cols-3 max-w-lg">
           <TabsTrigger value="targets" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
-            Targets ({filteredTargets.length})
+            {t('cutting.targets')} ({filteredTargets.length})
           </TabsTrigger>
           <TabsTrigger value="actuals" className="flex items-center gap-2">
             <ClipboardCheck className="h-4 w-4" />
-            Actuals ({filteredActuals.length})
+            {t('cutting.actuals')} ({filteredActuals.length})
           </TabsTrigger>
           <TabsTrigger value="leftover" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
-            Left Over ({leftoverByPO.length})
+            {t('cutting.leftOvers')} ({leftoverByPO.length})
           </TabsTrigger>
         </TabsList>
 
@@ -446,9 +429,9 @@ export default function CuttingAllSubmissions() {
                     <div className="flex items-center justify-between">
                       <Badge variant="outline" className="bg-primary/10">
                         <Target className="h-3 w-3 mr-1" />
-                        Target
+                        {t('cutting.target')}
                       </Badge>
-                      {isToday(parseISO(target.production_date)) && (
+                      {isTodayInTimezone(target.production_date, factory?.timezone || "Asia/Dhaka") && (
                         <Badge variant="secondary" className="text-xs">Today</Badge>
                       )}
                     </div>
@@ -459,19 +442,19 @@ export default function CuttingAllSubmissions() {
                   <CardContent>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Date:</span>
+                        <span className="text-muted-foreground">{t('cutting.date')}:</span>
                         <span className="font-medium">{format(parseISO(target.production_date), "MMM d, yyyy")}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">PO:</span>
+                        <span className="text-muted-foreground">{t('cutting.po')}:</span>
                         <span className="font-medium">{target.work_orders?.po_number || target.po_no || "—"}</span>
                       </div>
                       <div className="flex justify-between border-t pt-2 mt-2">
-                        <span className="text-muted-foreground">Day Cutting:</span>
+                        <span className="text-muted-foreground">{t('cutting.dayCutting')}:</span>
                         <span className="font-bold text-primary">{target.day_cutting?.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Day Input:</span>
+                        <span className="text-muted-foreground">{t('cutting.dayInput')}:</span>
                         <span className="font-bold text-success">{target.day_input?.toLocaleString()}</span>
                       </div>
                     </div>
@@ -492,46 +475,21 @@ export default function CuttingAllSubmissions() {
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredActuals.map((actual) => {
-                const editCheck = canEditSubmission(actual.production_date);
-                return (
-                  <Card 
-                    key={actual.id} 
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => setSelectedActual(actual)}
-                  >
+              {filteredActuals.map((actual) => (
+                <Card
+                  key={actual.id}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => setSelectedActual(actual)}
+                >
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <Badge variant="outline" className="bg-success/10 text-success">
                           <ClipboardCheck className="h-3 w-3 mr-1" />
-                          Actual
+                          {t('cutting.actual')}
                         </Badge>
-                        <div className="flex items-center gap-2">
-                          {isToday(parseISO(actual.production_date)) && (
-                            <Badge variant="secondary" className="text-xs">Today</Badge>
-                          )}
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  disabled={!editCheck.canEdit}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingActual(actual);
-                                  }}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {editCheck.canEdit ? "Edit submission" : editCheck.reason}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
+                        {isTodayInTimezone(actual.production_date, factory?.timezone || "Asia/Dhaka") && (
+                          <Badge variant="secondary" className="text-xs">Today</Badge>
+                        )}
                       </div>
                       <CardTitle className="text-base mt-2">
                         {actual.lines?.name || actual.lines?.line_id || "—"}
@@ -540,23 +498,23 @@ export default function CuttingAllSubmissions() {
                     <CardContent>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Date:</span>
+                          <span className="text-muted-foreground">{t('cutting.date')}:</span>
                           <span className="font-medium">{format(parseISO(actual.production_date), "MMM d, yyyy")}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">PO:</span>
+                          <span className="text-muted-foreground">{t('cutting.po')}:</span>
                           <span className="font-medium">{actual.work_orders?.po_number || actual.po_no || "—"}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Day Cutting:</span>
+                          <span className="text-muted-foreground">{t('cutting.dayCutting')}:</span>
                           <span className="font-bold">{actual.day_cutting?.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Day Input:</span>
+                          <span className="text-muted-foreground">{t('cutting.dayInput')}:</span>
                           <span className="font-bold text-success">{actual.day_input?.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between border-t pt-2 mt-2">
-                          <span className="text-muted-foreground">Balance:</span>
+                          <span className="text-muted-foreground">{t('cutting.balance')}:</span>
                           <span className={`font-bold ${actual.balance && actual.balance < 0 ? 'text-destructive' : ''}`}>
                             {actual.balance?.toLocaleString() || "—"}
                           </span>
@@ -565,15 +523,14 @@ export default function CuttingAllSubmissions() {
                           <div className="flex items-center gap-2 pt-2 mt-2 border-t">
                             <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
                               <Package className="h-3 w-3 mr-1" />
-                              Left Over: {actual.leftover_quantity} {actual.leftover_unit}
+                              {t('cutting.leftOvers')}: {actual.leftover_quantity} {actual.leftover_unit}
                             </Badge>
                           </div>
                         )}
                       </div>
                     </CardContent>
                   </Card>
-                );
-              })}
+                ))}
             </div>
           )}
         </TabsContent>
@@ -595,12 +552,12 @@ export default function CuttingAllSubmissions() {
                       <div className="flex items-center gap-3">
                         <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
                           <Package className="h-3 w-3 mr-1" />
-                          Left Over
+                          {t('cutting.leftOvers')}
                         </Badge>
                         <CardTitle className="text-base">{poData.po_number}</CardTitle>
                       </div>
                       <Badge className="bg-amber-500 text-white">
-                        Total: {poData.totalQuantity} {poData.unit}
+                        Total: {poData.totalQuantity.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})} {poData.unit}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -610,9 +567,10 @@ export default function CuttingAllSubmissions() {
                   <CardContent>
                     <div className="space-y-3">
                       {poData.entries.map((entry) => (
-                        <div 
-                          key={entry.id} 
-                          className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                        <div
+                          key={entry.id}
+                          className="flex items-center justify-between p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                          onClick={() => setSelectedActual(entry)}
                         >
                           <div className="flex-1">
                             <div className="flex items-center gap-2 text-sm">
@@ -652,7 +610,10 @@ export default function CuttingAllSubmissions() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                  onClick={() => markLeftoverAsUsed(entry.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    markLeftoverAsUsed(entry.id);
+                                  }}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -674,174 +635,143 @@ export default function CuttingAllSubmissions() {
       </Tabs>
 
       {/* Target Detail Modal */}
-      {selectedTarget && (
-        <CuttingTargetDetailModal
-          target={selectedTarget}
-          open={!!selectedTarget}
-          onOpenChange={(open) => !open && setSelectedTarget(null)}
-        />
-      )}
+      {selectedTarget && (() => {
+        const matchingActual = actuals.find(a =>
+          a.production_date === selectedTarget.production_date &&
+          a.line_id === selectedTarget.line_id &&
+          a.work_order_id === selectedTarget.work_order_id
+        );
+        return (
+          <CuttingSubmissionView
+            target={{
+              id: selectedTarget.id,
+              production_date: selectedTarget.production_date,
+              line_name: selectedTarget.lines?.name || selectedTarget.lines?.line_id || "—",
+              buyer: selectedTarget.work_orders?.buyer || selectedTarget.buyer,
+              style: selectedTarget.work_orders?.style || selectedTarget.style,
+              po_number: selectedTarget.work_orders?.po_number || selectedTarget.po_no,
+              colour: selectedTarget.colour,
+              order_qty: selectedTarget.order_qty,
+              submitted_at: selectedTarget.submitted_at,
+              man_power: selectedTarget.man_power,
+              marker_capacity: selectedTarget.marker_capacity,
+              lay_capacity: selectedTarget.lay_capacity,
+              cutting_capacity: selectedTarget.cutting_capacity,
+              under_qty: selectedTarget.under_qty,
+              day_cutting: selectedTarget.day_cutting,
+              day_input: selectedTarget.day_input,
+              ot_hours_planned: selectedTarget.ot_hours_planned ?? null,
+              ot_manpower_planned: selectedTarget.ot_manpower_planned ?? null,
+              hours_planned: selectedTarget.hours_planned ?? null,
+              target_per_hour: selectedTarget.target_per_hour ?? null,
+            }}
+            actual={matchingActual ? {
+              id: matchingActual.id,
+              production_date: matchingActual.production_date,
+              line_name: matchingActual.lines?.name || matchingActual.lines?.line_id || "—",
+              buyer: matchingActual.work_orders?.buyer || matchingActual.buyer,
+              style: matchingActual.work_orders?.style || matchingActual.style,
+              po_number: matchingActual.work_orders?.po_number || matchingActual.po_no,
+              colour: matchingActual.colour,
+              order_qty: matchingActual.order_qty,
+              submitted_at: matchingActual.submitted_at,
+              man_power: matchingActual.man_power,
+              marker_capacity: matchingActual.marker_capacity,
+              lay_capacity: matchingActual.lay_capacity,
+              cutting_capacity: matchingActual.cutting_capacity,
+              under_qty: matchingActual.under_qty,
+              day_cutting: matchingActual.day_cutting,
+              day_input: matchingActual.day_input,
+              total_cutting: matchingActual.total_cutting,
+              total_input: matchingActual.total_input,
+              balance: matchingActual.balance,
+              ot_hours_actual: matchingActual.ot_hours_actual,
+              ot_manpower_actual: matchingActual.ot_manpower_actual,
+              hours_actual: matchingActual.hours_actual ?? null,
+              actual_per_hour: matchingActual.actual_per_hour ?? null,
+              leftover_recorded: matchingActual.leftover_recorded,
+              leftover_type: matchingActual.leftover_type,
+              leftover_unit: matchingActual.leftover_unit,
+              leftover_quantity: matchingActual.leftover_quantity,
+              leftover_notes: matchingActual.leftover_notes,
+              leftover_location: matchingActual.leftover_location,
+              leftover_photo_urls: matchingActual.leftover_photo_urls,
+            } : null}
+            open={!!selectedTarget}
+            onOpenChange={(open) => !open && setSelectedTarget(null)}
+          />
+        );
+      })()}
 
       {/* Actual Detail Modal */}
-      {selectedActual && (
-        <CuttingDetailModal
-          cutting={{
-            id: selectedActual.id,
-            production_date: selectedActual.production_date,
-            line_name: selectedActual.lines?.name || selectedActual.lines?.line_id || "—",
-            buyer: selectedActual.work_orders?.buyer || selectedActual.buyer,
-            style: selectedActual.work_orders?.style || selectedActual.style,
-            po_number: selectedActual.work_orders?.po_number || selectedActual.po_no,
-            colour: selectedActual.colour,
-            order_qty: selectedActual.order_qty,
-            man_power: selectedActual.man_power,
-            marker_capacity: selectedActual.marker_capacity,
-            lay_capacity: selectedActual.lay_capacity,
-            cutting_capacity: selectedActual.cutting_capacity,
-            under_qty: selectedActual.under_qty,
-            day_cutting: selectedActual.day_cutting,
-            total_cutting: selectedActual.total_cutting,
-            day_input: selectedActual.day_input,
-            total_input: selectedActual.total_input,
-            balance: selectedActual.balance,
-            submitted_at: selectedActual.submitted_at,
-            leftover_recorded: selectedActual.leftover_recorded,
-            leftover_type: selectedActual.leftover_type,
-            leftover_unit: selectedActual.leftover_unit,
-            leftover_quantity: selectedActual.leftover_quantity,
-            leftover_notes: selectedActual.leftover_notes,
-            leftover_location: selectedActual.leftover_location,
-          }}
-          open={!!selectedActual}
-          onOpenChange={(open) => !open && setSelectedActual(null)}
-        />
-      )}
-
-      {/* Edit Actual Modal */}
-      <EditCuttingActualModal
-        submission={editingActual}
-        open={!!editingActual}
-        onOpenChange={(open) => !open && setEditingActual(null)}
-        onSaved={fetchData}
-      />
+      {selectedActual && (() => {
+        const matchingTarget = targets.find(t =>
+          t.production_date === selectedActual.production_date &&
+          t.line_id === selectedActual.line_id &&
+          t.work_order_id === selectedActual.work_order_id
+        );
+        return (
+          <CuttingSubmissionView
+            target={matchingTarget ? {
+              id: matchingTarget.id,
+              production_date: matchingTarget.production_date,
+              line_name: matchingTarget.lines?.name || matchingTarget.lines?.line_id || "—",
+              buyer: matchingTarget.work_orders?.buyer || matchingTarget.buyer,
+              style: matchingTarget.work_orders?.style || matchingTarget.style,
+              po_number: matchingTarget.work_orders?.po_number || matchingTarget.po_no,
+              colour: matchingTarget.colour,
+              order_qty: matchingTarget.order_qty,
+              submitted_at: matchingTarget.submitted_at,
+              man_power: matchingTarget.man_power,
+              marker_capacity: matchingTarget.marker_capacity,
+              lay_capacity: matchingTarget.lay_capacity,
+              cutting_capacity: matchingTarget.cutting_capacity,
+              under_qty: matchingTarget.under_qty,
+              day_cutting: matchingTarget.day_cutting,
+              day_input: matchingTarget.day_input,
+              ot_hours_planned: matchingTarget.ot_hours_planned ?? null,
+              ot_manpower_planned: matchingTarget.ot_manpower_planned ?? null,
+              hours_planned: matchingTarget.hours_planned ?? null,
+              target_per_hour: matchingTarget.target_per_hour ?? null,
+            } : null}
+            actual={{
+              id: selectedActual.id,
+              production_date: selectedActual.production_date,
+              line_name: selectedActual.lines?.name || selectedActual.lines?.line_id || "—",
+              buyer: selectedActual.work_orders?.buyer || selectedActual.buyer,
+              style: selectedActual.work_orders?.style || selectedActual.style,
+              po_number: selectedActual.work_orders?.po_number || selectedActual.po_no,
+              colour: selectedActual.colour,
+              order_qty: selectedActual.order_qty,
+              submitted_at: selectedActual.submitted_at,
+              man_power: selectedActual.man_power,
+              marker_capacity: selectedActual.marker_capacity,
+              lay_capacity: selectedActual.lay_capacity,
+              cutting_capacity: selectedActual.cutting_capacity,
+              under_qty: selectedActual.under_qty,
+              day_cutting: selectedActual.day_cutting,
+              day_input: selectedActual.day_input,
+              total_cutting: selectedActual.total_cutting,
+              total_input: selectedActual.total_input,
+              balance: selectedActual.balance,
+              ot_hours_actual: selectedActual.ot_hours_actual,
+              ot_manpower_actual: selectedActual.ot_manpower_actual,
+              hours_actual: selectedActual.hours_actual ?? null,
+              actual_per_hour: selectedActual.actual_per_hour ?? null,
+              leftover_recorded: selectedActual.leftover_recorded,
+              leftover_type: selectedActual.leftover_type,
+              leftover_unit: selectedActual.leftover_unit,
+              leftover_quantity: selectedActual.leftover_quantity,
+              leftover_notes: selectedActual.leftover_notes,
+              leftover_location: selectedActual.leftover_location,
+              leftover_photo_urls: selectedActual.leftover_photo_urls,
+            }}
+            open={!!selectedActual}
+            onOpenChange={(open) => !open && setSelectedActual(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
 
-// Target Detail Modal Component
-function CuttingTargetDetailModal({ 
-  target, 
-  open, 
-  onOpenChange 
-}: { 
-  target: CuttingTarget; 
-  open: boolean; 
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <div
-      className={`fixed inset-0 z-50 ${open ? 'flex' : 'hidden'} items-center justify-center`}
-      onClick={() => onOpenChange(false)}
-    >
-      <div className="fixed inset-0 bg-black/50" />
-      <div 
-        className="relative bg-background rounded-lg shadow-lg max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-6">
-            <Target className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Target Details</h2>
-          </div>
-
-          <div className="space-y-6">
-            {/* Basic Info */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Date</p>
-                <p className="font-semibold">{format(parseISO(target.production_date), "MMM d, yyyy")}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Line</p>
-                <p className="font-semibold">{target.lines?.name || target.lines?.line_id || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Buyer</p>
-                <p className="font-semibold">{target.work_orders?.buyer || target.buyer || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Style</p>
-                <p className="font-semibold">{target.work_orders?.style || target.style || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">PO Number</p>
-                <p className="font-semibold">{target.work_orders?.po_number || target.po_no || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Order Qty</p>
-                <p className="font-semibold">{target.order_qty?.toLocaleString() || "—"}</p>
-              </div>
-            </div>
-
-            {/* Target Capacities */}
-            <div>
-              <h4 className="font-semibold text-sm mb-3">Target Capacities</h4>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Man Power:</span>
-                  <span className="font-medium">{target.man_power?.toLocaleString() || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Marker Capacity:</span>
-                  <span className="font-medium">{target.marker_capacity?.toLocaleString() || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Lay Capacity:</span>
-                  <span className="font-medium">{target.lay_capacity?.toLocaleString() || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Cutting Capacity:</span>
-                  <span className="font-medium">{target.cutting_capacity?.toLocaleString() || 0}</span>
-                </div>
-                <div className="flex justify-between col-span-2">
-                  <span className="text-muted-foreground">Under Qty:</span>
-                  <span className="font-medium">{target.under_qty?.toLocaleString() || 0}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Target Daily Actuals */}
-            <div>
-              <h4 className="font-semibold text-sm mb-3">Target Daily Actuals</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-primary/10 rounded-lg p-4 text-center">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Day Cutting</p>
-                  <p className="text-2xl font-bold text-primary">{target.day_cutting?.toLocaleString() || 0}</p>
-                </div>
-                <div className="bg-success/10 rounded-lg p-4 text-center">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Day Input</p>
-                  <p className="text-2xl font-bold text-success">{target.day_input?.toLocaleString() || 0}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Submitted Info */}
-            {target.submitted_at && (
-              <p className="text-xs text-muted-foreground">
-                Submitted: {format(new Date(target.submitted_at), "MMM d, yyyy 'at' h:mm a")}
-              </p>
-            )}
-          </div>
-
-          <Button 
-            className="w-full mt-6" 
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
-            Close
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}

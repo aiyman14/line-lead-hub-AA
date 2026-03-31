@@ -5,17 +5,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bell, Mail, AlertTriangle, TrendingDown, Info, Loader2, CheckCircle, FileText, Target, Calendar, Clock } from "lucide-react";
+import { Bell, Mail, AlertTriangle, TrendingDown, Info, Loader2, CheckCircle, FileText, Target, Calendar, Clock, Scissors, MessageSquare, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 interface NotificationPreference {
   id: string;
   notification_type: string;
-  in_app_enabled: boolean;
-  email_enabled: boolean;
+  in_app_enabled: boolean | null;
+  email_enabled: boolean | null;
 }
 
-type UserRole = "worker" | "admin" | "owner";
+type UserRole = "worker" | "supervisor" | "admin" | "owner" | "superadmin" | "storage" | "cutting" | "buyer" | "gate_officer";
 
 interface NotificationType {
   type: string;
@@ -32,56 +32,128 @@ const ALL_NOTIFICATION_TYPES: NotificationType[] = [
     label: "Low Efficiency Alerts",
     description: "Get notified when line efficiency drops below target",
     icon: TrendingDown,
-    roles: ["admin", "owner"], // Not for workers
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Management only
   },
   {
     type: "critical_blocker",
     label: "Critical Blockers",
     description: "Get notified when critical blockers are reported",
     icon: AlertTriangle,
-    roles: ["admin", "owner"], // Not for workers
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Management only
   },
   {
     type: "blocker_resolved",
     label: "Blocker Resolved",
     description: "Get notified when blockers are marked as resolved",
     icon: CheckCircle,
-    roles: ["admin", "owner"], // Not for workers
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Management only
+  },
+  {
+    type: "production_notes",
+    label: "Production Notes",
+    description: "Get notified when production notes or remarks are added",
+    icon: MessageSquare,
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Management only
   },
   {
     type: "work_order_updates",
     label: "Work Order Updates",
     description: "Get notified about work order status changes",
     icon: FileText,
-    roles: ["admin", "owner"], // Not for workers
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Management only
+  },
+  {
+    type: "blocker_on_my_line",
+    label: "Blockers on My Line",
+    description: "Get notified when any blocker is reported on your assigned line",
+    icon: AlertTriangle,
+    roles: ["worker", "supervisor", "admin", "owner", "superadmin", "storage", "cutting"], // Everyone
+  },
+  {
+    type: "late_submission",
+    label: "Late Submissions",
+    description: "Get notified when lines haven't submitted by the cutoff time",
+    icon: Clock,
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Management only
+  },
+  {
+    type: "cutting_handoff",
+    label: "Cutting Handoff",
+    description: "Get notified when cutting submits material for your sewing line",
+    icon: Scissors,
+    roles: ["worker"], // Sewing line leads only
   },
   {
     type: "target_achieved",
     label: "Target Achieved",
     description: "Get notified when production targets are met",
     icon: Target,
-    roles: ["worker", "admin", "owner"], // Everyone
+    roles: ["worker", "supervisor", "admin", "owner", "superadmin", "storage", "cutting"], // Everyone
   },
   {
     type: "daily_summary",
     label: "Daily Summary",
     description: "Receive daily production summary reports",
     icon: Calendar,
-    roles: ["admin", "owner"], // Not for workers
+    roles: ["supervisor", "admin", "owner", "superadmin"], // Management only
   },
   {
     type: "shift_reminder",
     label: "Shift Reminders",
     description: "Get reminders before shift starts",
     icon: Clock,
-    roles: ["worker", "admin", "owner"], // Everyone
+    roles: ["worker", "supervisor", "admin", "owner", "superadmin", "storage", "cutting"], // Everyone
   },
   {
     type: "general",
     label: "General Notifications",
     description: "System updates and general announcements",
     icon: Info,
-    roles: ["worker", "admin", "owner"], // Everyone
+    roles: ["worker", "supervisor", "admin", "owner", "superadmin", "storage", "cutting", "buyer"], // Everyone
+  },
+  // Gate Dispatch notifications
+  {
+    type: "dispatch_submitted",
+    label: "Dispatch Submitted",
+    description: "Get notified when the gate officer submits a dispatch request for approval",
+    icon: Truck,
+    roles: ["admin", "owner", "superadmin"],
+  },
+  {
+    type: "dispatch_approved",
+    label: "Dispatch Approved",
+    description: "Get notified when your dispatch request is approved",
+    icon: Truck,
+    roles: ["gate_officer"],
+  },
+  {
+    type: "dispatch_rejected",
+    label: "Dispatch Rejected",
+    description: "Get notified when your dispatch request is rejected",
+    icon: Truck,
+    roles: ["gate_officer"],
+  },
+  // Buyer-specific notifications
+  {
+    type: "po_production_update",
+    label: "Production Updates",
+    description: "Get notified when new production data is submitted for your POs",
+    icon: FileText,
+    roles: ["buyer"],
+  },
+  {
+    type: "po_milestone",
+    label: "PO Milestones",
+    description: "Get notified when a PO reaches key progress milestones (25%, 50%, 75%, 100%)",
+    icon: Target,
+    roles: ["buyer"],
+  },
+  {
+    type: "po_status_change",
+    label: "PO Status Changes",
+    description: "Get notified when a PO status changes (e.g. started, completed)",
+    icon: CheckCircle,
+    roles: ["buyer"],
   },
 ];
 
@@ -93,7 +165,7 @@ export function NotificationPreferences() {
 
   // Get the user's primary role (highest role they have)
   const userRole = useMemo((): UserRole => {
-    const roleHierarchy: UserRole[] = ["owner", "admin", "worker"];
+    const roleHierarchy: UserRole[] = ["superadmin", "owner", "admin", "supervisor", "buyer", "storage", "cutting", "gate_officer", "worker"];
     for (const role of roleHierarchy) {
       if (roles.some(r => r.role === role)) {
         return role;
@@ -141,7 +213,7 @@ export function NotificationPreferences() {
 
     const defaultPrefs = availableNotificationTypes.map((nt) => ({
       user_id: user.id,
-      factory_id: profile.factory_id,
+      factory_id: profile.factory_id!,
       notification_type: nt.type,
       in_app_enabled: true,
       email_enabled: false,
@@ -276,8 +348,11 @@ export function NotificationPreferences() {
 
         <div className="flex justify-end pt-4 border-t">
           <Button onClick={saveAllPreferences} disabled={saving}>
-            {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save Preferences
+            {saving ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+            ) : (
+              'Save Preferences'
+            )}
           </Button>
         </div>
       </CardContent>

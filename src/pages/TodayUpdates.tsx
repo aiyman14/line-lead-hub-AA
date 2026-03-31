@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMidnightRefresh } from "@/hooks/useMidnightRefresh";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,13 +16,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Factory, Package, Search, Download, RefreshCw, Scissors, Archive, CalendarDays } from "lucide-react";
-import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
-import { CuttingDetailModal } from "@/components/CuttingDetailModal";
-import { CuttingTargetDetailModal } from "@/components/CuttingTargetDetailModal";
+import { Loader2, Package, Search, RefreshCw, Scissors, Warehouse, CalendarDays, Layers, ChevronDown, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
+import { SewingMachine } from "@/components/icons/SewingMachine";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CuttingSubmissionView } from "@/components/CuttingSubmissionView";
+import { SewingSubmissionView, SewingTargetData, SewingActualData } from "@/components/SewingSubmissionView";
+import { formatTimeInTimezone, getTodayInTimezone, toISODate } from "@/lib/date-utils";
+import { subDays, format } from "date-fns";
+import { fromZonedTime } from "date-fns-tz";
 import { StorageBinCardDetailModal } from "@/components/StorageBinCardDetailModal";
-import { FinishingLogDetailModal } from "@/components/FinishingLogDetailModal";
-import { ExportSubmissionsDialog } from "@/components/ExportSubmissionsDialog";
+import { FinishingSubmissionView, FinishingTargetData, FinishingActualData } from "@/components/FinishingSubmissionView";
+import { useHeadcountCost } from "@/hooks/useHeadcountCost";
+import { DollarSign, TrendingUp as TrendingUpIcon, TrendingDown } from "lucide-react";
+import { PRODUCTION_CM_SHARE } from "@/lib/sewing-financials";
+import { DailyReportButton, DailyReportData, DailyReportSewingLine, DailyReportCuttingLine, DailyReportFinishingLine, DailyReportNote } from "@/components/DailyProductionReport";
+import { ReportExportDialog } from "@/components/ReportExportDialog";
 
 interface SewingUpdate {
   id: string;
@@ -34,13 +44,13 @@ interface SewingUpdate {
   stage_progress: number | null;
   ot_hours: number | null;
   ot_manpower: number | null;
-  has_blocker: boolean;
+  has_blocker: boolean | null;
   blocker_description: string | null;
   blocker_impact: string | null;
   blocker_owner: string | null;
   blocker_status: string | null;
   notes: string | null;
-  submitted_at: string;
+  submitted_at: string | null;
   production_date: string;
   lines: { line_id: string; name: string | null } | null;
   work_orders: { po_number: string; buyer: string; style: string } | null;
@@ -48,7 +58,8 @@ interface SewingUpdate {
 
 interface FinishingDailyLog {
   id: string;
-  line_id: string;
+  line_id: string | null;
+  work_order_id: string | null;
   production_date: string;
   submitted_at: string;
   log_type: 'TARGET' | 'OUTPUT';
@@ -60,15 +71,28 @@ interface FinishingDailyLog {
   get_up: number | null;
   poly: number | null;
   carton: number | null;
+  planned_hours: number | null;
+  actual_hours: number | null;
+  m_power_planned: number | null;
+  m_power_actual: number | null;
+  ot_hours_actual: number | null;
+  ot_manpower_actual: number | null;
+  ot_hours_planned: number | null;
+  ot_manpower_planned: number | null;
   remarks: string | null;
   lines: { line_id: string; name: string | null } | null;
-  work_orders: { po_number: string; buyer: string; style: string } | null;
+  work_orders: { po_number: string; buyer: string; style: string; cm_per_dozen?: number | null } | null;
 }
 
 interface CuttingActual {
   id: string;
   line_id: string;
   work_order_id: string;
+  man_power: number | null;
+  marker_capacity: number | null;
+  lay_capacity: number | null;
+  cutting_capacity: number | null;
+  under_qty: number | null;
   day_cutting: number;
   day_input: number;
   total_cutting: number | null;
@@ -84,8 +108,13 @@ interface CuttingActual {
   leftover_quantity: number | null;
   leftover_notes: string | null;
   leftover_location: string | null;
+  leftover_photo_urls: string[] | null;
+  ot_hours_actual: number | null;
+  ot_manpower_actual: number | null;
+  hours_actual: number | null;
+  actual_per_hour: number | null;
   lines: { line_id: string; name: string | null } | null;
-  work_orders: { po_number: string; buyer: string; style: string } | null;
+  work_orders: { po_number: string; buyer: string; style: string; cm_per_dozen?: number | null } | null;
 }
 
 interface CuttingTargetFull {
@@ -106,8 +135,60 @@ interface CuttingTargetFull {
   po_no: string | null;
   colour: string | null;
   submitted_at: string | null;
+  ot_hours_planned: number | null;
+  ot_manpower_planned: number | null;
+  hours_planned: number | null;
+  target_per_hour: number | null;
   lines: { line_id: string; name: string | null } | null;
   work_orders: { po_number: string; buyer: string; style: string } | null;
+}
+
+interface SewingTargetRow {
+  id: string;
+  line_id: string;
+  work_order_id: string;
+  production_date: string;
+  per_hour_target: number;
+  manpower_planned: number;
+  ot_hours_planned: number;
+  hours_planned: number | null;
+  target_total_planned: number | null;
+  planned_stage_progress: number;
+  next_milestone: string | null;
+  estimated_ex_factory: string | null;
+  is_late: boolean | null;
+  remarks: string | null;
+  submitted_at: string | null;
+  stages: { name: string } | null;
+  lines: { line_id: string; name: string | null } | null;
+  work_orders: { po_number: string; buyer: string; style: string } | null;
+}
+
+interface SewingActualRow {
+  id: string;
+  line_id: string;
+  work_order_id: string;
+  production_date: string;
+  good_today: number;
+  reject_today: number;
+  rework_today: number;
+  cumulative_good_total: number;
+  manpower_actual: number;
+  ot_hours_actual: number;
+  ot_manpower_actual: number | null;
+  hours_actual: number | null;
+  actual_per_hour: number | null;
+  actual_stage_progress: number;
+  has_blocker: boolean | null;
+  blocker_description: string | null;
+  blocker_impact: string | null;
+  blocker_owner: string | null;
+  blocker_type_id: string | null;
+  remarks: string | null;
+  submitted_at: string | null;
+  stages: { name: string } | null;
+  lines: { line_id: string; name: string | null } | null;
+  work_orders: { po_number: string; buyer: string; style: string; cm_per_dozen?: number | null } | null;
 }
 
 interface StorageTransaction {
@@ -117,81 +198,144 @@ interface StorageTransaction {
   balance_qty: number;
   transaction_date: string;
   created_at: string | null;
+  batch_id: string | null;
   storage_bin_cards: {
     id: string;
     buyer: string | null;
     style: string | null;
+    bin_group_id: string | null;
+    group_name: string | null;
+    po_set_signature: string | null;
     work_orders: { po_number: string } | null;
   } | null;
 }
 
-type ModalSubmission = {
-  id: string;
-  type: 'sewing' | 'finishing';
-  line_name: string;
-  po_number: string | null;
-  buyer?: string | null;
-  style?: string | null;
-  output_qty?: number;
-  target_qty?: number | null;
-  manpower?: number | null;
-  reject_qty?: number | null;
-  rework_qty?: number | null;
-  stage_progress?: number | null;
-  ot_hours?: number | null;
-  ot_manpower?: number | null;
-  has_blocker: boolean;
-  blocker_description: string | null;
-  blocker_impact: string | null;
-  blocker_owner: string | null;
-  blocker_status: string | null;
-  notes?: string | null;
-  submitted_at: string;
-  production_date: string;
-  // Finishing daily sheet specific
-  hours_logged?: number;
-  total_poly?: number;
-  total_carton?: number;
-};
+interface GroupedStorageRow {
+  groupKey: string;
+  groupName: string | null;
+  isGroup: boolean;
+  transactions: StorageTransaction[];
+  totalReceived: number;
+  totalIssued: number;
+  totalBalance: number;
+  latestTime: string | null;
+  style: string | null;
+}
 
 export default function TodayUpdates() {
-  const { profile } = useAuth();
+  const { profile, factory } = useAuth();
+
+  // Helper to format time in factory timezone
+  const formatTime = (dateString: string) => {
+    const timezone = factory?.timezone || "Asia/Dhaka";
+    return formatTimeInTimezone(dateString, timezone);
+  };
+  const renderPct = (pct: number | null) => {
+    if (pct === null) return <span className="text-muted-foreground">—</span>;
+    const color = pct >= 100 ? "text-green-600" : pct >= 90 ? "text-green-500" : pct >= 70 ? "text-amber-600" : "text-red-600";
+    return <span className={`font-mono font-semibold text-sm ${color}`}>{Math.round(pct)}%</span>;
+  };
+
   const navigate = useNavigate();
+  const { headcountCost, isConfigured: costConfigured } = useHeadcountCost();
+  const [bdtToUsd, setBdtToUsd] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchRate() {
+      try {
+        const res = await fetch('https://open.er-api.com/v6/latest/USD');
+        const json = await res.json();
+        if (!cancelled && json?.rates?.BDT) {
+          setBdtToUsd(1 / json.rates.BDT);
+        }
+      } catch {
+        if (!cancelled) setBdtToUsd(1 / 121);
+      }
+    }
+    fetchRate();
+    return () => { cancelled = true; };
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [sewingUpdates, setSewingUpdates] = useState<SewingUpdate[]>([]);
+  const [sewingTargets, setSewingTargets] = useState<SewingTargetRow[]>([]);
+  const [sewingActuals, setSewingActuals] = useState<SewingActualRow[]>([]);
   const [finishingDailyLogs, setFinishingDailyLogs] = useState<FinishingDailyLog[]>([]);
   const [cuttingActuals, setCuttingActuals] = useState<CuttingActual[]>([]);
   const [cuttingTargets, setCuttingTargets] = useState<CuttingTargetFull[]>([]);
   const [storageTransactions, setStorageTransactions] = useState<StorageTransaction[]>([]);
+  const [productionNotes, setProductionNotes] = useState<DailyReportNote[]>([]);
   const [selectedCuttingTarget, setSelectedCuttingTarget] = useState<CuttingTargetFull | null>(null);
   const [cuttingTargetModalOpen, setCuttingTargetModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
-  const [selectedSubmission, setSelectedSubmission] = useState<ModalSubmission | null>(null);
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get("tab");
+    return ["all", "storage", "cutting", "sewing", "finishing"].includes(tab ?? "")
+      ? (tab as string)
+      : "all";
+  });
+  const [sewingViewOpen, setSewingViewOpen] = useState(false);
+  const [sewingViewKey, setSewingViewKey] = useState<string | null>(null);
+  const [selectedLegacySewing, setSelectedLegacySewing] = useState<SewingUpdate | null>(null);
   const [selectedCutting, setSelectedCutting] = useState<any>(null);
   const [cuttingModalOpen, setCuttingModalOpen] = useState(false);
   const [selectedBinCard, setSelectedBinCard] = useState<any>(null);
   const [binCardTransactions, setBinCardTransactions] = useState<any[]>([]);
   const [storageModalOpen, setStorageModalOpen] = useState(false);
   const [storageLoading, setStorageLoading] = useState(false);
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [selectedGroupedCards, setSelectedGroupedCards] = useState<{
+    groupName: string;
+    cards: {
+      binCard: { id: string; buyer: string | null; style: string | null; po_number: string | null; supplier_name: string | null; description: string | null; construction: string | null; color: string | null; width: string | null; package_qty: string | null; prepared_by: string | null };
+      transactions: any[];
+    }[];
+  } | null>(null);
+
   const [selectedFinishingLog, setSelectedFinishingLog] = useState<FinishingDailyLog | null>(null);
   const [finishingLogModalOpen, setFinishingLogModalOpen] = useState(false);
+  const [financialsExpanded, setFinancialsExpanded] = useState(false);
+  const [expandedStorageGroups, setExpandedStorageGroups] = useState<Set<string>>(new Set());
+
+  // Date picker state
+  const timezone = factory?.timezone || "Asia/Dhaka";
+  const todayStr = getTodayInTimezone(timezone);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date(todayStr + "T00:00:00"));
+
+  // Re-sync when factory timezone loads
+  useEffect(() => {
+    if (factory?.timezone) {
+      const factoryToday = getTodayInTimezone(factory.timezone);
+      const currentStr = format(selectedDate, "yyyy-MM-dd");
+      // Only re-sync if we're still on the initial date
+      if (currentStr === todayStr || currentStr === format(new Date(), "yyyy-MM-dd")) {
+        setSelectedDate(new Date(factoryToday + "T00:00:00"));
+      }
+    }
+  }, [factory?.timezone]);
+
+  const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
+  const isToday = selectedDateStr === todayStr;
+
+  // Auto-refresh at midnight (factory timezone) and on tab refocus
+  useMidnightRefresh(useCallback((newDate: string) => {
+    setSelectedDate(new Date(newDate + "T00:00:00"));
+  }, []));
 
   useEffect(() => {
-    if (profile?.factory_id) {
+    if (profile?.factory_id && factory) {
       fetchTodayUpdates();
     }
-  }, [profile?.factory_id]);
+  }, [profile?.factory_id, selectedDateStr, factory]);
 
   async function fetchTodayUpdates() {
     if (!profile?.factory_id) return;
     setLoading(true);
-    const today = new Date().toISOString().split('T')[0];
+    const today = selectedDateStr;
 
     try {
-      const [sewingRes, finishingRes, cuttingRes, cuttingTargetsRes, storageRes] = await Promise.all([
+      const [sewingRes, sewingTargetsRes, sewingActualsRes, finishingRes, cuttingRes, cuttingTargetsRes, storageRes, notesRes] = await Promise.all([
         supabase
           .from('production_updates_sewing')
           .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
@@ -199,14 +343,26 @@ export default function TodayUpdates() {
           .eq('production_date', today)
           .order('submitted_at', { ascending: false }),
         supabase
+          .from('sewing_targets')
+          .select('*, stages:planned_stage_id(name), lines(line_id, name), work_orders(po_number, buyer, style)')
+          .eq('factory_id', profile.factory_id)
+          .eq('production_date', today)
+          .order('submitted_at', { ascending: false }),
+        supabase
+          .from('sewing_actuals')
+          .select('*, stages:actual_stage_id(name), lines(line_id, name), work_orders(po_number, buyer, style, cm_per_dozen)')
+          .eq('factory_id', profile.factory_id)
+          .eq('production_date', today)
+          .order('submitted_at', { ascending: false }),
+        supabase
           .from('finishing_daily_logs')
-          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style, cm_per_dozen)')
           .eq('factory_id', profile.factory_id)
           .eq('production_date', today)
           .order('submitted_at', { ascending: false }),
         supabase
           .from('cutting_actuals')
-          .select('*, lines!cutting_actuals_line_id_fkey(line_id, name), work_orders(po_number, buyer, style, order_qty, color)')
+          .select('*, lines!cutting_actuals_line_id_fkey(line_id, name), work_orders(po_number, buyer, style, order_qty, color, cm_per_dozen)')
           .eq('factory_id', profile.factory_id)
           .eq('production_date', today)
           .order('submitted_at', { ascending: false }),
@@ -218,17 +374,37 @@ export default function TodayUpdates() {
           .order('submitted_at', { ascending: false }),
         supabase
           .from('storage_bin_card_transactions')
-          .select('*, storage_bin_cards(id, buyer, style, work_orders(po_number))')
+          .select('*, storage_bin_cards(id, buyer, style, bin_group_id, group_name, po_set_signature, work_orders(po_number))')
           .eq('factory_id', profile.factory_id)
           .eq('transaction_date', today)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('production_notes')
+          .select('*, lines(line_id, name), work_orders(po_number, buyer, style)')
+          .eq('factory_id', profile.factory_id)
+          .gte('created_at', fromZonedTime(new Date(`${today}T00:00:00`), timezone).toISOString())
+          .lte('created_at', fromZonedTime(new Date(`${today}T23:59:59`), timezone).toISOString())
           .order('created_at', { ascending: false }),
       ]);
 
       setSewingUpdates(sewingRes.data || []);
+      setSewingTargets(sewingTargetsRes.data as SewingTargetRow[] || []);
+      setSewingActuals(sewingActualsRes.data as SewingActualRow[] || []);
       setFinishingDailyLogs(finishingRes.data as FinishingDailyLog[] || []);
       setCuttingActuals(cuttingRes.data as CuttingActual[] || []);
       setCuttingTargets(cuttingTargetsRes.data as CuttingTargetFull[] || []);
       setStorageTransactions(storageRes.data as StorageTransaction[] || []);
+      setProductionNotes((notesRes.data || []).map((n: any) => ({
+        title: n.title || "",
+        body: n.body || "",
+        department: n.department || null,
+        lineName: n.lines?.name || null,
+        poNumber: n.work_orders?.po_number || null,
+        tag: n.tag || "other",
+        impact: n.impact || null,
+        status: n.status || "open",
+        authorName: null,
+      })));
     } catch (error) {
       console.error('Error fetching updates:', error);
     } finally {
@@ -236,21 +412,15 @@ export default function TodayUpdates() {
     }
   }
 
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   const filteredSewing = sewingUpdates.filter(u => 
     (u.lines?.name || u.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (u.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredFinishing = finishingDailyLogs.filter(s =>
-    (s.lines?.name || s.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (s.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (s.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.work_orders?.buyer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.work_orders?.style || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredCutting = cuttingActuals.filter(c =>
@@ -263,10 +433,149 @@ export default function TodayUpdates() {
     (t.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const filteredSewingTargets = sewingTargets.filter(t =>
+    (t.lines?.name || t.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (t.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredSewingActuals = sewingActuals.filter(a =>
+    (a.lines?.name || a.lines?.line_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (a.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const filteredStorage = (storageTransactions || []).filter(s =>
     (s.storage_bin_cards?.work_orders?.po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.storage_bin_cards?.style || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Group storage transactions by po_set_signature or batch_id
+  const groupedStorageRows = useMemo((): GroupedStorageRow[] => {
+    const groupMap = new Map<string, StorageTransaction[]>();
+    const singles: StorageTransaction[] = [];
+
+    filteredStorage.forEach(txn => {
+      const groupKey = txn.storage_bin_cards?.po_set_signature || txn.storage_bin_cards?.bin_group_id;
+      if (groupKey) {
+        const existing = groupMap.get(groupKey) || [];
+        existing.push(txn);
+        groupMap.set(groupKey, existing);
+      } else {
+        singles.push(txn);
+      }
+    });
+
+    const rows: GroupedStorageRow[] = [];
+
+    // Add grouped rows
+    groupMap.forEach((txns, groupKey) => {
+      if (txns.length > 1) {
+        const groupName = txns[0].storage_bin_cards?.group_name || `Group (${txns.length} POs)`;
+        rows.push({
+          groupKey,
+          groupName,
+          isGroup: true,
+          transactions: txns,
+          totalReceived: txns.reduce((s, t) => s + (t.receive_qty || 0), 0),
+          totalIssued: txns.reduce((s, t) => s + (t.issue_qty || 0), 0),
+          totalBalance: txns.reduce((s, t) => s + (t.balance_qty || 0), 0),
+          latestTime: txns.reduce((latest, t) => (!latest || (t.created_at && t.created_at > latest)) ? t.created_at : latest, null as string | null),
+          style: txns[0].storage_bin_cards?.style || null,
+        });
+      } else {
+        // Single item in group key — treat as single
+        singles.push(txns[0]);
+      }
+    });
+
+    // Add singles
+    singles.forEach(txn => {
+      rows.push({
+        groupKey: txn.id,
+        groupName: null,
+        isGroup: false,
+        transactions: [txn],
+        totalReceived: txn.receive_qty,
+        totalIssued: txn.issue_qty,
+        totalBalance: txn.balance_qty,
+        latestTime: txn.created_at,
+        style: txn.storage_bin_cards?.style || null,
+      });
+    });
+
+    // Sort by latest time desc
+    rows.sort((a, b) => (b.latestTime || '').localeCompare(a.latestTime || ''));
+    return rows;
+  }, [filteredStorage]);
+
+  const toggleStorageGroup = (groupKey: string) => {
+    setExpandedStorageGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  };
+
+  const mergedSewingData = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      line_id: string;
+      line_name: string;
+      work_order_id: string;
+      po_number: string | null;
+      buyer: string | null;
+      style: string | null;
+      target: SewingTargetRow | null;
+      actual: SewingActualRow | null;
+      submitted_at: string | null;
+    }>();
+
+    // Add targets
+    filteredSewingTargets.forEach(target => {
+      const key = `${target.line_id}-${target.work_order_id}`;
+      map.set(key, {
+        key,
+        line_id: target.line_id,
+        line_name: target.lines?.name || target.lines?.line_id || 'Unknown',
+        work_order_id: target.work_order_id,
+        po_number: target.work_orders?.po_number || null,
+        buyer: target.work_orders?.buyer || null,
+        style: target.work_orders?.style || null,
+        target,
+        actual: null,
+        submitted_at: target.submitted_at,
+      });
+    });
+
+    // Add/merge actuals
+    filteredSewingActuals.forEach(actual => {
+      const key = `${actual.line_id}-${actual.work_order_id}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.actual = actual;
+        if (actual.submitted_at && (!existing.submitted_at || actual.submitted_at > existing.submitted_at)) {
+          existing.submitted_at = actual.submitted_at;
+        }
+      } else {
+        map.set(key, {
+          key,
+          line_id: actual.line_id,
+          line_name: actual.lines?.name || actual.lines?.line_id || 'Unknown',
+          work_order_id: actual.work_order_id,
+          po_number: actual.work_orders?.po_number || null,
+          buyer: actual.work_orders?.buyer || null,
+          style: actual.work_orders?.style || null,
+          target: null,
+          actual,
+          submitted_at: actual.submitted_at,
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) =>
+      (b.submitted_at || '').localeCompare(a.submitted_at || '')
+    );
+  }, [filteredSewingTargets, filteredSewingActuals]);
 
   // Merge cutting targets and actuals by line+work_order for unified display
   const mergedCuttingData = useMemo(() => {
@@ -276,6 +585,7 @@ export default function TodayUpdates() {
       line_name: string;
       work_order_id: string;
       po_number: string | null;
+      buyer: string | null;
       target: CuttingTargetFull | null;
       actual: CuttingActual | null;
       submitted_at: string | null;
@@ -290,6 +600,7 @@ export default function TodayUpdates() {
         line_name: target.lines?.name || target.lines?.line_id || 'Unknown',
         work_order_id: target.work_order_id,
         po_number: target.work_orders?.po_number || target.po_no || null,
+        buyer: target.work_orders?.buyer || target.buyer || null,
         target,
         actual: null,
         submitted_at: target.submitted_at,
@@ -302,6 +613,7 @@ export default function TodayUpdates() {
       const existing = map.get(key);
       if (existing) {
         existing.actual = actual;
+        if (!existing.buyer) existing.buyer = actual.work_orders?.buyer || null;
         // Use the later submission time
         if (actual.submitted_at && (!existing.submitted_at || actual.submitted_at > existing.submitted_at)) {
           existing.submitted_at = actual.submitted_at;
@@ -313,6 +625,7 @@ export default function TodayUpdates() {
           line_name: actual.lines?.name || actual.lines?.line_id || 'Unknown',
           work_order_id: actual.work_order_id,
           po_number: actual.work_orders?.po_number || null,
+          buyer: actual.work_orders?.buyer || null,
           target: null,
           actual,
           submitted_at: actual.submitted_at,
@@ -325,12 +638,10 @@ export default function TodayUpdates() {
     );
   }, [filteredCuttingTargets, filteredCutting]);
 
-  // Merge finishing TARGET and OUTPUT logs by line for unified display
+  // Merge finishing TARGET and OUTPUT logs by PO for unified display
   const mergedFinishingData = useMemo(() => {
     const map = new Map<string, {
       key: string;
-      line_id: string;
-      line_name: string;
       po_number: string | null;
       target: FinishingDailyLog | null;
       output: FinishingDailyLog | null;
@@ -338,9 +649,9 @@ export default function TodayUpdates() {
     }>();
 
     filteredFinishing.forEach(log => {
-      const key = log.line_id;
+      const key = `${log.work_order_id || 'no-po'}`;
       const existing = map.get(key);
-      
+
       if (existing) {
         if (log.log_type === 'TARGET') {
           existing.target = log;
@@ -354,8 +665,6 @@ export default function TodayUpdates() {
       } else {
         map.set(key, {
           key,
-          line_id: log.line_id,
-          line_name: log.lines?.name || log.lines?.line_id || 'Unknown',
           po_number: log.work_orders?.po_number || null,
           target: log.log_type === 'TARGET' ? log : null,
           output: log.log_type === 'OUTPUT' ? log : null,
@@ -364,47 +673,200 @@ export default function TodayUpdates() {
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => 
+    return Array.from(map.values()).sort((a, b) =>
       b.submitted_at.localeCompare(a.submitted_at)
     );
   }, [filteredFinishing]);
 
-  const totalOutput = sewingUpdates.reduce((sum, u) => sum + (u.output_qty || 0), 0);
+  const totalOutput = sewingUpdates.reduce((sum, u) => sum + (u.output_qty || 0), 0)
+    + sewingActuals.reduce((sum, a) => sum + (a.good_today || 0), 0);
   
-  // Total Finishing Output = Total Carton only (from OUTPUT logs)
+  // Total Finishing Output = Total Poly (primary finishing metric)
   const totalFinishingOutput = finishingDailyLogs
     .filter(log => log.log_type === 'OUTPUT')
-    .reduce((sum, log) => sum + (log.carton || 0), 0);
+    .reduce((sum, log) => sum + (log.poly || 0), 0);
 
   const totalCutting = cuttingActuals.reduce((sum, c) => sum + (c.day_cutting || 0), 0);
   const totalStorageReceived = storageTransactions.reduce((sum, s) => sum + (s.receive_qty || 0), 0);
 
-  const handleSewingClick = (update: SewingUpdate) => {
-    setSelectedSubmission({
-      id: update.id,
-      type: 'sewing',
-      line_name: update.lines?.name || update.lines?.line_id || 'Unknown',
-      po_number: update.work_orders?.po_number || null,
-      buyer: update.work_orders?.buyer,
-      style: update.work_orders?.style,
-      output_qty: update.output_qty,
-      target_qty: update.target_qty,
-      manpower: update.manpower,
-      reject_qty: update.reject_qty,
-      rework_qty: update.rework_qty,
-      stage_progress: update.stage_progress,
-      ot_hours: update.ot_hours,
-      ot_manpower: update.ot_manpower,
-      has_blocker: update.has_blocker,
-      blocker_description: update.blocker_description,
-      blocker_impact: update.blocker_impact,
-      blocker_owner: update.blocker_owner,
-      blocker_status: update.blocker_status,
-      notes: update.notes,
-      submitted_at: update.submitted_at,
-      production_date: update.production_date,
+  // ── Financial calculations ──
+  const financials = useMemo(() => {
+    const rate = costConfigured && headcountCost.value ? headcountCost.value : 0;
+    const costCurrency = headcountCost.currency;
+
+    // Revenue: sewing output × (cm_per_dozen × PRODUCTION_CM_SHARE / 12)
+    const revenueByPo: { po: string; buyer: string; style: string; output: number; cmDz: number; revenue: number }[] = [];
+    let totalRevenue = 0;
+
+    const finishingOutputLogs = finishingDailyLogs.filter(l => l.log_type === 'OUTPUT');
+    sewingActuals.forEach((s) => {
+      const cm = s.work_orders?.cm_per_dozen;
+      const output = s.good_today || 0;
+      if (cm && output) {
+        const rev = (cm * PRODUCTION_CM_SHARE / 12) * output;
+        totalRevenue += rev;
+        revenueByPo.push({
+          po: s.work_orders?.po_number || 'Unknown',
+          buyer: s.work_orders?.buyer || '',
+          style: s.work_orders?.style || '',
+          output,
+          cmDz: cm,
+          revenue: rev,
+        });
+      }
     });
-    setDetailModalOpen(true);
+
+    // Cost: sewing only
+    let sewingCost = 0;
+    const costByPoMap: Record<string, { po: string; buyer: string; style: string; cost: number }> = {};
+
+    if (rate > 0) {
+      sewingActuals.forEach((s) => {
+        if (!s.work_orders?.cm_per_dozen) return;
+        let lineCost = 0;
+        if (s.manpower_actual && s.hours_actual) lineCost += rate * s.manpower_actual * s.hours_actual;
+        if (s.ot_manpower_actual && s.ot_hours_actual) lineCost += rate * s.ot_manpower_actual * s.ot_hours_actual;
+        sewingCost += lineCost;
+        if (lineCost > 0) {
+          const po = s.work_orders?.po_number || 'Unknown';
+          if (!costByPoMap[po]) costByPoMap[po] = { po, buyer: s.work_orders?.buyer || '', style: s.work_orders?.style || '', cost: 0 };
+          costByPoMap[po].cost += lineCost;
+        }
+      });
+    }
+
+    const totalCostNative = sewingCost;
+    const costByPo = Object.values(costByPoMap).sort((a, b) => b.cost - a.cost);
+
+    // Convert cost to USD
+    let totalCostUsd = totalCostNative;
+    if (costCurrency === 'BDT' && bdtToUsd) {
+      totalCostUsd = totalCostNative * bdtToUsd;
+    }
+
+    const profit = totalRevenue - totalCostUsd;
+    const margin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
+
+    // Convert costByPo to USD
+    const toUsd = (v: number) => costCurrency === 'BDT' && bdtToUsd ? Math.round(v * bdtToUsd * 100) / 100 : Math.round(v * 100) / 100;
+    const costByPoUsd = costByPo.map(p => ({ po: p.po, buyer: p.buyer, style: p.style, cost: toUsd(p.cost) }));
+
+    return {
+      revenueByPo,
+      costByPo: costByPoUsd,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalCostNative: Math.round(totalCostNative * 100) / 100,
+      totalCostUsd: Math.round(totalCostUsd * 100) / 100,
+      profit: Math.round(profit * 100) / 100,
+      margin: Math.round(margin * 10) / 10,
+      costCurrency,
+      hasData: totalRevenue > 0 || totalCostNative > 0,
+    };
+  }, [finishingDailyLogs, sewingActuals, cuttingActuals, costConfigured, headcountCost.value, headcountCost.currency, bdtToUsd]);
+
+  // ── Daily Production Report PDF data ──
+  const dailyReportData = useMemo((): DailyReportData => {
+    const sewingLines: DailyReportSewingLine[] = sewingActuals.map(a => {
+      const target = sewingTargets.find(t => t.line_id === a.line_id && t.work_order_id === a.work_order_id);
+      const targetQty = target?.target_total_planned ?? null;
+      const eff = targetQty && targetQty > 0 ? Math.round((a.good_today / targetQty) * 100) : null;
+      return {
+        lineName: a.lines?.name || a.lines?.line_id || "Unknown",
+        poNumber: a.work_orders?.po_number || null,
+        buyer: a.work_orders?.buyer || null,
+        style: a.work_orders?.style || null,
+        targetQty,
+        actualQty: a.good_today || 0,
+        rejectQty: a.reject_today || 0,
+        reworkQty: a.rework_today || 0,
+        manpower: a.manpower_actual ?? null,
+        hoursActual: a.hours_actual ?? null,
+        otHours: a.ot_hours_actual ?? null,
+        otManpower: a.ot_manpower_actual ?? null,
+        efficiency: eff,
+        hasBLocker: a.has_blocker || false,
+        blockerDescription: a.blocker_description || null,
+        stageName: a.stages?.name || null,
+        stageProgress: a.actual_stage_progress ?? null,
+        remarks: a.remarks || null,
+        submittedAt: a.submitted_at || null,
+      };
+    });
+
+    const cuttingLines: DailyReportCuttingLine[] = cuttingActuals.map(c => ({
+      lineName: c.lines?.name || c.lines?.line_id || "Unknown",
+      poNumber: c.work_orders?.po_number || null,
+      buyer: c.work_orders?.buyer || null,
+      colour: c.colour || null,
+      dayCutting: c.day_cutting || 0,
+      dayInput: c.day_input || 0,
+      totalCutting: c.total_cutting ?? null,
+      totalInput: c.total_input ?? null,
+      balance: c.balance ?? null,
+      orderQty: c.order_qty ?? null,
+      manpower: c.man_power ?? null,
+      hoursActual: c.hours_actual ?? null,
+      otHours: c.ot_hours_actual ?? null,
+      otManpower: c.ot_manpower_actual ?? null,
+      leftoverRecorded: c.leftover_recorded || false,
+      leftoverType: c.leftover_type || null,
+      leftoverQuantity: c.leftover_quantity ?? null,
+      leftoverNotes: c.leftover_notes || null,
+      submittedAt: c.submitted_at || null,
+    }));
+
+    const finishingLines: DailyReportFinishingLine[] = finishingDailyLogs.map(log => ({
+      poNumber: log.work_orders?.po_number || null,
+      buyer: log.work_orders?.buyer || null,
+      style: log.work_orders?.style || null,
+      logType: log.log_type,
+      threadCutting: log.thread_cutting ?? null,
+      insideCheck: log.inside_check ?? null,
+      topSideCheck: log.top_side_check ?? null,
+      buttoning: log.buttoning ?? null,
+      iron: log.iron ?? null,
+      getUp: log.get_up ?? null,
+      poly: log.poly ?? null,
+      carton: log.carton ?? null,
+      manpower: log.m_power_actual ?? null,
+      hours: log.actual_hours ?? null,
+      otHours: log.ot_hours_actual ?? null,
+      otManpower: log.ot_manpower_actual ?? null,
+      cmPerDozen: log.work_orders?.cm_per_dozen ?? null,
+      remarks: log.remarks || null,
+      submittedAt: log.submitted_at || null,
+    }));
+
+    return {
+      factoryName: factory?.name || "Factory",
+      reportDate: selectedDateStr,
+      sewing: sewingLines,
+      cutting: cuttingLines,
+      finishing: finishingLines,
+      headcountCostRate: headcountCost.value ?? null,
+      headcountCostCurrency: headcountCost.currency,
+      notes: productionNotes,
+      financials: financials.hasData ? {
+        totalRevenue: financials.totalRevenue,
+        totalCostUsd: financials.totalCostUsd,
+        totalCostNative: financials.totalCostNative,
+        costCurrency: financials.costCurrency,
+        profit: financials.profit,
+        margin: financials.margin,
+        sewingCostUsd: financials.totalCostUsd,
+        cuttingCostUsd: 0,
+        finishingCostUsd: 0,
+        bdtToUsdRate: bdtToUsd,
+        revenueByPo: financials.revenueByPo,
+      } : null,
+      generatedBy: profile?.full_name || null,
+    };
+  }, [sewingActuals, sewingTargets, cuttingActuals, finishingDailyLogs, factory?.name, selectedDateStr, financials, bdtToUsd, profile?.full_name, headcountCost.value, headcountCost.currency, productionNotes]);
+
+  const handleSewingClick = (update: SewingUpdate) => {
+    setSewingViewKey(null);
+    setSelectedLegacySewing(update);
+    setSewingViewOpen(true);
   };
 
   const handleFinishingClick = (log: FinishingDailyLog) => {
@@ -421,6 +883,8 @@ export default function TodayUpdates() {
     setSelectedCutting({
       id: cutting.id,
       production_date: cutting.production_date,
+      line_id: cutting.line_id,
+      work_order_id: cutting.work_order_id,
       line_name: cutting.lines?.name || cutting.lines?.line_id || 'Unknown',
       buyer: (cutting.work_orders as any)?.buyer || null,
       style: (cutting.work_orders as any)?.style || null,
@@ -444,6 +908,10 @@ export default function TodayUpdates() {
       leftover_quantity: cutting.leftover_quantity,
       leftover_notes: cutting.leftover_notes,
       leftover_location: cutting.leftover_location,
+      hours_actual: cutting.hours_actual ?? null,
+      actual_per_hour: cutting.actual_per_hour ?? null,
+      ot_hours_actual: cutting.ot_hours_actual,
+      ot_manpower_actual: cutting.ot_manpower_actual,
     });
     setCuttingModalOpen(true);
   };
@@ -461,6 +929,7 @@ export default function TodayUpdates() {
 
     setStorageLoading(true);
     setStorageModalOpen(true);
+    setSelectedGroupedCards(null);
 
     try {
       // Fetch full bin card details
@@ -472,7 +941,57 @@ export default function TodayUpdates() {
 
       if (binCardError) throw binCardError;
 
-      // Fetch all transactions for this bin card
+      // If this bin card is part of a group, load the full group
+      const groupKey = binCardData.po_set_signature || binCardData.bin_group_id;
+      if (groupKey) {
+        // Query by whichever grouping field is present
+        const groupQuery = binCardData.po_set_signature
+          ? supabase.from('storage_bin_cards').select('*, work_orders(po_number)').eq('po_set_signature', binCardData.po_set_signature!).order('created_at', { ascending: true })
+          : supabase.from('storage_bin_cards').select('*, work_orders(po_number)').eq('bin_group_id', binCardData.bin_group_id!).order('created_at', { ascending: true });
+
+        const { data: groupCards, error: groupError } = await groupQuery;
+
+        if (!groupError && groupCards && groupCards.length > 1) {
+          const groupedCardsData = await Promise.all(
+            groupCards.map(async (card: any) => {
+              const { data: cardTxns } = await supabase
+                .from('storage_bin_card_transactions')
+                .select('*')
+                .eq('bin_card_id', card.id)
+                .order('transaction_date', { ascending: true })
+                .order('created_at', { ascending: true });
+
+              return {
+                binCard: {
+                  id: card.id,
+                  buyer: card.buyer,
+                  style: card.style,
+                  po_number: card.work_orders?.po_number || null,
+                  supplier_name: card.supplier_name,
+                  description: card.description,
+                  construction: card.construction,
+                  color: card.color,
+                  width: card.width,
+                  package_qty: card.package_qty,
+                  prepared_by: card.prepared_by,
+                },
+                transactions: cardTxns || [],
+              };
+            })
+          );
+
+          setSelectedGroupedCards({
+            groupName: binCardData.group_name || `Bulk (${groupCards.length} POs)`,
+            cards: groupedCardsData,
+          });
+          setSelectedBinCard(null);
+          setBinCardTransactions([]);
+          setStorageLoading(false);
+          return;
+        }
+      }
+
+      // Single card flow
       const { data: txnData, error: txnError } = await supabase
         .from('storage_bin_card_transactions')
         .select('*')
@@ -513,98 +1032,289 @@ export default function TodayUpdates() {
   }
 
   return (
-    <div className="p-4 lg:p-6 space-y-6">
+    <div className="py-4 lg:py-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <CalendarDays className="h-6 w-6" />
-            Today's Updates
-          </h1>
-          <p className="text-muted-foreground">
-            {new Date().toLocaleDateString('en-US', { dateStyle: 'full' })}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+            <CalendarDays className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold">Today Updates</h1>
+            <p className="text-sm text-muted-foreground">
+              {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                <CalendarIcon className="h-4 w-4 mr-1.5" />
+                {isToday ? "Today" : format(selectedDate, "MMM d, yyyy")}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(date) => date && setSelectedDate(date)}
+                disabled={(date) => date > new Date() || date < subDays(new Date(), 30)}
+                initialFocus
+              />
+              {!isToday && (
+                <div className="border-t p-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs"
+                    onClick={() => setSelectedDate(new Date(todayStr + "T00:00:00"))}
+                  >
+                    Back to Today
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" size="sm" onClick={fetchTodayUpdates}>
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setExportDialogOpen(true)}>
-            <Download className="h-4 w-4 mr-1" />
-            Export
-          </Button>
+          <ReportExportDialog defaultType="daily" date={selectedDateStr} dailyReportData={dailyReportData} />
         </div>
       </div>
 
       {/* Summary Cards - Grouped Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Updates Count Card */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Today's Updates</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Factory className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold">{sewingUpdates.length}</p>
-                  <p className="text-xs text-muted-foreground">Sewing</p>
-                </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Storage */}
+        <Card className="relative overflow-hidden border-orange-200/60 dark:border-orange-800/40 bg-gradient-to-br from-orange-50 via-white to-orange-50/50 dark:from-orange-950/40 dark:via-card dark:to-orange-950/20 hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setActiveTab('storage')}>
+          <CardContent className="p-3 relative">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 shadow-md shadow-orange-500/20 flex items-center justify-center">
+                <Warehouse className="h-3.5 w-3.5 text-white" />
               </div>
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-info/10 flex items-center justify-center">
-                  <Package className="h-4 w-4 text-info" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold">{finishingDailyLogs.length}</p>
-                  <p className="text-xs text-muted-foreground">Finishing</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-warning/10 flex items-center justify-center">
-                  <Scissors className="h-4 w-4 text-warning" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold">{cuttingTargets.length + cuttingActuals.length}</p>
-                  <p className="text-xs text-muted-foreground">Cutting</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-success/10 flex items-center justify-center">
-                  <Archive className="h-4 w-4 text-success" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold">{(storageTransactions || []).length}</p>
-                  <p className="text-xs text-muted-foreground">Storage</p>
-                </div>
-              </div>
+              <span className="text-[10px] font-medium text-orange-600 bg-orange-500/10 px-1.5 py-0.5 rounded-full">
+                {(storageTransactions || []).length} txns
+              </span>
             </div>
+            <p className="text-2xl font-bold font-mono tracking-tight text-orange-900 dark:text-orange-100">{totalStorageReceived.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Total Received</p>
           </CardContent>
         </Card>
 
-        {/* Output Totals Card */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Output Totals</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <p className="text-2xl font-bold font-mono text-primary">{totalOutput.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Sewing Output</p>
+        {/* Cutting */}
+        <Card className="relative overflow-hidden border-emerald-200/60 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 dark:from-emerald-950/40 dark:via-card dark:to-emerald-950/20 hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setActiveTab('cutting')}>
+          <CardContent className="p-3 relative">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 shadow-md shadow-emerald-500/20 flex items-center justify-center">
+                <Scissors className="h-3.5 w-3.5 text-white" />
               </div>
-              <div>
-                <p className="text-2xl font-bold font-mono text-success">{totalFinishingOutput.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Finishing Output</p>
-              </div>
+              <span className="text-[10px] font-medium text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
+                {cuttingTargets.length + cuttingActuals.length} updates
+              </span>
             </div>
+            <p className="text-2xl font-bold font-mono tracking-tight text-emerald-900 dark:text-emerald-100">{totalCutting.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Cutting Output</p>
+          </CardContent>
+        </Card>
+
+        {/* Sewing */}
+        <Card className="relative overflow-hidden border-blue-200/60 dark:border-blue-800/40 bg-gradient-to-br from-blue-50 via-white to-blue-50/50 dark:from-blue-950/40 dark:via-card dark:to-blue-950/20 hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setActiveTab('sewing')}>
+          <CardContent className="p-3 relative">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-500/20 flex items-center justify-center">
+                <SewingMachine className="h-3.5 w-3.5 text-white" />
+              </div>
+              <span className="text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                {sewingUpdates.length + sewingTargets.length + sewingActuals.length} updates
+              </span>
+            </div>
+            <p className="text-2xl font-bold font-mono tracking-tight text-blue-900 dark:text-blue-100">{totalOutput.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Sewing Output</p>
+          </CardContent>
+        </Card>
+
+        {/* Finishing */}
+        <Card className="relative overflow-hidden border-violet-200/60 dark:border-violet-800/40 bg-gradient-to-br from-violet-50 via-white to-violet-50/50 dark:from-violet-950/40 dark:via-card dark:to-violet-950/20 hover:shadow-lg transition-all duration-300 cursor-pointer" onClick={() => setActiveTab('finishing')}>
+          <CardContent className="p-3 relative">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-violet-500/20 flex items-center justify-center">
+                <Package className="h-3.5 w-3.5 text-white" />
+              </div>
+              <span className="text-[10px] font-medium text-violet-600 bg-violet-500/10 px-1.5 py-0.5 rounded-full">
+                {finishingDailyLogs.length} updates
+              </span>
+            </div>
+            <p className="text-2xl font-bold font-mono tracking-tight text-violet-900 dark:text-violet-100">{totalFinishingOutput.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Finishing Output</p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Financial Summary */}
+      {financials.hasData && (
+        <div className="space-y-2">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <DollarSign className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <span className="text-sm font-semibold">Daily Financials</span>
+              <span className="text-[10px] text-muted-foreground">(USD)</span>
+            </div>
+            {financials.costCurrency === 'BDT' && bdtToUsd && (
+              <span className="text-[10px] text-muted-foreground">
+                Rate: {(1 / bdtToUsd).toFixed(1)} BDT/USD
+              </span>
+            )}
+          </div>
+
+          {/* Revenue / Cost / Profit cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-3">
+            <Card className="relative overflow-hidden border-emerald-200/60 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 dark:from-emerald-950/40 dark:via-card dark:to-emerald-950/20 transition-all duration-300">
+              <CardContent className="p-3 md:p-4 relative">
+                <p className="text-[10px] md:text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1">Output Value</p>
+                <p className="font-mono text-lg md:text-2xl font-bold text-emerald-700 dark:text-emerald-400 tracking-tight">
+                  ${financials.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Sewing output</p>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden border-orange-200/60 dark:border-orange-800/40 bg-gradient-to-br from-orange-50 via-white to-orange-50/50 dark:from-orange-950/40 dark:via-card dark:to-orange-950/20 transition-all duration-300">
+              <CardContent className="p-3 md:p-4 relative">
+                <p className="text-[10px] md:text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1">Operating Cost</p>
+                <p className="font-mono text-lg md:text-2xl font-bold text-orange-600 dark:text-orange-400 tracking-tight">
+                  ${financials.totalCostUsd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {financials.costCurrency === 'BDT' && bdtToUsd
+                    ? `৳${financials.totalCostNative.toLocaleString()}`
+                    : 'All departments'}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className={`relative overflow-hidden transition-all duration-300 ${financials.profit >= 0 ? 'border-emerald-200/60 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 dark:from-emerald-950/40 dark:via-card dark:to-emerald-950/20' : 'border-red-200/60 dark:border-red-800/40 bg-gradient-to-br from-red-50 via-white to-red-50/50 dark:from-red-950/40 dark:via-card dark:to-red-950/20'}`}>
+              <CardContent className="p-3 md:p-4 relative">
+                <p className="text-[10px] md:text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1">Operating Margin</p>
+                <p className={`font-mono text-lg md:text-2xl font-bold tracking-tight ${financials.profit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {financials.profit >= 0 ? '+' : '-'}${Math.abs(financials.profit).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {financials.margin !== 0 ? `${financials.margin}% margin` : '—'}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Expandable details */}
+          <button
+            onClick={() => setFinancialsExpanded(!financialsExpanded)}
+            className="w-full flex items-center justify-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 py-1.5 transition-colors"
+          >
+            <span>{financialsExpanded ? 'Hide details' : 'View breakdown'}</span>
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${financialsExpanded ? 'rotate-180' : ''}`} />
+          </button>
+
+          {financialsExpanded && (
+            <Card className="border-blue-500/20">
+              <CardContent className="p-3 md:p-4 space-y-4">
+                {/* Sewing Cost by PO */}
+                {financials.costByPo.length > 0 && (
+                  <div>
+                    <p className="text-[10px] md:text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Operating Cost by PO</p>
+                    <div className="space-y-2 md:hidden">
+                      {financials.costByPo.map((row, i) => (
+                        <div key={i} className="rounded-lg bg-muted/40 p-2.5 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[11px] font-medium truncate max-w-[45%]">{row.po}</span>
+                            <span className="font-mono text-[11px] font-semibold text-red-600 dark:text-red-400">${Math.round(row.cost).toLocaleString()}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">{row.buyer}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b text-muted-foreground">
+                            <th className="text-left py-1.5 font-medium">PO</th>
+                            <th className="text-left py-1.5 font-medium">Buyer</th>
+                            <th className="text-left py-1.5 font-medium">Style</th>
+                            <th className="text-right py-1.5 font-medium">Operating Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {financials.costByPo.map((row, i) => (
+                            <tr key={i} className="border-b border-muted/50">
+                              <td className="py-1.5 font-mono">{row.po}</td>
+                              <td className="py-1.5">{row.buyer}</td>
+                              <td className="py-1.5">{row.style}</td>
+                              <td className="py-1.5 text-right font-mono font-medium text-red-600 dark:text-red-400">
+                                ${row.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Revenue by PO — card layout on mobile, table on desktop */}
+                {financials.revenueByPo.length > 0 && (
+                  <div>
+                    <p className="text-[10px] md:text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Output Value by PO</p>
+                    <div className="space-y-2 md:hidden">
+                      {financials.revenueByPo.map((row, i) => (
+                        <div key={i} className="rounded-lg bg-muted/40 p-2.5 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[11px] font-medium truncate max-w-[45%]">{row.po}</span>
+                            <span className="font-mono text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">${row.revenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">{row.buyer}</p>
+                          <div className="flex gap-3 text-[10px] text-muted-foreground">
+                            <span>{row.output.toLocaleString()} pcs</span>
+                            <span>CM/Dz: ${(row.cmDz * PRODUCTION_CM_SHARE).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b text-muted-foreground">
+                            <th className="text-left py-1.5 font-medium">PO</th>
+                            <th className="text-left py-1.5 font-medium">Buyer</th>
+                            <th className="text-right py-1.5 font-medium">Output</th>
+                            <th className="text-right py-1.5 font-medium">CM/Dz (70%)</th>
+                            <th className="text-right py-1.5 font-medium">Output Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {financials.revenueByPo.map((row, i) => (
+                            <tr key={i} className="border-b border-muted/50">
+                              <td className="py-1.5 font-mono">{row.po}</td>
+                              <td className="py-1.5">{row.buyer}</td>
+                              <td className="py-1.5 text-right font-mono">{row.output.toLocaleString()}</td>
+                              <td className="py-1.5 text-right font-mono">${(row.cmDz * PRODUCTION_CM_SHARE).toFixed(2)}</td>
+                              <td className="py-1.5 text-right font-mono font-medium text-emerald-700 dark:text-emerald-400">
+                                ${row.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative max-w-md">
@@ -621,10 +1331,10 @@ export default function TodayUpdates() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="w-max min-w-full md:w-auto">
-            <TabsTrigger value="all">All ({sewingUpdates.length + finishingDailyLogs.length + cuttingTargets.length + cuttingActuals.length + (storageTransactions || []).length})</TabsTrigger>
+            <TabsTrigger value="all">All ({sewingUpdates.length + sewingTargets.length + sewingActuals.length + finishingDailyLogs.length + cuttingTargets.length + cuttingActuals.length + (storageTransactions || []).length})</TabsTrigger>
             <TabsTrigger value="storage">Storage ({(storageTransactions || []).length})</TabsTrigger>
             <TabsTrigger value="cutting">Cutting ({cuttingTargets.length + cuttingActuals.length})</TabsTrigger>
-            <TabsTrigger value="sewing">Sewing ({sewingUpdates.length})</TabsTrigger>
+            <TabsTrigger value="sewing">Sewing ({sewingUpdates.length + sewingTargets.length + sewingActuals.length})</TabsTrigger>
             <TabsTrigger value="finishing">Finishing ({finishingDailyLogs.length})</TabsTrigger>
           </TabsList>
         </div>
@@ -635,7 +1345,7 @@ export default function TodayUpdates() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Factory className="h-4 w-4 text-primary" />
+                  <SewingMachine className="h-4 w-4 text-primary" />
                   Sewing Updates
                 </CardTitle>
               </CardHeader>
@@ -660,9 +1370,12 @@ export default function TodayUpdates() {
                           className="cursor-pointer hover:bg-muted/50"
                           onClick={() => handleSewingClick(update)}
                         >
-                          <TableCell className="font-mono text-sm">{formatTime(update.submitted_at)}</TableCell>
+                          <TableCell className="font-mono text-sm">{update.submitted_at ? formatTime(update.submitted_at) : '-'}</TableCell>
                           <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
-                          <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
+                          <TableCell>
+                            <div>{update.work_orders?.po_number || '-'}</div>
+                            {update.work_orders?.buyer && <div className="text-xs text-muted-foreground">{update.work_orders.buyer}</div>}
+                          </TableCell>
                           <TableCell className="text-right font-mono">{update.output_qty.toLocaleString()}</TableCell>
                           <TableCell className="text-right font-mono text-muted-foreground">{update.target_qty?.toLocaleString() || '-'}</TableCell>
                           <TableCell className="text-right">
@@ -688,13 +1401,15 @@ export default function TodayUpdates() {
             </Card>
           )}
 
-          {/* Finishing Table - Merged Format */}
-          {mergedFinishingData.length > 0 && (
+          {/* Sewing Targets & Actuals Table - Merged Format */}
+          {mergedSewingData.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Package className="h-4 w-4 text-info" />
-                  Finishing Updates
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-500/20 flex items-center justify-center">
+                    <SewingMachine className="h-3.5 w-3.5 text-white" />
+                  </div>
+                  Sewing Targets & Actuals
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -705,11 +1420,91 @@ export default function TodayUpdates() {
                         <TableHead>Time</TableHead>
                         <TableHead>Line</TableHead>
                         <TableHead>PO</TableHead>
+                        <TableHead className="text-right">Output</TableHead>
+                        <TableHead className="text-right">Target/hr</TableHead>
+                        <TableHead className="text-right">Manpower</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">vs Target</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {mergedSewingData.map((item) => {
+                        const output = item.actual?.good_today;
+                        const target = item.target?.per_hour_target;
+                        const manpower = item.actual?.manpower_actual ?? item.target?.manpower_planned;
+                        const hasBoth = item.actual && item.target;
+                        const hasBlocker = item.actual?.has_blocker;
+                        const targetTotal = item.target?.target_total_planned ?? (item.target ? Math.round((item.target.per_hour_target ?? 0) * (item.target.hours_planned ?? 8)) : null);
+                        const sewingPct = (output != null && targetTotal != null && targetTotal > 0) ? (output / targetTotal) * 100 : null;
+                        return (
+                          <TableRow
+                            key={item.key}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => {
+                              setSelectedLegacySewing(null);
+                              setSewingViewKey(item.key);
+                              setSewingViewOpen(true);
+                            }}
+                          >
+                            <TableCell className="font-mono text-sm">{item.submitted_at ? formatTime(item.submitted_at) : '-'}</TableCell>
+                            <TableCell className="font-medium">{item.line_name}</TableCell>
+                            <TableCell>
+                              <div>{item.po_number || '-'}</div>
+                              {item.buyer && <div className="text-xs text-muted-foreground">{item.buyer}</div>}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">{output?.toLocaleString() || '-'}</TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">{target?.toLocaleString() || '-'}</TableCell>
+                            <TableCell className="text-right font-mono">{manpower || '-'}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {hasBlocker ? (
+                                  <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
+                                ) : hasBoth ? (
+                                  sewingPct != null && sewingPct >= 100
+                                    ? <StatusBadge variant="success" size="sm">Target Hit</StatusBadge>
+                                    : <StatusBadge variant="warning" size="sm">Target Missed</StatusBadge>
+                                ) : item.actual ? (
+                                  <StatusBadge variant="warning" size="sm">No Target</StatusBadge>
+                                ) : (
+                                  <StatusBadge variant="info" size="sm">Target Only</StatusBadge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">{renderPct(sewingPct)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Finishing Table - Merged Format */}
+          {mergedFinishingData.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-violet-500/20 flex items-center justify-center">
+                    <Package className="h-3.5 w-3.5 text-white" />
+                  </div>
+                  Finishing Updates
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Time</TableHead>
+                        <TableHead>PO</TableHead>
                         <TableHead className="text-right">Output (Poly)</TableHead>
                         <TableHead className="text-right">Target (Poly)</TableHead>
                         <TableHead className="text-right">Output (Carton)</TableHead>
                         <TableHead className="text-right">Target (Carton)</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="text-right">vs Target</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -718,35 +1513,43 @@ export default function TodayUpdates() {
                         const outputCarton = item.output?.carton || 0;
                         const targetPoly = item.target?.poly || 0;
                         const targetCarton = item.target?.carton || 0;
-                        const totalOutput = outputPoly + outputCarton;
-                        const totalTarget = targetPoly + targetCarton;
-                        const hasOutput = totalOutput > 0;
-                        const hasTarget = totalTarget > 0;
-                        const percent = totalTarget > 0 ? (totalOutput / totalTarget) * 100 : null;
+                        const hasOutput = outputPoly > 0 || outputCarton > 0;
+                        // target.poly/carton are per-hour rates; multiply by planned hours for total
+                        const targetHours = (item.target?.planned_hours ?? 0) + (item.target?.ot_hours_planned ?? 0);
+                        const targetPolyTotal = targetPoly * targetHours;
+                        const targetCartonTotal = targetCarton * targetHours;
+                        // Performance % uses poly as primary metric
+                        const hasTarget = targetPolyTotal > 0;
+                        const finishingPct = hasTarget ? (outputPoly / targetPolyTotal) * 100 : null;
                         return (
-                          <TableRow 
+                          <TableRow
                             key={`finishing-merged-${idx}`}
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() => item.output && handleFinishingClick(item.output)}
                           >
                             <TableCell className="font-mono text-sm">{formatTime(item.submitted_at)}</TableCell>
-                            <TableCell className="font-medium">{item.line_name}</TableCell>
-                            <TableCell>{item.po_number || '-'}</TableCell>
+                            <TableCell>
+                              <div>{item.po_number || '-'}</div>
+                              {(item.output?.work_orders?.buyer || item.target?.work_orders?.buyer) && (
+                                <div className="text-xs text-muted-foreground">{item.output?.work_orders?.buyer || item.target?.work_orders?.buyer}</div>
+                              )}
+                            </TableCell>
                             <TableCell className="text-right font-mono">{outputPoly.toLocaleString()}</TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground">{targetPoly.toLocaleString()}</TableCell>
                             <TableCell className="text-right font-mono">{outputCarton.toLocaleString()}</TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground">{targetCarton.toLocaleString()}</TableCell>
                             <TableCell>
                               {hasOutput && hasTarget ? (
-                                <StatusBadge variant={percent && percent >= 100 ? 'success' : percent && percent >= 80 ? 'warning' : 'danger'} size="sm">
-                                  {Math.round(percent || 0)}%
-                                </StatusBadge>
+                                finishingPct != null && finishingPct >= 100
+                                  ? <StatusBadge variant="success" size="sm">Target Hit</StatusBadge>
+                                  : <StatusBadge variant="warning" size="sm">Target Missed</StatusBadge>
                               ) : hasOutput ? (
-                                <StatusBadge variant="success" size="sm">Output</StatusBadge>
+                                <StatusBadge variant="warning" size="sm">No Target</StatusBadge>
                               ) : (
-                                <StatusBadge variant="info" size="sm">Target</StatusBadge>
+                                <StatusBadge variant="info" size="sm">Target Only</StatusBadge>
                               )}
                             </TableCell>
+                            <TableCell className="text-right">{renderPct(finishingPct)}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -762,7 +1565,9 @@ export default function TodayUpdates() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Scissors className="h-4 w-4 text-warning" />
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 shadow-md shadow-emerald-500/20 flex items-center justify-center">
+                    <Scissors className="h-3.5 w-3.5 text-white" />
+                  </div>
                   Cutting Updates
                 </CardTitle>
               </CardHeader>
@@ -779,6 +1584,7 @@ export default function TodayUpdates() {
                         <TableHead className="text-right">Manpower</TableHead>
                         <TableHead className="text-right">Day Input</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="text-right">vs Target</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -789,16 +1595,19 @@ export default function TodayUpdates() {
                         const dayInput = item.actual?.day_input;
                         const hasActual = dayCutting !== null && dayCutting !== undefined;
                         const hasTarget = cuttingCapacity !== null && cuttingCapacity !== undefined && cuttingCapacity > 0;
-                        const percent = hasActual && hasTarget ? (dayCutting! / cuttingCapacity!) * 100 : null;
+                        const cuttingPct = hasActual && hasTarget ? (dayCutting! / cuttingCapacity!) * 100 : null;
                         return (
-                          <TableRow 
+                          <TableRow
                             key={`cutting-merged-${idx}`}
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() => item.actual && handleCuttingClick(item.actual)}
                           >
                             <TableCell className="font-mono text-sm">{item.submitted_at ? formatTime(item.submitted_at) : '-'}</TableCell>
                             <TableCell className="font-medium">{item.line_name}</TableCell>
-                            <TableCell>{item.po_number || '-'}</TableCell>
+                            <TableCell>
+                              <div>{item.po_number || '-'}</div>
+                              {item.buyer && <div className="text-xs text-muted-foreground">{item.buyer}</div>}
+                            </TableCell>
                             <TableCell className="text-right font-mono">{dayCutting?.toLocaleString() || '-'}</TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground">{cuttingCapacity?.toLocaleString() || '-'}</TableCell>
                             <TableCell className="text-right font-mono">{manpower || '-'}</TableCell>
@@ -806,19 +1615,20 @@ export default function TodayUpdates() {
                             <TableCell>
                               <div className="flex items-center gap-1 flex-wrap">
                                 {hasActual && hasTarget ? (
-                                  <StatusBadge variant={percent && percent >= 100 ? 'success' : percent && percent >= 80 ? 'warning' : 'danger'} size="sm">
-                                    {Math.round(percent || 0)}%
-                                  </StatusBadge>
+                                  cuttingPct != null && cuttingPct >= 100
+                                    ? <StatusBadge variant="success" size="sm">Target Hit</StatusBadge>
+                                    : <StatusBadge variant="warning" size="sm">Target Missed</StatusBadge>
                                 ) : hasActual ? (
-                                  <StatusBadge variant="success" size="sm">Output</StatusBadge>
+                                  <StatusBadge variant="warning" size="sm">No Target</StatusBadge>
                                 ) : (
-                                  <StatusBadge variant="info" size="sm">Target</StatusBadge>
+                                  <StatusBadge variant="info" size="sm">Target Only</StatusBadge>
                                 )}
                                 {item.actual?.leftover_recorded && (
                                   <StatusBadge variant="warning" size="sm">Left Over</StatusBadge>
                                 )}
                               </div>
                             </TableCell>
+                            <TableCell className="text-right">{renderPct(cuttingPct)}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -834,7 +1644,9 @@ export default function TodayUpdates() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Archive className="h-4 w-4 text-success" />
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 shadow-md shadow-orange-500/20 flex items-center justify-center">
+                    <Warehouse className="h-3.5 w-3.5 text-white" />
+                  </div>
                   Storage Transactions
                 </CardTitle>
               </CardHeader>
@@ -844,7 +1656,7 @@ export default function TodayUpdates() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Time</TableHead>
-                        <TableHead>PO</TableHead>
+                        <TableHead>PO / Group</TableHead>
                         <TableHead>Style</TableHead>
                         <TableHead className="text-right">Received</TableHead>
                         <TableHead className="text-right">Issued</TableHead>
@@ -852,19 +1664,54 @@ export default function TodayUpdates() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredStorage.map((txn) => (
-                        <TableRow 
-                          key={txn.id} 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleStorageClick(txn)}
-                        >
-                          <TableCell className="font-mono text-sm">{txn.created_at ? formatTime(txn.created_at) : '-'}</TableCell>
-                          <TableCell>{txn.storage_bin_cards?.work_orders?.po_number || '-'}</TableCell>
-                          <TableCell>{txn.storage_bin_cards?.style || '-'}</TableCell>
-                          <TableCell className="text-right font-mono text-success">{txn.receive_qty > 0 ? `+${txn.receive_qty.toLocaleString()}` : '-'}</TableCell>
-                          <TableCell className="text-right font-mono text-destructive">{txn.issue_qty > 0 ? `-${txn.issue_qty.toLocaleString()}` : '-'}</TableCell>
-                          <TableCell className="text-right font-mono font-medium">{txn.balance_qty.toLocaleString()}</TableCell>
-                        </TableRow>
+                      {groupedStorageRows.map((row) => (
+                        <>
+                          <TableRow
+                            key={row.groupKey}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => row.isGroup ? handleStorageClick(row.transactions[0]) : handleStorageClick(row.transactions[0])}
+                          >
+                            <TableCell className="font-mono text-sm">{row.latestTime ? formatTime(row.latestTime) : '-'}</TableCell>
+                            <TableCell>
+                              {row.isGroup ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    className="p-0.5 rounded hover:bg-muted"
+                                    onClick={(e) => { e.stopPropagation(); toggleStorageGroup(row.groupKey); }}
+                                  >
+                                    {expandedStorageGroups.has(row.groupKey) ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                                  </button>
+                                  <span className="font-medium text-primary">{row.groupName}</span>
+                                  <span className="text-xs text-muted-foreground ml-1">({row.transactions.length} POs)</span>
+                                </span>
+                              ) : (
+                                <>
+                                  {row.transactions[0].storage_bin_cards?.work_orders?.po_number || '-'}
+                                  {row.transactions[0].batch_id && <span title="Bulk submission"><Layers className="h-3 w-3 inline ml-1 text-muted-foreground" /></span>}
+                                </>
+                              )}
+                            </TableCell>
+                            <TableCell>{row.style || '-'}</TableCell>
+                            <TableCell className="text-right font-mono text-success">{row.totalReceived > 0 ? `+${row.totalReceived.toLocaleString()}` : '-'}</TableCell>
+                            <TableCell className="text-right font-mono text-destructive">{row.totalIssued > 0 ? `-${row.totalIssued.toLocaleString()}` : '-'}</TableCell>
+                            <TableCell className="text-right font-mono font-medium">{row.totalBalance.toLocaleString()}</TableCell>
+                          </TableRow>
+                          {row.isGroup && expandedStorageGroups.has(row.groupKey) && row.transactions.map(txn => (
+                            <TableRow
+                              key={txn.id}
+                              className="cursor-pointer hover:bg-muted/50 bg-muted/20"
+                              onClick={() => handleStorageClick(txn)}
+                            >
+                              <TableCell className="font-mono text-sm pl-8">{txn.created_at ? formatTime(txn.created_at) : '-'}</TableCell>
+                              <TableCell className="pl-8 text-muted-foreground">{txn.storage_bin_cards?.work_orders?.po_number || '-'}</TableCell>
+                              <TableCell>{txn.storage_bin_cards?.style || '-'}</TableCell>
+                              <TableCell className="text-right font-mono text-success">{txn.receive_qty > 0 ? `+${txn.receive_qty.toLocaleString()}` : '-'}</TableCell>
+                              <TableCell className="text-right font-mono text-destructive">{txn.issue_qty > 0 ? `-${txn.issue_qty.toLocaleString()}` : '-'}</TableCell>
+                              <TableCell className="text-right font-mono font-medium">{txn.balance_qty.toLocaleString()}</TableCell>
+                            </TableRow>
+                          ))}
+                        </>
                       ))}
                     </TableBody>
                   </Table>
@@ -873,7 +1720,7 @@ export default function TodayUpdates() {
             </Card>
           )}
 
-          {filteredSewing.length === 0 && filteredFinishing.length === 0 && filteredCutting.length === 0 && filteredStorage.length === 0 && (
+          {filteredSewing.length === 0 && mergedSewingData.length === 0 && filteredFinishing.length === 0 && filteredCutting.length === 0 && filteredStorage.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 <p>No updates found for today</p>
@@ -882,8 +1729,81 @@ export default function TodayUpdates() {
           )}
         </TabsContent>
 
-        <TabsContent value="sewing" className="mt-4">
+        <TabsContent value="sewing" className="mt-4 space-y-4">
+          {/* Old sewing updates */}
+          {filteredSewing.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-500/20 flex items-center justify-center">
+                    <SewingMachine className="h-3.5 w-3.5 text-white" />
+                  </div>
+                  Sewing Updates
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Line</TableHead>
+                        <TableHead>PO</TableHead>
+                        <TableHead className="text-right">Output</TableHead>
+                        <TableHead className="text-right">Target</TableHead>
+                        <TableHead className="text-right">Manpower</TableHead>
+                        <TableHead className="text-right">Progress</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">vs Target</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredSewing.map((update) => {
+                        const oldSewingPct = update.target_qty && update.target_qty > 0 ? (update.output_qty / update.target_qty) * 100 : null;
+                        return (
+                        <TableRow
+                          key={update.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleSewingClick(update)}
+                        >
+                          <TableCell className="font-mono text-sm">{update.submitted_at ? formatTime(update.submitted_at) : '-'}</TableCell>
+                          <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
+                          <TableCell>
+                            <div>{update.work_orders?.po_number || '-'}</div>
+                            {update.work_orders?.buyer && <div className="text-xs text-muted-foreground">{update.work_orders.buyer}</div>}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold">{update.output_qty.toLocaleString()}</TableCell>
+                          <TableCell className="text-right font-mono">{update.target_qty?.toLocaleString() || '-'}</TableCell>
+                          <TableCell className="text-right">{update.manpower || '-'}</TableCell>
+                          <TableCell className="text-right">{update.stage_progress ? `${update.stage_progress}%` : '-'}</TableCell>
+                          <TableCell>
+                            {update.has_blocker ? (
+                              <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
+                            ) : (
+                              <StatusBadge variant="success" size="sm">OK</StatusBadge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">{renderPct(oldSewingPct)}</TableCell>
+                        </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* New sewing targets & actuals */}
           <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-500/20 flex items-center justify-center">
+                  <SewingMachine className="h-3.5 w-3.5 text-white" />
+                </div>
+                Sewing Targets & Actuals
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
@@ -893,38 +1813,65 @@ export default function TodayUpdates() {
                       <TableHead>Line</TableHead>
                       <TableHead>PO</TableHead>
                       <TableHead className="text-right">Output</TableHead>
-                      <TableHead className="text-right">Target</TableHead>
+                      <TableHead className="text-right">Target/hr</TableHead>
+                      <TableHead className="text-right">Reject</TableHead>
                       <TableHead className="text-right">Manpower</TableHead>
-                      <TableHead className="text-right">Progress</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="text-right">vs Target</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSewing.map((update) => (
-                      <TableRow 
-                        key={update.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleSewingClick(update)}
-                      >
-                        <TableCell className="font-mono text-sm">{formatTime(update.submitted_at)}</TableCell>
-                        <TableCell className="font-medium">{update.lines?.name || update.lines?.line_id}</TableCell>
-                        <TableCell>{update.work_orders?.po_number || '-'}</TableCell>
-                        <TableCell className="text-right font-mono font-bold">{update.output_qty.toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-mono">{update.target_qty?.toLocaleString() || '-'}</TableCell>
-                        <TableCell className="text-right">{update.manpower || '-'}</TableCell>
-                        <TableCell className="text-right">{update.stage_progress ? `${update.stage_progress}%` : '-'}</TableCell>
-                        <TableCell>
-                          {update.has_blocker ? (
-                            <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
-                          ) : (
-                            <StatusBadge variant="success" size="sm">OK</StatusBadge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredSewing.length === 0 && (
+                    {mergedSewingData.map((item) => {
+                      const output = item.actual?.good_today;
+                      const target = item.target?.per_hour_target;
+                      const reject = item.actual?.reject_today;
+                      const manpower = item.actual?.manpower_actual ?? item.target?.manpower_planned;
+                      const hasBoth = item.actual && item.target;
+                      const hasBlocker = item.actual?.has_blocker;
+                      const targetTotal = item.target?.target_total_planned ?? (item.target ? Math.round((item.target.per_hour_target ?? 0) * (item.target.hours_planned ?? 8)) : null);
+                      const sewingTabPct = (output != null && targetTotal != null && targetTotal > 0) ? (output / targetTotal) * 100 : null;
+                      return (
+                        <TableRow
+                          key={item.key}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => {
+                            setSelectedLegacySewing(null);
+                            setSewingViewKey(item.key);
+                            setSewingViewOpen(true);
+                          }}
+                        >
+                          <TableCell className="font-mono text-sm">{item.submitted_at ? formatTime(item.submitted_at) : '-'}</TableCell>
+                          <TableCell className="font-medium">{item.line_name}</TableCell>
+                          <TableCell>
+                            <div>{item.po_number || '-'}</div>
+                            {item.buyer && <div className="text-xs text-muted-foreground">{item.buyer}</div>}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold">{output?.toLocaleString() || '-'}</TableCell>
+                          <TableCell className="text-right font-mono">{target?.toLocaleString() || '-'}</TableCell>
+                          <TableCell className="text-right font-mono">{reject?.toLocaleString() || '-'}</TableCell>
+                          <TableCell className="text-right">{manpower || '-'}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {hasBlocker ? (
+                                <StatusBadge variant="danger" size="sm">Blocker</StatusBadge>
+                              ) : hasBoth ? (
+                                sewingTabPct != null && sewingTabPct >= 100
+                                  ? <StatusBadge variant="success" size="sm">Target Hit</StatusBadge>
+                                  : <StatusBadge variant="warning" size="sm">Target Missed</StatusBadge>
+                              ) : item.actual ? (
+                                <StatusBadge variant="warning" size="sm">No Target</StatusBadge>
+                              ) : (
+                                <StatusBadge variant="info" size="sm">Target Only</StatusBadge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">{renderPct(sewingTabPct)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {filteredSewing.length === 0 && mergedSewingData.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No sewing updates today
                         </TableCell>
                       </TableRow>
@@ -938,19 +1885,27 @@ export default function TodayUpdates() {
 
         <TabsContent value="finishing" className="mt-4">
           <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-violet-500/20 flex items-center justify-center">
+                  <Package className="h-3.5 w-3.5 text-white" />
+                </div>
+                Finishing Targets & Outputs
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Time</TableHead>
-                        <TableHead>Line</TableHead>
                         <TableHead>PO</TableHead>
                         <TableHead className="text-right">Output (Poly)</TableHead>
                         <TableHead className="text-right">Target (Poly)</TableHead>
                         <TableHead className="text-right">Output (Carton)</TableHead>
                         <TableHead className="text-right">Target (Carton)</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="text-right">vs Target</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -959,28 +1914,39 @@ export default function TodayUpdates() {
                         const targetPoly = row.target?.poly || 0;
                         const outputCarton = row.output?.carton || 0;
                         const targetCarton = row.target?.carton || 0;
+                        // Performance % uses poly as primary metric
+                        const finTabHours = (row.target?.planned_hours ?? 0) + (row.target?.ot_hours_planned ?? 0);
+                        const finTabPolyTarget = targetPoly * finTabHours;
+                        const finTabPct = finTabPolyTarget > 0 ? (outputPoly / finTabPolyTarget) * 100 : null;
                         return (
-                          <TableRow 
+                          <TableRow
                             key={row.key}
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() => row.output ? handleFinishingClick(row.output) : row.target && handleFinishingClick(row.target)}
                           >
                             <TableCell className="font-mono text-sm">{formatTime(row.submitted_at)}</TableCell>
-                            <TableCell className="font-medium">{row.line_name}</TableCell>
-                            <TableCell>{row.po_number || '-'}</TableCell>
+                            <TableCell>
+                              <div>{row.po_number || '-'}</div>
+                              {(row.output?.work_orders?.buyer || row.target?.work_orders?.buyer) && (
+                                <div className="text-xs text-muted-foreground">{row.output?.work_orders?.buyer || row.target?.work_orders?.buyer}</div>
+                              )}
+                            </TableCell>
                             <TableCell className="text-right font-mono font-bold">{outputPoly.toLocaleString()}</TableCell>
                             <TableCell className="text-right font-mono">{targetPoly > 0 ? targetPoly.toLocaleString() : '-'}</TableCell>
                             <TableCell className="text-right font-mono font-bold">{outputCarton.toLocaleString()}</TableCell>
                             <TableCell className="text-right font-mono">{targetCarton > 0 ? targetCarton.toLocaleString() : '-'}</TableCell>
                             <TableCell>
                               {row.output && row.target ? (
-                                <StatusBadge variant="success" size="sm">Complete</StatusBadge>
+                                finTabPct != null && finTabPct >= 100
+                                  ? <StatusBadge variant="success" size="sm">Target Hit</StatusBadge>
+                                  : <StatusBadge variant="warning" size="sm">Target Missed</StatusBadge>
                               ) : row.output ? (
                                 <StatusBadge variant="warning" size="sm">No Target</StatusBadge>
                               ) : (
                                 <StatusBadge variant="info" size="sm">Target Only</StatusBadge>
                               )}
                             </TableCell>
+                            <TableCell className="text-right">{renderPct(finTabPct)}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -1000,6 +1966,14 @@ export default function TodayUpdates() {
 
         <TabsContent value="cutting" className="mt-4">
           <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 shadow-md shadow-emerald-500/20 flex items-center justify-center">
+                    <Scissors className="h-3.5 w-3.5 text-white" />
+                  </div>
+                Cutting Targets & Actuals
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
@@ -1013,6 +1987,7 @@ export default function TodayUpdates() {
                       <TableHead className="text-right">Manpower</TableHead>
                       <TableHead className="text-right">Day Input</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="text-right">vs Target</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1021,34 +1996,41 @@ export default function TodayUpdates() {
                       const target = row.target?.cutting_capacity || 0;
                       const manpower = row.target?.man_power || 0;
                       const dayInput = row.actual?.day_input || 0;
+                      const cutTabPct = (output > 0 && target > 0) ? (output / target) * 100 : null;
                       return (
-                        <TableRow 
+                        <TableRow
                           key={row.key}
                           className="cursor-pointer hover:bg-muted/50"
                           onClick={() => row.actual ? handleCuttingClick(row.actual) : row.target && handleCuttingTargetClick(row.target)}
                         >
                           <TableCell className="font-mono text-sm">{row.submitted_at ? formatTime(row.submitted_at) : '-'}</TableCell>
                           <TableCell className="font-medium">{row.line_name}</TableCell>
-                          <TableCell>{row.po_number || '-'}</TableCell>
+                          <TableCell>
+                            <div>{row.po_number || '-'}</div>
+                            {row.buyer && <div className="text-xs text-muted-foreground">{row.buyer}</div>}
+                          </TableCell>
                           <TableCell className="text-right font-mono font-bold">{output.toLocaleString()}</TableCell>
                           <TableCell className="text-right font-mono">{target > 0 ? target.toLocaleString() : '-'}</TableCell>
                           <TableCell className="text-right">{manpower || '-'}</TableCell>
                           <TableCell className="text-right font-mono">{dayInput > 0 ? dayInput.toLocaleString() : '-'}</TableCell>
                           <TableCell>
                             {row.actual && row.target ? (
-                              <StatusBadge variant="success" size="sm">Complete</StatusBadge>
+                              cutTabPct != null && cutTabPct >= 100
+                                ? <StatusBadge variant="success" size="sm">Target Hit</StatusBadge>
+                                : <StatusBadge variant="warning" size="sm">Target Missed</StatusBadge>
                             ) : row.actual ? (
                               <StatusBadge variant="warning" size="sm">No Target</StatusBadge>
                             ) : (
                               <StatusBadge variant="info" size="sm">Target Only</StatusBadge>
                             )}
                           </TableCell>
+                          <TableCell className="text-right">{renderPct(cutTabPct)}</TableCell>
                         </TableRow>
                       );
                     })}
                     {mergedCuttingData.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No cutting submissions today
                         </TableCell>
                       </TableRow>
@@ -1062,13 +2044,21 @@ export default function TodayUpdates() {
 
         <TabsContent value="storage" className="mt-4">
           <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 shadow-md shadow-orange-500/20 flex items-center justify-center">
+                    <Warehouse className="h-3.5 w-3.5 text-white" />
+                  </div>
+                Storage Transactions
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Time</TableHead>
-                      <TableHead>PO</TableHead>
+                      <TableHead>PO / Group</TableHead>
                       <TableHead>Style</TableHead>
                       <TableHead className="text-right">Received</TableHead>
                       <TableHead className="text-right">Issued</TableHead>
@@ -1076,21 +2066,56 @@ export default function TodayUpdates() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredStorage.map((txn) => (
-                      <TableRow 
-                        key={txn.id} 
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleStorageClick(txn)}
-                      >
-                        <TableCell className="font-mono text-sm">{txn.created_at ? formatTime(txn.created_at) : '-'}</TableCell>
-                        <TableCell>{txn.storage_bin_cards?.work_orders?.po_number || '-'}</TableCell>
-                        <TableCell>{txn.storage_bin_cards?.style || '-'}</TableCell>
-                        <TableCell className="text-right font-mono text-success">{txn.receive_qty > 0 ? `+${txn.receive_qty.toLocaleString()}` : '-'}</TableCell>
-                        <TableCell className="text-right font-mono text-destructive">{txn.issue_qty > 0 ? `-${txn.issue_qty.toLocaleString()}` : '-'}</TableCell>
-                        <TableCell className="text-right font-mono font-medium">{txn.balance_qty.toLocaleString()}</TableCell>
-                      </TableRow>
+                    {groupedStorageRows.map((row) => (
+                      <>
+                        <TableRow
+                          key={row.groupKey}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => row.isGroup ? handleStorageClick(row.transactions[0]) : handleStorageClick(row.transactions[0])}
+                        >
+                          <TableCell className="font-mono text-sm">{row.latestTime ? formatTime(row.latestTime) : '-'}</TableCell>
+                          <TableCell>
+                            {row.isGroup ? (
+                              <span className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  className="p-0.5 rounded hover:bg-muted"
+                                  onClick={(e) => { e.stopPropagation(); toggleStorageGroup(row.groupKey); }}
+                                >
+                                  {expandedStorageGroups.has(row.groupKey) ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                                </button>
+                                <span className="font-medium text-primary">{row.groupName}</span>
+                                <span className="text-xs text-muted-foreground ml-1">({row.transactions.length} POs)</span>
+                              </span>
+                            ) : (
+                              <>
+                                {row.transactions[0].storage_bin_cards?.work_orders?.po_number || '-'}
+                                {row.transactions[0].batch_id && <span title="Bulk submission"><Layers className="h-3 w-3 inline ml-1 text-muted-foreground" /></span>}
+                              </>
+                            )}
+                          </TableCell>
+                          <TableCell>{row.style || '-'}</TableCell>
+                          <TableCell className="text-right font-mono text-success">{row.totalReceived > 0 ? `+${row.totalReceived.toLocaleString()}` : '-'}</TableCell>
+                          <TableCell className="text-right font-mono text-destructive">{row.totalIssued > 0 ? `-${row.totalIssued.toLocaleString()}` : '-'}</TableCell>
+                          <TableCell className="text-right font-mono font-medium">{row.totalBalance.toLocaleString()}</TableCell>
+                        </TableRow>
+                        {row.isGroup && expandedStorageGroups.has(row.groupKey) && row.transactions.map(txn => (
+                          <TableRow
+                            key={txn.id}
+                            className="cursor-pointer hover:bg-muted/50 bg-muted/20"
+                            onClick={() => handleStorageClick(txn)}
+                          >
+                            <TableCell className="font-mono text-sm pl-8">{txn.created_at ? formatTime(txn.created_at) : '-'}</TableCell>
+                            <TableCell className="pl-8 text-muted-foreground">{txn.storage_bin_cards?.work_orders?.po_number || '-'}</TableCell>
+                            <TableCell>{txn.storage_bin_cards?.style || '-'}</TableCell>
+                            <TableCell className="text-right font-mono text-success">{txn.receive_qty > 0 ? `+${txn.receive_qty.toLocaleString()}` : '-'}</TableCell>
+                            <TableCell className="text-right font-mono text-destructive">{txn.issue_qty > 0 ? `-${txn.issue_qty.toLocaleString()}` : '-'}</TableCell>
+                            <TableCell className="text-right font-mono font-medium">{txn.balance_qty.toLocaleString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </>
                     ))}
-                    {filteredStorage.length === 0 && (
+                    {groupedStorageRows.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                           No storage transactions today
@@ -1105,126 +2130,337 @@ export default function TodayUpdates() {
         </TabsContent>
       </Tabs>
 
-      {/* Submission Detail Modal */}
-      <SubmissionDetailModal
-        submission={selectedSubmission as any}
-        open={detailModalOpen}
-        onOpenChange={setDetailModalOpen}
-        onDeleted={fetchTodayUpdates}
-        onUpdated={fetchTodayUpdates}
-      />
+      {/* Sewing Submission View */}
+      {(() => {
+        const item = sewingViewKey ? mergedSewingData.find(m => m.key === sewingViewKey) : null;
+        let sewingTarget: SewingTargetData | null = null;
+        let sewingActual: SewingActualData | null = null;
+
+        if (item?.target) {
+          const t = item.target;
+          sewingTarget = {
+            id: t.id,
+            production_date: t.production_date,
+            line_name: item.line_name,
+            po_number: item.po_number,
+            buyer: item.buyer,
+            style: item.style,
+            order_qty: null,
+            submitted_at: t.submitted_at,
+            per_hour_target: t.per_hour_target,
+            manpower_planned: t.manpower_planned,
+            ot_hours_planned: t.ot_hours_planned,
+            hours_planned: t.hours_planned ?? null,
+            target_total_planned: t.target_total_planned ?? null,
+            stage_name: t.stages?.name || null,
+            planned_stage_progress: t.planned_stage_progress,
+            next_milestone: t.next_milestone,
+            estimated_ex_factory: t.estimated_ex_factory,
+            remarks: t.remarks,
+          };
+        }
+
+        if (item?.actual) {
+          const a = item.actual;
+          sewingActual = {
+            id: a.id,
+            production_date: a.production_date,
+            line_name: item.line_name,
+            po_number: item.po_number,
+            buyer: item.buyer,
+            style: item.style,
+            order_qty: null,
+            submitted_at: a.submitted_at,
+            good_today: a.good_today,
+            reject_today: a.reject_today,
+            rework_today: a.rework_today,
+            cumulative_good_total: a.cumulative_good_total,
+            manpower_actual: a.manpower_actual,
+            ot_hours_actual: a.ot_hours_actual,
+            ot_manpower_actual: a.ot_manpower_actual,
+            hours_actual: a.hours_actual ?? null,
+            actual_per_hour: a.actual_per_hour ?? null,
+            stage_name: a.stages?.name || null,
+            actual_stage_progress: a.actual_stage_progress,
+            remarks: a.remarks,
+            has_blocker: a.has_blocker,
+            blocker_description: a.blocker_description,
+            blocker_impact: a.blocker_impact,
+            blocker_owner: a.blocker_owner,
+            blocker_status: null,
+            estimated_cost_value: (a as any).estimated_cost_value ?? null,
+            estimated_cost_currency: (a as any).estimated_cost_currency ?? null,
+          };
+        }
+
+        // Legacy sewing_updates fallback (old single-form data)
+        if (!item && selectedLegacySewing) {
+          const u = selectedLegacySewing;
+          sewingActual = {
+            id: u.id,
+            production_date: u.production_date,
+            line_name: u.lines?.name || u.lines?.line_id || "Unknown",
+            po_number: u.work_orders?.po_number || null,
+            buyer: u.work_orders?.buyer || null,
+            style: u.work_orders?.style || null,
+            order_qty: null,
+            submitted_at: u.submitted_at,
+            good_today: u.output_qty,
+            reject_today: u.reject_qty || 0,
+            rework_today: u.rework_qty || 0,
+            cumulative_good_total: 0,
+            manpower_actual: u.manpower || 0,
+            ot_hours_actual: u.ot_hours || 0,
+            ot_manpower_actual: u.ot_manpower || null,
+            hours_actual: null,
+            actual_per_hour: null,
+            stage_name: null,
+            actual_stage_progress: u.stage_progress,
+            remarks: u.notes,
+            has_blocker: u.has_blocker ?? false,
+            blocker_description: u.blocker_description,
+            blocker_impact: u.blocker_impact,
+            blocker_owner: u.blocker_owner,
+            blocker_status: u.blocker_status,
+            estimated_cost_value: (u as any).estimated_cost_value ?? null,
+            estimated_cost_currency: (u as any).estimated_cost_currency ?? null,
+          };
+        }
+
+        return (
+          <SewingSubmissionView
+            target={sewingTarget}
+            actual={sewingActual}
+            open={sewingViewOpen}
+            onOpenChange={setSewingViewOpen}
+          />
+        );
+      })()}
 
       {/* Cutting Detail Modal */}
-      <CuttingDetailModal
-        cutting={selectedCutting}
-        open={cuttingModalOpen}
-        onOpenChange={setCuttingModalOpen}
-      />
+      {(() => {
+        const matchingTarget = selectedCutting
+          ? cuttingTargets.find(t =>
+              t.line_id === selectedCutting.line_id &&
+              t.work_order_id === selectedCutting.work_order_id
+            )
+          : null;
+        return (
+          <CuttingSubmissionView
+            target={matchingTarget ? {
+              id: matchingTarget.id,
+              production_date: matchingTarget.production_date,
+              line_name: matchingTarget.lines?.name || matchingTarget.lines?.line_id || 'Unknown',
+              buyer: matchingTarget.work_orders?.buyer || matchingTarget.buyer || null,
+              style: matchingTarget.work_orders?.style || matchingTarget.style || null,
+              po_number: matchingTarget.work_orders?.po_number || matchingTarget.po_no || null,
+              colour: matchingTarget.colour || null,
+              order_qty: matchingTarget.order_qty || null,
+              submitted_at: matchingTarget.submitted_at,
+              man_power: matchingTarget.man_power,
+              marker_capacity: matchingTarget.marker_capacity,
+              lay_capacity: matchingTarget.lay_capacity,
+              cutting_capacity: matchingTarget.cutting_capacity,
+              under_qty: matchingTarget.under_qty,
+              day_cutting: matchingTarget.day_cutting,
+              day_input: matchingTarget.day_input,
+              hours_planned: matchingTarget.hours_planned ?? null,
+              target_per_hour: matchingTarget.target_per_hour ?? null,
+              ot_hours_planned: matchingTarget.ot_hours_planned,
+              ot_manpower_planned: matchingTarget.ot_manpower_planned,
+            } : null}
+            actual={selectedCutting ? {
+              id: selectedCutting.id,
+              production_date: selectedCutting.production_date,
+              line_name: selectedCutting.line_name || 'Unknown',
+              buyer: selectedCutting.buyer || null,
+              style: selectedCutting.style || null,
+              po_number: selectedCutting.po_number || null,
+              colour: selectedCutting.colour || null,
+              order_qty: selectedCutting.order_qty || null,
+              submitted_at: selectedCutting.submitted_at,
+              man_power: selectedCutting.man_power,
+              marker_capacity: selectedCutting.marker_capacity,
+              lay_capacity: selectedCutting.lay_capacity,
+              cutting_capacity: selectedCutting.cutting_capacity,
+              under_qty: selectedCutting.under_qty,
+              day_cutting: selectedCutting.day_cutting,
+              day_input: selectedCutting.day_input,
+              total_cutting: selectedCutting.total_cutting,
+              total_input: selectedCutting.total_input,
+              balance: selectedCutting.balance,
+              hours_actual: selectedCutting.hours_actual ?? null,
+              actual_per_hour: selectedCutting.actual_per_hour ?? null,
+              ot_hours_actual: selectedCutting.ot_hours_actual,
+              ot_manpower_actual: selectedCutting.ot_manpower_actual,
+              leftover_recorded: selectedCutting.leftover_recorded,
+              leftover_type: selectedCutting.leftover_type,
+              leftover_unit: selectedCutting.leftover_unit,
+              leftover_quantity: selectedCutting.leftover_quantity,
+              leftover_notes: selectedCutting.leftover_notes,
+              leftover_location: selectedCutting.leftover_location,
+              leftover_photo_urls: selectedCutting.leftover_photo_urls ?? null,
+            } : null}
+            open={cuttingModalOpen}
+            onOpenChange={setCuttingModalOpen}
+          />
+        );
+      })()}
 
       {/* Storage Bin Card Detail Modal */}
       <StorageBinCardDetailModal
         binCard={selectedBinCard}
         transactions={binCardTransactions}
         open={storageModalOpen}
-        onOpenChange={setStorageModalOpen}
+        onOpenChange={(open) => {
+          setStorageModalOpen(open);
+          if (!open) setSelectedGroupedCards(null);
+        }}
+        groupedCards={selectedGroupedCards}
       />
 
       {/* Finishing Log Detail Modal */}
-      <FinishingLogDetailModal
-        log={selectedFinishingLog ? {
-          ...selectedFinishingLog,
-          work_order_id: null,
-          shift: null,
-          thread_cutting: selectedFinishingLog.thread_cutting || 0,
-          inside_check: selectedFinishingLog.inside_check || 0,
-          top_side_check: selectedFinishingLog.top_side_check || 0,
-          buttoning: selectedFinishingLog.buttoning || 0,
-          iron: selectedFinishingLog.iron || 0,
-          get_up: selectedFinishingLog.get_up || 0,
-          poly: selectedFinishingLog.poly || 0,
-          carton: selectedFinishingLog.carton || 0,
-          is_locked: false,
-          submitted_at: selectedFinishingLog.submitted_at,
-          line: selectedFinishingLog.lines ? {
-            line_id: selectedFinishingLog.lines.line_id,
-            name: selectedFinishingLog.lines.name
-          } : null,
-          work_order: selectedFinishingLog.work_orders ? {
-            po_number: selectedFinishingLog.work_orders.po_number,
-            style: selectedFinishingLog.work_orders.style,
-            buyer: selectedFinishingLog.work_orders.buyer
-          } : null
-        } : null}
-        open={finishingLogModalOpen}
-        onOpenChange={setFinishingLogModalOpen}
-      />
+      {(() => {
+        const counterpart = selectedFinishingLog
+          ? finishingDailyLogs.find(l =>
+              l.log_type !== selectedFinishingLog.log_type &&
+              l.production_date === selectedFinishingLog.production_date &&
+              l.work_order_id === selectedFinishingLog.work_order_id
+            )
+          : null;
+
+        const targetLog = selectedFinishingLog?.log_type === 'TARGET' ? selectedFinishingLog
+          : counterpart?.log_type === 'TARGET' ? counterpart
+          : null;
+
+        const actualLog = selectedFinishingLog?.log_type === 'OUTPUT' ? selectedFinishingLog
+          : counterpart?.log_type === 'OUTPUT' ? counterpart
+          : null;
+
+        const target: FinishingTargetData | null = targetLog ? {
+          id: targetLog.id,
+          production_date: targetLog.production_date,
+          submitted_at: targetLog.submitted_at,
+          po_number: targetLog.work_orders?.po_number ?? null,
+          buyer: targetLog.work_orders?.buyer ?? null,
+          style: targetLog.work_orders?.style ?? null,
+          thread_cutting: targetLog.thread_cutting || 0,
+          inside_check: targetLog.inside_check || 0,
+          top_side_check: targetLog.top_side_check || 0,
+          buttoning: targetLog.buttoning || 0,
+          iron: targetLog.iron || 0,
+          get_up: targetLog.get_up || 0,
+          poly: targetLog.poly || 0,
+          carton: targetLog.carton || 0,
+          m_power_planned: targetLog.m_power_planned ?? null,
+          planned_hours: targetLog.planned_hours ?? null,
+          ot_hours_planned: targetLog.ot_hours_planned ?? null,
+          ot_manpower_planned: targetLog.ot_manpower_planned ?? null,
+          remarks: targetLog.remarks ?? null,
+        } : null;
+
+        const actual: FinishingActualData | null = actualLog ? {
+          id: actualLog.id,
+          production_date: actualLog.production_date,
+          submitted_at: actualLog.submitted_at,
+          po_number: actualLog.work_orders?.po_number ?? null,
+          buyer: actualLog.work_orders?.buyer ?? null,
+          style: actualLog.work_orders?.style ?? null,
+          thread_cutting: actualLog.thread_cutting || 0,
+          inside_check: actualLog.inside_check || 0,
+          top_side_check: actualLog.top_side_check || 0,
+          buttoning: actualLog.buttoning || 0,
+          iron: actualLog.iron || 0,
+          get_up: actualLog.get_up || 0,
+          poly: actualLog.poly || 0,
+          carton: actualLog.carton || 0,
+          m_power_actual: actualLog.m_power_actual ?? null,
+          actual_hours: actualLog.actual_hours ?? null,
+          ot_hours_actual: actualLog.ot_hours_actual ?? null,
+          ot_manpower_actual: actualLog.ot_manpower_actual ?? null,
+          remarks: actualLog.remarks ?? null,
+        } : null;
+
+        return (
+          <FinishingSubmissionView
+            target={target}
+            actual={actual}
+            open={finishingLogModalOpen}
+            onOpenChange={setFinishingLogModalOpen}
+          />
+        );
+      })()}
 
       {/* Cutting Target Detail Modal */}
-      <CuttingTargetDetailModal
-        target={selectedCuttingTarget ? {
-          id: selectedCuttingTarget.id,
-          production_date: selectedCuttingTarget.production_date,
-          line_name: selectedCuttingTarget.lines?.name || selectedCuttingTarget.lines?.line_id || 'Unknown',
-          buyer: selectedCuttingTarget.work_orders?.buyer || selectedCuttingTarget.buyer || null,
-          style: selectedCuttingTarget.work_orders?.style || selectedCuttingTarget.style || null,
-          po_number: selectedCuttingTarget.work_orders?.po_number || selectedCuttingTarget.po_no || null,
-          colour: selectedCuttingTarget.colour || null,
-          order_qty: selectedCuttingTarget.order_qty || null,
-          man_power: selectedCuttingTarget.man_power,
-          marker_capacity: selectedCuttingTarget.marker_capacity,
-          lay_capacity: selectedCuttingTarget.lay_capacity,
-          cutting_capacity: selectedCuttingTarget.cutting_capacity,
-          under_qty: selectedCuttingTarget.under_qty,
-          day_cutting: selectedCuttingTarget.day_cutting,
-          day_input: selectedCuttingTarget.day_input,
-          submitted_at: selectedCuttingTarget.submitted_at,
-        } : null}
-        open={cuttingTargetModalOpen}
-        onOpenChange={setCuttingTargetModalOpen}
-      />
+      {(() => {
+        const matchingActual = selectedCuttingTarget
+          ? cuttingActuals.find(a =>
+              a.line_id === selectedCuttingTarget.line_id &&
+              a.work_order_id === selectedCuttingTarget.work_order_id
+            )
+          : null;
+        return (
+          <CuttingSubmissionView
+            target={selectedCuttingTarget ? {
+              id: selectedCuttingTarget.id,
+              production_date: selectedCuttingTarget.production_date,
+              line_name: selectedCuttingTarget.lines?.name || selectedCuttingTarget.lines?.line_id || 'Unknown',
+              buyer: selectedCuttingTarget.work_orders?.buyer || selectedCuttingTarget.buyer || null,
+              style: selectedCuttingTarget.work_orders?.style || selectedCuttingTarget.style || null,
+              po_number: selectedCuttingTarget.work_orders?.po_number || selectedCuttingTarget.po_no || null,
+              colour: selectedCuttingTarget.colour || null,
+              order_qty: selectedCuttingTarget.order_qty || null,
+              submitted_at: selectedCuttingTarget.submitted_at,
+              man_power: selectedCuttingTarget.man_power,
+              marker_capacity: selectedCuttingTarget.marker_capacity,
+              lay_capacity: selectedCuttingTarget.lay_capacity,
+              cutting_capacity: selectedCuttingTarget.cutting_capacity,
+              under_qty: selectedCuttingTarget.under_qty,
+              day_cutting: selectedCuttingTarget.day_cutting,
+              day_input: selectedCuttingTarget.day_input,
+              hours_planned: selectedCuttingTarget.hours_planned ?? null,
+              target_per_hour: selectedCuttingTarget.target_per_hour ?? null,
+              ot_hours_planned: selectedCuttingTarget.ot_hours_planned ?? null,
+              ot_manpower_planned: selectedCuttingTarget.ot_manpower_planned ?? null,
+            } : null}
+            actual={matchingActual ? {
+              id: matchingActual.id,
+              production_date: matchingActual.production_date,
+              line_name: matchingActual.lines?.name || matchingActual.lines?.line_id || 'Unknown',
+              buyer: matchingActual.work_orders?.buyer || null,
+              style: matchingActual.work_orders?.style || null,
+              po_number: matchingActual.work_orders?.po_number || null,
+              colour: matchingActual.colour || null,
+              order_qty: matchingActual.order_qty || null,
+              submitted_at: matchingActual.submitted_at,
+              man_power: matchingActual.man_power,
+              marker_capacity: matchingActual.marker_capacity,
+              lay_capacity: matchingActual.lay_capacity,
+              cutting_capacity: matchingActual.cutting_capacity,
+              under_qty: matchingActual.under_qty,
+              day_cutting: matchingActual.day_cutting,
+              day_input: matchingActual.day_input,
+              total_cutting: matchingActual.total_cutting,
+              total_input: matchingActual.total_input,
+              balance: matchingActual.balance,
+              hours_actual: matchingActual.hours_actual ?? null,
+              actual_per_hour: matchingActual.actual_per_hour ?? null,
+              ot_hours_actual: matchingActual.ot_hours_actual,
+              ot_manpower_actual: matchingActual.ot_manpower_actual,
+              leftover_recorded: matchingActual.leftover_recorded,
+              leftover_type: matchingActual.leftover_type,
+              leftover_unit: matchingActual.leftover_unit,
+              leftover_quantity: matchingActual.leftover_quantity,
+              leftover_notes: matchingActual.leftover_notes,
+              leftover_location: matchingActual.leftover_location,
+              leftover_photo_urls: matchingActual.leftover_photo_urls ?? null,
+            } : null}
+            open={cuttingTargetModalOpen}
+            onOpenChange={setCuttingTargetModalOpen}
+          />
+        );
+      })()}
 
-      {/* Export Dialog */}
-      <ExportSubmissionsDialog
-        open={exportDialogOpen}
-        onOpenChange={setExportDialogOpen}
-        data={{
-          sewingTargets: [],
-          finishingTargets: [],
-          sewingActuals: sewingUpdates.map(u => ({
-            ...u,
-            good_today: u.output_qty,
-            reject_today: u.reject_qty,
-            rework_today: u.rework_qty,
-            cumulative_good_total: u.output_qty,
-            manpower_actual: u.manpower,
-            ot_hours_actual: u.ot_hours,
-            actual_stage_progress: u.stage_progress,
-            remarks: u.notes,
-          })),
-          finishingActuals: finishingDailyLogs
-            .filter(log => log.log_type === 'OUTPUT')
-            .map(log => ({
-              ...log,
-              day_poly: log.poly || 0,
-              day_carton: log.carton || 0,
-              total_poly: log.poly || 0,
-              total_carton: log.carton || 0,
-            })),
-          cuttingTargets: cuttingTargets,
-          cuttingActuals: cuttingActuals,
-          storageBinCards: (storageTransactions || []).map(t => ({
-            id: t.storage_bin_cards?.id,
-            created_at: t.created_at,
-            buyer: t.storage_bin_cards?.buyer,
-            style: t.storage_bin_cards?.style,
-            work_orders: t.storage_bin_cards?.work_orders,
-            totalReceived: t.receive_qty,
-            totalIssued: t.issue_qty,
-            balance: t.balance_qty,
-          })),
-        }}
-        dateRange="1"
-      />
     </div>
   );
 }

@@ -174,18 +174,24 @@ jobs:
           BG_H=500
           BACKGROUND_RENDERED="$STAGE_DIR/dmg-background-rendered.png"
 
+          # Use a font path that exists on macOS runners (Helvetica is not available to ImageMagick)
+          FONT_PATH="/System/Library/Fonts/Supplemental/Arial.ttf"
+          if [ ! -f "$FONT_PATH" ]; then
+            FONT_PATH="/System/Library/Fonts/SFNS.ttf"
+          fi
+
           magick -size ${BG_W}x${BG_H} gradient:'#202124-#0b0c0d' \
             -attenuate 0.12 +noise Gaussian \
             -stroke 'rgba(255,255,255,0.18)' -strokewidth 2 -fill none \
             -draw "roundrectangle 96,236 264,404 18,18" \
             -draw "roundrectangle 396,236 564,404 18,18" \
-            -gravity North -font Helvetica -pointsize 34 \
+            -gravity North -font "$FONT_PATH" -pointsize 34 \
             -fill 'rgba(255,255,255,0.92)' \
             -annotate +0+110 "Drag to Applications →" \
             "$BACKGROUND_RENDERED"
 
           create-dmg \
-            --volname "Production Portal" \
+            --volname "ProductionPortal" \
             --window-pos 200 120 \
             --window-size ${BG_W} ${BG_H} \
             --icon-size 128 \
@@ -197,6 +203,104 @@ jobs:
 
           echo "DMG created:"
           ls -lh "$DMG_OUT"
+
+      - name: Notarize app + rebuild updater bundle (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          # Find the signed .app
+          APP_PATH="$(find "src-tauri/target/universal-apple-darwin/release/bundle/macos" -maxdepth 2 -name "*.app" -type d | head -1 || true)"
+          if [ -z "${APP_PATH:-}" ]; then
+            APP_PATH="$(find "src-tauri/target/release/bundle/macos" -maxdepth 2 -name "*.app" -type d | head -1 || true)"
+          fi
+
+          if [ -z "${APP_PATH:-}" ] || [ ! -d "$APP_PATH" ]; then
+            echo "Could not find .app to notarize" >&2
+            exit 1
+          fi
+
+          echo "Notarizing app: $APP_PATH"
+
+          # Create zip for notarization submission (Apple requires zip/dmg/pkg)
+          APP_ZIP="$(pwd)/artifacts/app_notarize.zip"
+          ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
+
+          retry() {
+            local n=0 max=6 delay=20
+            until "$@"; do
+              n=$((n+1))
+              if [ "$n" -ge "$max" ]; then
+                echo "Command failed after $n attempts: $*" >&2
+                return 1
+              fi
+              echo "Command failed (attempt $n/$max). Retrying in ${delay}s..." >&2
+              sleep "$delay"
+              delay=$((delay*2))
+            done
+          }
+
+          echo "Submitting .app for notarization..."
+          SUBMIT_JSON="$(retry xcrun notarytool submit "$APP_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --output-format json)"
+
+          echo "$SUBMIT_JSON"
+
+          UUID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("id",""))' "$SUBMIT_JSON")"
+          STATUS="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("status",""))' "$SUBMIT_JSON")"
+
+          echo "Notary submission id: $UUID"
+          echo "Notary status: $STATUS"
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "App notarization not accepted. Fetching log..." >&2
+            xcrun notarytool log "$UUID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" || true
+            exit 1
+          fi
+
+          echo "Waiting for ticket propagation..."
+          sleep 120
+
+          echo "Stapling notarization ticket to .app..."
+          retry xcrun stapler staple "$APP_PATH"
+
+          echo "Verifying stapled app..."
+          xcrun stapler validate "$APP_PATH" || true
+          spctl -a -vv "$APP_PATH" || true
+
+          # Rebuild .app.tar.gz from the signed + notarized app
+          APP_DIR="$(dirname "$APP_PATH")"
+          APP_BASENAME="$(basename "$APP_PATH")"
+          TAR_PATH="$(pwd)/artifacts/Production.Portal.app.tar.gz"
+
+          echo "Rebuilding updater .app.tar.gz from signed+notarized app..."
+          tar -czf "$TAR_PATH" -C "$APP_DIR" "$APP_BASENAME"
+
+          # Re-sign with Tauri updater key so auto-updater signature verification still works
+          echo "Re-signing updater bundle with Tauri key..."
+          npx tauri signer sign "$TAR_PATH" \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+
+          echo "Updater bundle rebuilt and signed:"
+          ls -lh "$TAR_PATH" "$TAR_PATH.sig"
+
+          # Clean up temporary zip
+          rm -f "$APP_ZIP"
 
       - name: Notarize + staple DMG (macOS)
         if: matrix.os == 'macos-latest'
@@ -324,25 +428,15 @@ jobs:
 
           [ -f artifacts/Production_Portal_universal.dmg ] || (echo "Missing notarized DMG" >&2 && exit 1)
 
-          MAC_TAR="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)"
-          if [ -z "${MAC_TAR:-}" ]; then
-            MAC_TAR="$(find src-tauri/target -name "*.app.tar.gz" -type f 2>/dev/null | head -1 || true)"
-          fi
+          # The updater tar.gz + sig are rebuilt by the "Notarize app + rebuild updater bundle" step
+          [ -f artifacts/Production.Portal.app.tar.gz ] || (echo "Missing rebuilt updater bundle" >&2 && exit 1)
 
-          if [ -n "${MAC_TAR:-}" ] && [ -f "$MAC_TAR" ]; then
-            cp "$MAC_TAR" artifacts/
+          if [ -f "artifacts/Production.Portal.app.tar.gz.sig" ]; then
+            cp "artifacts/Production.Portal.app.tar.gz.sig" "artifacts/darwin-universal.sig"
           else
-            echo "WARNING: .app.tar.gz updater bundle not found" >&2
+            echo "WARNING: No .sig found for rebuilt updater bundle" >&2
+            exit 1
           fi
-
-          if [ -f "src-tauri/target/universal-apple-darwin/release/bundle/macos/darwin-universal.sig" ]; then
-            cp "src-tauri/target/universal-apple-darwin/release/bundle/macos/darwin-universal.sig" artifacts/darwin-universal.sig
-          elif [ -n "${MAC_TAR:-}" ] && [ -f "$MAC_TAR.sig" ]; then
-            cp "$MAC_TAR.sig" artifacts/darwin-universal.sig
-          elif [ -f "src-tauri/target/release/bundle/macos/darwin-universal.sig" ]; then
-            cp "src-tauri/target/release/bundle/macos/darwin-universal.sig" artifacts/darwin-universal.sig
-          fi
-          cp "$MAC_TAR" "artifacts/Production.Portal.app.tar.gz"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
@@ -433,7 +527,7 @@ jobs:
           cat > dist/latest.json <<EOF
           {
             "version": "$VERSION",
-            "notes": "Production Portal update",
+            "notes": "ProductionPortal update",
             "pub_date": "$PUB_DATE",
             "platforms": {
               "linux-x86_64": { "url": "$LINUX_URL", "signature": "$LINUX_SIG" },

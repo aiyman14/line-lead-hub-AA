@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -42,6 +43,7 @@ interface ExtrasOverviewModalProps {
 }
 
 export function ExtrasOverviewModal({ open, onOpenChange }: ExtrasOverviewModalProps) {
+  const { t } = useTranslation();
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ExtrasOverviewData[]>([]);
@@ -75,11 +77,11 @@ export function ExtrasOverviewModal({ open, onOpenChange }: ExtrasOverviewModalP
 
       const workOrderIds = workOrders.map(wo => wo.id);
 
-      // Fetch finishing carton output and ledger entries in parallel
-      const [cartonRes, ledgerRes] = await Promise.all([
+      // Fetch finishing poly output and ledger entries in parallel
+      const [polyRes, ledgerRes] = await Promise.all([
         supabase
           .from('finishing_daily_logs')
-          .select('work_order_id, carton')
+          .select('work_order_id, poly')
           .eq('factory_id', profile.factory_id)
           .eq('log_type', 'OUTPUT')
           .in('work_order_id', workOrderIds),
@@ -90,11 +92,11 @@ export function ExtrasOverviewModal({ open, onOpenChange }: ExtrasOverviewModalP
           .in('work_order_id', workOrderIds),
       ]);
 
-      // Aggregate carton by work order
-      const cartonByWo = new Map<string, number>();
-      cartonRes.data?.forEach((log: any) => {
-        const current = cartonByWo.get(log.work_order_id) || 0;
-        cartonByWo.set(log.work_order_id, current + (log.carton || 0));
+      // Aggregate poly by work order (poly is primary finishing metric)
+      const polyByWo = new Map<string, number>();
+      polyRes.data?.forEach((log: any) => {
+        const current = polyByWo.get(log.work_order_id) || 0;
+        polyByWo.set(log.work_order_id, current + (log.poly || 0));
       });
 
       // Aggregate ledger by work order: stocked vs consumed
@@ -113,7 +115,7 @@ export function ExtrasOverviewModal({ open, onOpenChange }: ExtrasOverviewModalP
       // Build overview data - only include work orders with extras
       const overviewData: ExtrasOverviewData[] = workOrders
         .map(wo => {
-          const totalCarton = cartonByWo.get(wo.id) || 0;
+          const totalCarton = polyByWo.get(wo.id) || 0;
           const extrasTotal = Math.max(totalCarton - wo.order_qty, 0);
           const stocked = stockedByWo.get(wo.id) || 0;
           const consumed = consumedByWo.get(wo.id) || 0;
@@ -183,63 +185,54 @@ export function ExtrasOverviewModal({ open, onOpenChange }: ExtrasOverviewModalP
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              Extras Overview - All POs
+              {t('modals.extrasOverview')}
             </DialogTitle>
           </DialogHeader>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <div className="bg-muted/50 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold font-mono">{totals.extras.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Total Extras</p>
+              <p className="text-xs text-muted-foreground">{t('modals.totalExtras')}</p>
             </div>
             <div className="bg-warning/10 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold font-mono text-warning">{totals.available.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
-                <Package className="h-3 w-3" /> Available
-              </p>
+              <p className="text-xs text-muted-foreground">{t('modals.available')}</p>
             </div>
             <div className="bg-primary/10 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold font-mono text-primary">{totals.stocked.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
-                <Archive className="h-3 w-3" /> Stocked
-              </p>
+              <p className="text-xs text-muted-foreground">{t('modals.stocked')}</p>
             </div>
             <div className="bg-muted rounded-lg p-3 text-center">
               <p className="text-2xl font-bold font-mono text-muted-foreground">{totals.consumed.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
-                <PackageCheck className="h-3 w-3" /> Consumed
-              </p>
+              <p className="text-xs text-muted-foreground">{t('modals.consumed')}</p>
             </div>
           </div>
 
           {/* Filter Tabs */}
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="all" className="gap-1">
-                All
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+            <TabsList className="w-full grid grid-cols-4 h-auto">
+              <TabsTrigger value="all" className="text-xs px-2 py-1.5">
+                {t('common.all')}
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
                   {data.length}
                 </Badge>
               </TabsTrigger>
-              <TabsTrigger value="available" className="gap-1">
-                <Package className="h-3 w-3" />
-                Available
-                <Badge variant="warning" className="ml-1 h-5 px-1.5 text-xs">
+              <TabsTrigger value="available" className="text-xs px-2 py-1.5">
+                {t('modals.available')}
+                <Badge variant="warning" className="ml-1 h-4 px-1 text-[10px]">
                   {data.filter(d => d.available > 0).length}
                 </Badge>
               </TabsTrigger>
-              <TabsTrigger value="stocked" className="gap-1">
-                <Archive className="h-3 w-3" />
-                Stocked
-                <Badge variant="default" className="ml-1 h-5 px-1.5 text-xs">
+              <TabsTrigger value="stocked" className="text-xs px-2 py-1.5">
+                {t('modals.stocked')}
+                <Badge variant="default" className="ml-1 h-4 px-1 text-[10px]">
                   {data.filter(d => d.stocked > 0).length}
                 </Badge>
               </TabsTrigger>
-              <TabsTrigger value="consumed" className="gap-1">
-                <PackageCheck className="h-3 w-3" />
-                Consumed
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+              <TabsTrigger value="consumed" className="text-xs px-2 py-1.5">
+                {t('modals.consumed')}
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
                   {data.filter(d => d.consumed > 0).length}
                 </Badge>
               </TabsTrigger>
@@ -252,20 +245,20 @@ export function ExtrasOverviewModal({ open, onOpenChange }: ExtrasOverviewModalP
             </div>
           ) : filteredData.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {filter === 'all' ? 'No POs with extras found' : `No POs with ${filter} extras`}
+              {filter === 'all' ? t('modals.noPOsWithExtras') : t('modals.noPOsWithFilterExtras', { filter })}
             </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>PO Number</TableHead>
-                    <TableHead>Buyer / Style</TableHead>
-                    <TableHead className="text-right">Extras</TableHead>
-                    <TableHead className="text-right">Available</TableHead>
-                    <TableHead className="text-right">Stocked</TableHead>
-                    <TableHead className="text-right">Consumed</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t('modals.poNumber')}</TableHead>
+                    <TableHead>{t('modals.buyerStyle')}</TableHead>
+                    <TableHead className="text-right">{t('modals.extras')}</TableHead>
+                    <TableHead className="text-right">{t('modals.available')}</TableHead>
+                    <TableHead className="text-right">{t('modals.stocked')}</TableHead>
+                    <TableHead className="text-right">{t('modals.consumed')}</TableHead>
+                    <TableHead className="text-right">{t('modals.actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -307,15 +300,27 @@ export function ExtrasOverviewModal({ open, onOpenChange }: ExtrasOverviewModalP
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => handleOpenLedger(item)}
-                          className="gap-1"
-                        >
-                          <Plus className="h-3 w-3" />
-                          Manage
-                        </Button>
+                        {item.available === 0 && item.extras_total > 0 ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenLedger(item)}
+                            className="gap-1 text-destructive hover:text-destructive"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {t('modals.delete')}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenLedger(item)}
+                            className="gap-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            {t('modals.manage')}
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

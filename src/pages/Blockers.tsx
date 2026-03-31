@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatTimeInTimezone, formatDateTimeInTimezone, getCurrentTimeInTimezone } from "@/lib/date-utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Loader2, AlertTriangle, Search, Filter, Clock, CheckCircle, Factory, Package, Trash2, X } from "lucide-react";
+import { Loader2, AlertTriangle, Search, Filter, Clock, CheckCircle, Package, Trash2, X } from "lucide-react";
+import { SewingMachine } from "@/components/icons/SewingMachine";
 import { BLOCKER_IMPACT_LABELS } from "@/lib/constants";
 import { toast } from "sonner";
 
@@ -24,7 +26,7 @@ interface Blocker {
   impact: string | null;
   owner: string | null;
   status: string;
-  submitted_at: string;
+  submitted_at: string | null;
   production_date: string;
   // Additional fields for detail view
   buyer?: string | null;
@@ -44,7 +46,7 @@ interface Blocker {
 export default function Blockers() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { profile, isAdminOrHigher } = useAuth();
+  const { profile, factory, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
 
@@ -172,7 +174,7 @@ export default function Blockers() {
       }));
 
       setBlockers([...sewingBlockers, ...finishingBlockers].sort(
-        (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime()
+        (a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime()
       ));
     } catch (error) {
       console.error('Error fetching blockers:', error);
@@ -311,18 +313,28 @@ export default function Blockers() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '-';
+    // Use factory timezone for display
+    const timezone = factory?.timezone || "Asia/Dhaka";
+    const now = getCurrentTimeInTimezone(timezone);
+    const today = now.toDateString();
 
-    if (date.toDateString() === today.toDateString()) {
-      return `Today, ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return `Yesterday, ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toDateString();
+
+    // Parse the date in the factory timezone context
+    const date = new Date(dateString);
+    const dateStr = date.toDateString();
+    const timeStr = formatTimeInTimezone(dateString, timezone);
+
+    if (dateStr === today) {
+      return `Today, ${timeStr}`;
+    } else if (dateStr === yesterdayStr) {
+      return `Yesterday, ${timeStr}`;
     }
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return formatDateTimeInTimezone(dateString, timezone);
   };
 
   if (loading) {
@@ -334,28 +346,40 @@ export default function Blockers() {
   }
 
   return (
-    <div className="p-4 lg:p-6 space-y-6">
+    <div className="py-3 md:py-4 lg:py-6 space-y-5 md:space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <AlertTriangle className="h-6 w-6 text-warning" />
-            Blockers
-          </h1>
-          <p className="text-muted-foreground">Track and resolve production blockers</p>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold">Blockers</h1>
+            <p className="text-sm text-muted-foreground">Track and resolve production blockers</p>
+          </div>
         </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-4">
-        <Card className="border-destructive/30 bg-destructive/5">
+        <Card className="bg-gradient-to-br from-amber-50 via-white to-amber-50/50 border-amber-200/60 dark:border-amber-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="p-4 text-center">
+            <div className="flex justify-center mb-2">
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/25 group-hover:shadow-amber-500/40 transition-shadow flex items-center justify-center">
+                <span className="text-white font-bold text-lg">{openBlockers.length}</span>
+              </div>
+            </div>
             <p className="text-3xl font-bold text-destructive">{openBlockers.length}</p>
             <p className="text-sm text-muted-foreground">Open</p>
           </CardContent>
         </Card>
-        <Card className="border-success/30 bg-success/5">
+        <Card className="bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 border-emerald-200/60 dark:border-emerald-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="p-4 text-center">
+            <div className="flex justify-center mb-2">
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 shadow-lg shadow-emerald-500/25 group-hover:shadow-emerald-500/40 transition-shadow flex items-center justify-center">
+                <span className="text-white font-bold text-lg">{resolvedBlockers.length}</span>
+              </div>
+            </div>
             <p className="text-3xl font-bold text-success">{resolvedBlockers.length}</p>
             <p className="text-sm text-muted-foreground">Resolved</p>
           </CardContent>
@@ -453,7 +477,7 @@ export default function Blockers() {
                             blocker.type === 'sewing' ? 'bg-primary/10' : 'bg-info/10'
                           }`}>
                             {blocker.type === 'sewing' ? (
-                              <Factory className="h-4 w-4 text-primary" />
+                              <SewingMachine className="h-4 w-4 text-primary" />
                             ) : (
                               <Package className="h-4 w-4 text-info" />
                             )}
@@ -550,7 +574,7 @@ export default function Blockers() {
                   selectedBlocker.type === 'sewing' ? 'bg-primary/10' : 'bg-info/10'
                 }`}>
                   {selectedBlocker.type === 'sewing' ? (
-                    <Factory className="h-4 w-4 text-primary" />
+                    <SewingMachine className="h-4 w-4 text-primary" />
                   ) : (
                     <Package className="h-4 w-4 text-info" />
                   )}

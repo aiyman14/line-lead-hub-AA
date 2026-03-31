@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMidnightRefresh } from "@/hooks/useMidnightRefresh";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, Clock, Target, TrendingUp } from "lucide-react";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
+import { getTodayInTimezone } from "@/lib/date-utils";
 
 interface SheetSummary {
   id: string;
@@ -32,7 +34,7 @@ interface Line {
 
 export default function FinishingOverview() {
   const navigate = useNavigate();
-  const { profile, isAdminOrHigher } = useAuth();
+  const { profile, factory, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
@@ -45,9 +47,16 @@ export default function FinishingOverview() {
     }
   }, [profile?.factory_id]);
 
+  // Auto-refresh at midnight (factory timezone) and on tab refocus
+  useMidnightRefresh(useCallback(() => {
+    if (profile?.factory_id && isAdminOrHigher()) {
+      fetchOverviewData();
+    }
+  }, [profile?.factory_id]));
+
   async function fetchOverviewData() {
     if (!profile?.factory_id) return;
-    const today = format(new Date(), "yyyy-MM-dd");
+    const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
 
     try {
       // Fetch all lines
@@ -190,8 +199,8 @@ export default function FinishingOverview() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500/10 rounded-full">
-                    <Clock className="h-5 w-5 text-amber-600" />
+                  <div className="p-2 bg-violet-500/10 rounded-full">
+                    <Clock className="h-5 w-5 text-violet-600" />
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{totalSlotsSubmitted} / {totalSlotsPossible}</p>

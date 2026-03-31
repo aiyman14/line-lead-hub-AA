@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -70,11 +72,9 @@ main {
   overscroll-behavior-y: auto;
 }
 
-/* Production Portal Premium Design System
+/* ProductionPortal Premium Design System
    Refined industrial-modern aesthetic with premium feel
 */
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @layer base {
   :root {
@@ -137,15 +137,15 @@ main {
     --chart-4: 0 72% 51%;
     --chart-5: 262 83% 58%;
     
-    /* Sidebar - Deep slate */
-    --sidebar-background: 222 47% 11%;
+    /* Sidebar - Deep blue */
+    --sidebar-background: 226 58% 15%;
     --sidebar-foreground: 214 32% 91%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary: 217 91% 65%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 214 32% 91%;
-    --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-accent: 224 50% 24%;
+    --sidebar-accent-foreground: 214 32% 97%;
+    --sidebar-border: 224 40% 20%;
+    --sidebar-ring: 217 91% 65%;
     
     /* Custom tokens */
     --factory-slate: 222 47% 11%;
@@ -205,14 +205,14 @@ main {
     --input: 217 33% 17%;
     --ring: 217 91% 60%;
     
-    --sidebar-background: 222 47% 5%;
+    --sidebar-background: 226 58% 9%;
     --sidebar-foreground: 214 32% 91%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary: 217 91% 65%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 12%;
-    --sidebar-accent-foreground: 214 32% 91%;
-    --sidebar-border: 217 33% 12%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-accent: 224 50% 18%;
+    --sidebar-accent-foreground: 214 32% 97%;
+    --sidebar-border: 224 40% 14%;
+    --sidebar-ring: 217 91% 65%;
     
     --factory-slate: 222 47% 5%;
     --factory-slate-light: 217 33% 12%;
@@ -228,13 +228,19 @@ main {
   }
 
   html {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', 'Noto Sans Bengali', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     width: 100%;
     max-width: 100vw;
     overflow-x: hidden;
+  }
+
+  /* Bengali language support */
+  html[lang="bn"],
+  html[lang="bn"] * {
+    font-family: 'Noto Sans Bengali', 'Inter', system-ui, sans-serif;
   }
 
   body {
@@ -661,4 +667,233 @@ main {
   .empty-state-description {
     @apply text-sm text-muted-foreground max-w-sm;
   }
+}
+
+/* ─── Driver.js Tour — Premium Dark Design ─── */
+
+.driver-popover {
+  background: #2851a3 !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 20px !important;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04) inset,
+    0 32px 80px rgba(0, 0, 0, 0.55),
+    0 8px 24px rgba(0, 0, 0, 0.3) !important;
+  padding: 28px 28px 22px !important;
+  min-width: 340px !important;
+  max-width: 400px !important;
+  position: fixed !important;
+  overflow: hidden !important;
+}
+
+/* Ambient blue glow at top-right */
+.driver-popover::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(147, 197, 253, 0.25) 0%, transparent 70%);
+  border-radius: 50%;
+}
+
+.driver-popover * {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif !important;
+}
+
+/* Title */
+.driver-popover-title {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  color: #f1f5f9 !important;
+  line-height: 1.35 !important;
+  margin: 0 0 10px !important;
+  padding-right: 32px !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* Description */
+.driver-popover-description {
+  font-size: 13.5px !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+  line-height: 1.7 !important;
+  margin: 0 !important;
+}
+
+.driver-popover-description b {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+/* Close ✕ button */
+.driver-popover-close-btn {
+  all: unset !important;
+  position: absolute !important;
+  top: 16px !important;
+  right: 16px !important;
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 15px !important;
+  color: #475569 !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: background 0.15s, color 0.15s !important;
+  z-index: 1 !important;
+}
+
+.driver-popover-close-btn:hover,
+.driver-popover-close-btn:focus {
+  color: #f1f5f9 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Footer */
+.driver-popover-footer {
+  margin-top: 22px !important;
+  padding-top: 18px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+
+/* Progress pill — "1 of 7" */
+.driver-popover-progress-text {
+  display: inline-flex !important;
+  align-items: center !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 20px !important;
+  padding: 3px 10px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+}
+
+/* All footer buttons — base reset */
+.driver-popover-footer button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  border-radius: 10px !important;
+  padding: 8px 16px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.18s ease !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  text-shadow: none !important;
+  outline: none !important;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif !important;
+}
+
+/* Navigation buttons wrapper */
+.driver-popover-navigation-btns {
+  display: flex !important;
+  gap: 6px !important;
+  flex-grow: 1 !important;
+  justify-content: flex-end !important;
+}
+
+/* Back button — white outline */
+.driver-popover-prev-btn {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
+}
+
+.driver-popover-prev-btn:hover:not([style*="pointer-events: none"]) {
+  background: rgba(255, 255, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.8) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Next button — solid white fill */
+.driver-popover-next-btn {
+  background: #ffffff !important;
+  color: #2851a3 !important;
+  border: none !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.driver-popover-next-btn:hover:not([style*="pointer-events: none"]) {
+  background: #e8f0fe !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Done button — solid white fill */
+.driver-popover-done-btn {
+  background: #ffffff !important;
+  color: #2851a3 !important;
+  border: none !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.driver-popover-done-btn:hover {
+  background: #e8f0fe !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Disabled */
+.driver-popover-btn-disabled {
+  opacity: 0.3 !important;
+  pointer-events: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Arrow — match dark popover */
+.driver-popover-arrow-side-left   { border-left-color:   #2851a3 !important; border-right-color:  transparent !important; border-top-color:    transparent !important; border-bottom-color: transparent !important; }
+.driver-popover-arrow-side-right  { border-right-color:  #2851a3 !important; border-left-color:   transparent !important; border-top-color:    transparent !important; border-bottom-color: transparent !important; }
+.driver-popover-arrow-side-top    { border-top-color:    #2851a3 !important; border-left-color:   transparent !important; border-right-color:  transparent !important; border-bottom-color: transparent !important; }
+.driver-popover-arrow-side-bottom { border-bottom-color: #2851a3 !important; border-left-color:   transparent !important; border-right-color:  transparent !important; border-top-color:    transparent !important; }
+
+/* ── Finance theme override ─────────────────────────────────────────────────
+   Applied when data-theme="finance" is set on <html>.
+   Shifts all primary/ring/sidebar accent colours from blue → purple.
+   This previews the future ProductionPortal Finance product identity.
+────────────────────────────────────────────────────────────────────────── */
+
+[data-theme="finance"] {
+  --primary: 270 76% 52%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 270 76% 52%;
+  --chart-1: 270 76% 52%;
+  --sidebar-background: 270 40% 17%;
+  --sidebar-foreground: 270 20% 88%;
+  --sidebar-primary: 270 76% 72%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 97%;
+  --sidebar-accent-foreground: 270 65% 38%;
+  --sidebar-border: 270 30% 25%;
+  --sidebar-ring: 270 76% 72%;
+  --sidebar-hover: 270 35% 27%;
+}
+
+
+[data-theme="finance"].dark {
+  --primary: 270 76% 66%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 270 76% 66%;
+  --chart-1: 270 76% 66%;
+  --sidebar-background: 270 40% 13%;
+  --sidebar-foreground: 270 20% 88%;
+  --sidebar-primary: 270 76% 70%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 96%;
+  --sidebar-accent-foreground: 270 65% 35%;
+  --sidebar-border: 270 30% 20%;
+  --sidebar-ring: 270 76% 70%;
 }

@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Factory, Package } from "lucide-react";
+import { Loader2, Package } from "lucide-react";
+import { SewingMachine } from "@/components/icons/SewingMachine";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -51,6 +53,7 @@ interface EditSubmissionModalProps {
 }
 
 export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }: EditSubmissionModalProps) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
 
@@ -114,12 +117,12 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
 
       if (error) throw error;
 
-      toast.success("Submission updated successfully");
+      toast.success(t('modals.submissionUpdatedSuccess'));
       onOpenChange(false);
       onSaved();
     } catch (error: any) {
       console.error('Error updating submission:', error);
-      toast.error(error.message || "Failed to update submission");
+      toast.error(error?.message || t('modals.failedToUpdateSubmission'));
     } finally {
       setSaving(false);
     }
@@ -131,11 +134,11 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isSewing ? (
-              <Factory className="h-5 w-5 text-primary" />
+              <SewingMachine className="h-5 w-5 text-primary" />
             ) : (
               <Package className="h-5 w-5 text-info" />
             )}
-            Edit {isSewing ? 'Sewing' : 'Finishing'} Submission
+            {t(isSewing ? 'modals.editSewingSubmission' : 'modals.editFinishingSubmission')}
           </DialogTitle>
         </DialogHeader>
 
@@ -144,7 +147,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="output_qty">Output Qty</Label>
+                  <Label htmlFor="output_qty">{t('modals.outputQty')}</Label>
                   <Input
                     id="output_qty"
                     type="number"
@@ -153,7 +156,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="target_qty">Target Qty</Label>
+                  <Label htmlFor="target_qty">{t('modals.targetQty')}</Label>
                   <Input
                     id="target_qty"
                     type="number"
@@ -164,7 +167,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="manpower">Manpower</Label>
+                  <Label htmlFor="manpower">{t('modals.manpower')}</Label>
                   <Input
                     id="manpower"
                     type="number"
@@ -173,7 +176,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="stage_progress">Progress %</Label>
+                  <Label htmlFor="stage_progress">{t('modals.progressPct')}</Label>
                   <Input
                     id="stage_progress"
                     type="number"
@@ -184,7 +187,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="reject_qty">Reject Qty</Label>
+                  <Label htmlFor="reject_qty">{t('modals.rejectQty')}</Label>
                   <Input
                     id="reject_qty"
                     type="number"
@@ -193,7 +196,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rework_qty">Rework Qty</Label>
+                  <Label htmlFor="rework_qty">{t('modals.reworkQty')}</Label>
                   <Input
                     id="rework_qty"
                     type="number"
@@ -204,7 +207,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="ot_hours">OT Hours</Label>
+                  <Label htmlFor="ot_hours">{t('modals.otHours')}</Label>
                   <Input
                     id="ot_hours"
                     type="number"
@@ -214,7 +217,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ot_manpower">OT Manpower</Label>
+                  <Label htmlFor="ot_manpower">{t('modals.otManpower')}</Label>
                   <Input
                     id="ot_manpower"
                     type="number"
@@ -224,7 +227,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
+                <Label htmlFor="notes">{t('modals.notes')}</Label>
                 <Textarea
                   id="notes"
                   value={formData.notes ?? ''}
@@ -237,7 +240,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="m_power">M Power</Label>
+                  <Label htmlFor="m_power">{t('modals.mPower')}</Label>
                   <Input
                     id="m_power"
                     type="number"
@@ -246,7 +249,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="per_hour_target">Per Hour Target</Label>
+                  <Label htmlFor="per_hour_target">{t('modals.perHourTarget')}</Label>
                   <Input
                     id="per_hour_target"
                     type="number"
@@ -257,7 +260,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="day_qc_pass">Day QC Pass</Label>
+                  <Label htmlFor="day_qc_pass">{t('modals.dayQcPass')}</Label>
                   <Input
                     id="day_qc_pass"
                     type="number"
@@ -266,7 +269,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="total_qc_pass">Total QC Pass</Label>
+                  <Label htmlFor="total_qc_pass">{t('modals.totalQcPass')}</Label>
                   <Input
                     id="total_qc_pass"
                     type="number"
@@ -277,7 +280,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="day_poly">Day Poly</Label>
+                  <Label htmlFor="day_poly">{t('modals.dayPoly')}</Label>
                   <Input
                     id="day_poly"
                     type="number"
@@ -286,7 +289,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="total_poly">Total Poly</Label>
+                  <Label htmlFor="total_poly">{t('modals.totalPoly')}</Label>
                   <Input
                     id="total_poly"
                     type="number"
@@ -297,7 +300,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="day_carton">Day Carton</Label>
+                  <Label htmlFor="day_carton">{t('modals.dayCarton')}</Label>
                   <Input
                     id="day_carton"
                     type="number"
@@ -306,7 +309,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="total_carton">Total Carton</Label>
+                  <Label htmlFor="total_carton">{t('modals.totalCarton')}</Label>
                   <Input
                     id="total_carton"
                     type="number"
@@ -316,7 +319,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="remarks">Remarks</Label>
+                <Label htmlFor="remarks">{t('modals.remarks')}</Label>
                 <Textarea
                   id="remarks"
                   value={formData.remarks ?? ''}
@@ -330,7 +333,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
           {/* Blocker section */}
           <div className="space-y-3 pt-2 border-t">
             <div className="flex items-center justify-between">
-              <Label htmlFor="has_blocker">Has Blocker</Label>
+              <Label htmlFor="has_blocker">{t('modals.hasBlocker')}</Label>
               <Switch
                 id="has_blocker"
                 checked={formData.has_blocker ?? false}
@@ -339,7 +342,7 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
             </div>
             {formData.has_blocker && (
               <div className="space-y-2">
-                <Label htmlFor="blocker_description">Blocker Description</Label>
+                <Label htmlFor="blocker_description">{t('modals.blockerDescription')}</Label>
                 <Textarea
                   id="blocker_description"
                   value={formData.blocker_description ?? ''}
@@ -353,11 +356,14 @@ export function EditSubmissionModal({ submission, open, onOpenChange, onSaved }:
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
+            {t('modals.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save Changes
+            {saving ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('modals.saving')}</>
+            ) : (
+              t('modals.saveChanges')
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

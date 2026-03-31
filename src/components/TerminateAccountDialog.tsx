@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 
 export function TerminateAccountDialog() {
+  const { t } = useTranslation();
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
@@ -30,7 +32,7 @@ export function TerminateAccountDialog() {
 
   const handleTerminate = async () => {
     if (confirmText !== confirmPhrase) {
-      toast.error("Please type the confirmation phrase exactly");
+      toast.error(t('modals.terminateConfirmError'));
       return;
     }
 
@@ -39,7 +41,7 @@ export function TerminateAccountDialog() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session) {
-        toast.error("You must be logged in to terminate your account");
+        toast.error(t('modals.terminateMustBeLoggedIn'));
         return;
       }
 
@@ -55,14 +57,14 @@ export function TerminateAccountDialog() {
         throw new Error(data.error || "Failed to terminate account");
       }
 
-      toast.success("Your account has been permanently deleted");
+      toast.success(t('modals.terminateSuccess'));
       
       // Sign out and redirect to auth page
       await signOut();
       navigate("/auth");
     } catch (error) {
       console.error("Failed to terminate account:", error);
-      toast.error("Failed to terminate account. Please try again.");
+      toast.error(t('modals.terminateFailed'));
     } finally {
       setIsDeleting(false);
       setIsOpen(false);
@@ -75,50 +77,49 @@ export function TerminateAccountDialog() {
       <AlertDialogTrigger asChild>
         <Button variant="destructive" className="gap-2">
           <Trash2 className="h-4 w-4" />
-          Terminate Account
+          {t('modals.terminateAccount')}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
           <div className="flex items-center gap-3 text-destructive">
             <AlertTriangle className="h-6 w-6" />
-            <AlertDialogTitle>Terminate Account</AlertDialogTitle>
+            <AlertDialogTitle>{t('modals.terminateAccount')}</AlertDialogTitle>
           </div>
           <AlertDialogDescription className="space-y-3 pt-2">
             <p className="font-semibold text-destructive">
-              This action is permanent and cannot be undone.
+              {t('modals.terminateActionPermanent')}
             </p>
             <p>
-              Terminating your account will permanently delete:
+              {t('modals.terminateWillDelete')}
             </p>
             <ul className="list-disc list-inside space-y-1 text-sm">
-              <li>Your profile and personal information</li>
-              <li>All your roles and permissions</li>
-              <li>Your notification preferences</li>
-              <li>All data associated with your account</li>
+              <li>{t('modals.terminateProfile')}</li>
+              <li>{t('modals.terminateRoles')}</li>
+              <li>{t('modals.terminatePrefs')}</li>
+              <li>{t('modals.terminateData')}</li>
             </ul>
             <p className="text-sm">
-              Your email <span className="font-medium">{profile?.email}</span> will be available
-              for new signups after termination.
+              <span className="font-medium">{profile?.email}</span> {t('modals.terminateEmailAvailable')}
             </p>
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="space-y-2 py-4">
           <Label htmlFor="confirm-delete">
-            Type <span className="font-mono font-bold text-destructive">{confirmPhrase}</span> to confirm:
+            {t('modals.terminateTypeConfirm')} <span className="font-mono font-bold text-destructive">{confirmPhrase}</span> {t('modals.terminateToConfirm')}
           </Label>
           <Input
             id="confirm-delete"
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="Type confirmation phrase"
+            placeholder={t('modals.terminateConfirmPlaceholder')}
             className="font-mono"
           />
         </div>
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isDeleting}>{t('modals.cancel')}</AlertDialogCancel>
           <Button
             variant="destructive"
             onClick={handleTerminate}
@@ -127,10 +128,10 @@ export function TerminateAccountDialog() {
             {isDeleting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Terminating...
+                {t('modals.terminating')}
               </>
             ) : (
-              "Permanently Delete Account"
+              t('modals.permanentlyDeleteAccount')
             )}
           </Button>
         </AlertDialogFooter>

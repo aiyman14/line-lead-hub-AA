@@ -1,6 +1,6 @@
-# Production Portal - Native Apps Guide
+# ProductionPortal - Native Apps Guide
 
-This document provides complete instructions for building, signing, and publishing the Production Portal as native applications.
+This document provides complete instructions for building, signing, and publishing the ProductionPortal as native applications.
 
 ## Stack Confirmation
 
@@ -234,7 +234,7 @@ npm run tauri dev
 # Build Windows installer
 npm run tauri build
 
-# Output: src-tauri/target/release/bundle/msi/Production Portal_1.0.0_x64.msi
+# Output: src-tauri/target/release/bundle/msi/ProductionPortal_1.0.0_x64.msi
 ```
 
 **Code Signing Windows:**
@@ -254,7 +254,7 @@ npm run tauri build
 # Build macOS app
 npm run tauri build
 
-# Output: src-tauri/target/release/bundle/dmg/Production Portal_1.0.0_x64.dmg
+# Output: src-tauri/target/release/bundle/dmg/ProductionPortal_1.0.0_x64.dmg
 ```
 
 **Code Signing & Notarization:**
@@ -264,20 +264,20 @@ npm run tauri build
 2. **Sign the app**:
    ```bash
    codesign --force --deep --sign "Developer ID Application: Your Name (TEAM_ID)" \
-     "src-tauri/target/release/bundle/macos/Production Portal.app"
+     "src-tauri/target/release/bundle/macos/ProductionPortal.app"
    ```
 
 3. **Notarize**:
    ```bash
    # Create app-specific password at appleid.apple.com
-   xcrun notarytool submit "Production Portal.dmg" \
+   xcrun notarytool submit "ProductionPortal.dmg" \
      --apple-id "your@email.com" \
      --team-id "TEAM_ID" \
      --password "app-specific-password" \
      --wait
 
    # Staple the ticket
-   xcrun stapler staple "Production Portal.dmg"
+   xcrun stapler staple "ProductionPortal.dmg"
    ```
 
 4. **Update tauri.conf.json**:
@@ -304,7 +304,7 @@ npm run tauri build
 - [ ] App Preview videos (optional, 15-30 seconds)
 
 #### Required Information
-- [ ] App Name: "Production Portal"
+- [ ] App Name: "ProductionPortal"
 - [ ] Subtitle: "Factory Management Platform"
 - [ ] Description (4000 chars max)
 - [ ] Keywords (100 chars max, comma-separated)

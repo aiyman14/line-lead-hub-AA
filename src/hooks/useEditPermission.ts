@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { parseISO, isToday, format } from "date-fns";
+import { getCurrentTimeInTimezone, formatCutoffTime, isTodayInTimezone } from "@/lib/date-utils";
 
 /**
  * Hook to determine if a submission can be edited based on:
@@ -18,19 +18,18 @@ export function useEditPermission() {
         return { canEdit: false, reason: "Not logged in" };
       }
 
-      // Check if production date is today
-      const prodDate = parseISO(productionDate);
-      if (!isToday(prodDate)) {
+      // Check if production date is today (in factory timezone)
+      const timezone = factory?.timezone || "Asia/Dhaka";
+      if (!isTodayInTimezone(productionDate, timezone)) {
         return { canEdit: false, reason: "Can only edit today's submissions" };
       }
 
       // Get cutoff time from factory settings (default to 23:59 if not set)
       const cutoffTimeStr = factory?.cutoff_time || "23:59";
       const [cutoffHour, cutoffMinute] = cutoffTimeStr.split(":").map(Number);
-      
-      const now = new Date();
-      const cutoffToday = new Date();
-      cutoffToday.setHours(cutoffHour, cutoffMinute, 0, 0);
+
+      // Use factory timezone for comparison
+      const now = getCurrentTimeInTimezone(timezone);
 
       // Handle midnight (00:00) cutoff - means end of day
       if (cutoffHour === 0 && cutoffMinute === 0) {
@@ -38,11 +37,17 @@ export function useEditPermission() {
         return { canEdit: true, reason: "" };
       }
 
-      // Check if current time is before cutoff
-      if (now >= cutoffToday) {
-        return { 
-          canEdit: false, 
-          reason: `Editing closed after ${format(cutoffToday, "h:mm a")}` 
+      // Check if current time in factory timezone is before cutoff
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+
+      const isPastCutoff = currentHour > cutoffHour ||
+        (currentHour === cutoffHour && currentMinute >= cutoffMinute);
+
+      if (isPastCutoff) {
+        return {
+          canEdit: false,
+          reason: `Editing closed after ${formatCutoffTime(cutoffTimeStr)}`
         };
       }
 
@@ -53,26 +58,34 @@ export function useEditPermission() {
   const getTimeUntilCutoff = useMemo(() => {
     return (): string | null => {
       if (!factory?.cutoff_time) return null;
-      
+
       const cutoffTimeStr = factory.cutoff_time;
       const [cutoffHour, cutoffMinute] = cutoffTimeStr.split(":").map(Number);
-      
+
       // Handle midnight cutoff
       if (cutoffHour === 0 && cutoffMinute === 0) {
         return "End of day";
       }
-      
-      const now = new Date();
-      const cutoffToday = new Date();
-      cutoffToday.setHours(cutoffHour, cutoffMinute, 0, 0);
 
-      if (now >= cutoffToday) {
+      // Use factory timezone
+      const timezone = factory?.timezone || "Asia/Dhaka";
+      const now = getCurrentTimeInTimezone(timezone);
+
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+
+      // Check if past cutoff
+      const isPastCutoff = currentHour > cutoffHour ||
+        (currentHour === cutoffHour && currentMinute >= cutoffMinute);
+
+      if (isPastCutoff) {
         return null;
       }
 
-      const diffMs = cutoffToday.getTime() - now.getTime();
-      const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      // Calculate time remaining
+      let diffMins = (cutoffHour * 60 + cutoffMinute) - (currentHour * 60 + currentMinute);
+      const diffHrs = Math.floor(diffMins / 60);
+      diffMins = diffMins % 60;
 
       if (diffHrs > 0) {
         return `${diffHrs}h ${diffMins}m left`;

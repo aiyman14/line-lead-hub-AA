@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Shield, AlertTriangle, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ROLE_LABELS, type AppRole } from "@/lib/constants";
+import { useTranslation } from "react-i18next";
 
 interface GlobalRole {
   id: string;
@@ -26,6 +27,7 @@ interface GlobalRole {
 }
 
 export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void }) {
+  const { t } = useTranslation();
   const { profile } = useAuth();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -80,7 +82,7 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
       setSelectedIds(enriched.map((r) => r.id)); // Select all by default
     } catch (error) {
       console.error("Error fetching global roles:", error);
-      toast.error("Failed to fetch global roles");
+      toast.error(t('modals.failedToFetchRoles'));
     } finally {
       setLoading(false);
     }
@@ -104,7 +106,7 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
 
   async function handleCleanup() {
     if (selectedIds.length === 0) {
-      toast.error("Please select at least one role to remove");
+      toast.error(t('modals.selectOneRole'));
       return;
     }
 
@@ -117,13 +119,13 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
 
       if (error) throw error;
 
-      toast.success(`Removed ${selectedIds.length} global role(s)`);
+      toast.success(t('modals.removedGlobalRoles', { count: selectedIds.length }));
       setOpen(false);
       setSelectedIds([]);
       onSuccess?.();
     } catch (error) {
       console.error("Error cleaning up roles:", error);
-      toast.error("Failed to remove global roles");
+      toast.error(t('modals.failedToRemoveRoles'));
     } finally {
       setCleaning(false);
     }
@@ -134,18 +136,17 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
           <Shield className="h-4 w-4" />
-          Cleanup Global Roles
+          {t('modals.cleanupGlobalRoles')}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-warning" />
-            Cleanup Global Admin Roles
+            {t('modals.cleanupGlobalAdminRoles')}
           </DialogTitle>
           <DialogDescription>
-            These roles were assigned without a factory scope. Remove them to fix
-            permission issues.
+            {t('modals.cleanupDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -157,14 +158,14 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
           <div className="py-8 text-center">
             <Shield className="h-12 w-12 mx-auto text-success mb-3" />
             <p className="text-sm text-muted-foreground">
-              No global roles found. All roles are properly scoped!
+              {t('modals.noGlobalRolesFound')}
             </p>
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between py-2">
               <p className="text-sm text-muted-foreground">
-                Found {globalRoles.length} global role(s)
+                {t('modals.foundGlobalRoles', { count: globalRoles.length })}
               </p>
               <Button
                 variant="ghost"
@@ -173,8 +174,8 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
                 className="text-xs"
               >
                 {selectedIds.length === globalRoles.length
-                  ? "Deselect All"
-                  : "Select All"}
+                  ? t('modals.deselectAll')
+                  : t('modals.selectAll')}
               </Button>
             </div>
 
@@ -201,7 +202,7 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
                       </p>
                       <span className="inline-flex items-center gap-1 mt-1 text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded">
                         <Shield className="h-3 w-3" />
-                        Global {ROLE_LABELS[role.role] || role.role}
+                        {t('modals.globalRole', { role: ROLE_LABELS[role.role] || role.role })}
                       </span>
                     </label>
                   </div>
@@ -219,11 +220,11 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
             disabled={loading || cleaning}
           >
             <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-            Refresh
+            {t('modals.refresh')}
           </Button>
           <div className="flex-1" />
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('modals.cancel')}
           </Button>
           {globalRoles.length > 0 && (
             <Button
@@ -234,12 +235,12 @@ export function CleanupGlobalRolesDialog({ onSuccess }: { onSuccess?: () => void
               {cleaning ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Removing...
+                  {t('modals.removing')}
                 </>
               ) : (
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Remove {selectedIds.length} Role(s)
+                  {t('modals.removeRoles', { count: selectedIds.length })}
                 </>
               )}
             </Button>

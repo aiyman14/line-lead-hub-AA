@@ -36,7 +36,7 @@ interface Line {
 interface FinishingDailyLog {
   id: string;
   production_date: string;
-  line_id: string;
+  line_id: string | null;
   work_order_id: string | null;
   log_type: "TARGET" | "OUTPUT";
   shift: string | null;
@@ -112,7 +112,8 @@ export default function FinishingDailySummary() {
         .eq("is_active", true)
         .order("line_id");
 
-      setLines(linesData || []);
+      const { sortByLineName } = await import("@/lib/sort-lines");
+      setLines(sortByLineName(linesData || [], l => l.name || l.line_id));
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -145,14 +146,14 @@ export default function FinishingDailySummary() {
     }
   }
 
-  // Group logs by line for summary view
-  const summaryByLine = useMemo(() => {
-    const grouped: Record<string, { target: FinishingDailyLog | null; output: FinishingDailyLog | null; line: any }> = {};
-    
+  // Group logs by PO for summary view
+  const summaryByPO = useMemo(() => {
+    const grouped: Record<string, { target: FinishingDailyLog | null; output: FinishingDailyLog | null; work_order: any }> = {};
+
     logs.forEach((log) => {
-      const key = `${log.line_id}-${log.work_order_id || 'no-po'}`;
+      const key = log.work_order_id || 'no-po';
       if (!grouped[key]) {
-        grouped[key] = { target: null, output: null, line: log.line };
+        grouped[key] = { target: null, output: null, work_order: log.work_order };
       }
       if (log.log_type === "TARGET") {
         grouped[key].target = log;
@@ -169,7 +170,8 @@ export default function FinishingDailySummary() {
 
   const calculateTotal = (log: FinishingDailyLog | null) => {
     if (!log) return 0;
-    return PROCESS_KEYS.reduce((sum, key) => sum + ((log as any)[key] || 0), 0);
+    // Total output = Poly (primary finishing metric)
+    return (log as any).poly || 0;
   };
 
   const VarianceCell = ({ target, output }: { target: number; output: number }) => {
@@ -188,11 +190,10 @@ export default function FinishingDailySummary() {
     </span>;
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     // Create CSV content
-    const headers = ["Line", "PO", "Type", ...PROCESS_KEYS.map(k => PROCESS_LABELS[k]), "Total"];
+    const headers = ["PO", "Type", ...PROCESS_KEYS.map(k => PROCESS_LABELS[k]), "Total"];
     const rows = logs.map(log => [
-      log.line?.line_id || "",
       log.work_order?.po_number || "No PO",
       log.log_type,
       ...PROCESS_KEYS.map(k => (log as any)[k] || 0),
@@ -200,12 +201,9 @@ export default function FinishingDailySummary() {
     ]);
     
     const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
+    const { downloadFile } = await import("@/lib/capacitor");
     const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `finishing-summary-${format(selectedDate, "yyyy-MM-dd")}.csv`;
-    a.click();
+    await downloadFile(blob, `finishing-summary-${format(selectedDate, "yyyy-MM-dd")}.csv`);
   };
 
   if (loading) {
@@ -299,11 +297,11 @@ export default function FinishingDailySummary() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Summary for {format(selectedDate, "MMMM d, yyyy")}</span>
-            <Badge variant="outline">{summaryByLine.length} entries</Badge>
+            <Badge variant="outline">{summaryByPO.length} entries</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {summaryByLine.length === 0 ? (
+          {summaryByPO.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Filter className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No submissions found for this date</p>
@@ -313,8 +311,7 @@ export default function FinishingDailySummary() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 bg-background">Line</TableHead>
-                    <TableHead>PO</TableHead>
+                    <TableHead className="sticky left-0 bg-background">PO</TableHead>
                     <TableHead>Row</TableHead>
                     {PROCESS_KEYS.map((key) => (
                       <TableHead key={key} className="text-right text-xs">
@@ -325,15 +322,12 @@ export default function FinishingDailySummary() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summaryByLine.map(({ key, target, output, line }) => (
+                  {summaryByPO.map(({ key, target, output, work_order }) => (
                     <>
                       {/* Target Row */}
-                      <TableRow key={`${key}-target`} className="bg-blue-50/50 dark:bg-blue-950/20">
-                        <TableCell className="sticky left-0 bg-blue-50/50 dark:bg-blue-950/20 font-medium" rowSpan={3}>
-                          {line?.line_id || "—"}
-                        </TableCell>
-                        <TableCell rowSpan={3}>
-                          {target?.work_order?.po_number || output?.work_order?.po_number || "No PO"}
+                      <TableRow key={`${key}-target`} className="bg-violet-50/50 dark:bg-violet-950/20">
+                        <TableCell className="sticky left-0 bg-violet-50/50 dark:bg-violet-950/20 font-medium" rowSpan={3}>
+                          {work_order?.po_number || target?.work_order?.po_number || output?.work_order?.po_number || "No PO"}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">Target</Badge>
@@ -348,7 +342,7 @@ export default function FinishingDailySummary() {
                         </TableCell>
                       </TableRow>
                       {/* Output Row */}
-                      <TableRow key={`${key}-output`} className="bg-green-50/50 dark:bg-green-950/20">
+                      <TableRow key={`${key}-output`} className="bg-purple-50/50 dark:bg-purple-950/20">
                         <TableCell>
                           <Badge variant="outline" className="text-xs">Output</Badge>
                         </TableCell>

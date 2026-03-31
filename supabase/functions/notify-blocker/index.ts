@@ -1,13 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { getCorsHeaders } from "../_shared/security.ts";
 
 const resendClient = new Resend(Deno.env.get("RESEND_API_KEY"));
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 // Input validation schema
 const blockerNotificationSchema = z.object({
@@ -22,6 +18,9 @@ const blockerNotificationSchema = z.object({
 });
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -92,16 +91,38 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Get admin emails from profiles
+    // Get admin profiles and filter by department
+    // Only notify admins whose department matches the blocker's department, or who have "both" or null (all access)
     const { data: adminProfiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, email, full_name")
+      .select("id, email, full_name, department")
       .in("id", adminUserIds);
 
     if (profilesError) {
       console.error("Error fetching admin profiles:", profilesError);
       throw profilesError;
     }
+
+    // Filter admins by department - only notify those with matching department, "both", or null (all access)
+    const filteredAdminProfiles = (adminProfiles || []).filter(profile => {
+      const profileDept = profile.department;
+      // Admins with no department (null) or "both" get all notifications
+      if (!profileDept || profileDept === "both") {
+        return true;
+      }
+      // Otherwise, only notify if departments match
+      return profileDept === department;
+    });
+
+    if (filteredAdminProfiles.length === 0) {
+      console.log(`No admins found with access to ${department} department for factory:`, factoryId);
+      return new Response(
+        JSON.stringify({ success: true, message: `No admins with ${department} access to notify` }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const filteredAdminUserIds = filteredAdminProfiles.map(p => p.id);
 
     // Format impact for display
     const impactColors: Record<string, string> = {
@@ -112,11 +133,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     };
     const impactColor = impactColors[blockerImpact] || "#6b7280";
 
-    // Create in-app notifications for all admins
+    // Create in-app notifications for filtered admins
     const notificationTitle = `🚨 ${blockerImpact.toUpperCase()} Blocker: ${lineName}`;
     const notificationMessage = `${blockerType} reported by ${submittedBy}${poNumber ? ` on ${poNumber}` : ""}. ${blockerDescription.slice(0, 100)}${blockerDescription.length > 100 ? "..." : ""}`;
 
-    const notificationsToInsert = adminUserIds.map(userId => ({
+    const notificationsToInsert = filteredAdminUserIds.map(userId => ({
       factory_id: factoryId,
       user_id: userId,
       type: "blocker_reported",
@@ -143,8 +164,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       console.log(`Created ${notificationsToInsert.length} in-app notifications`);
     }
 
-    // Send email notifications to admins
-    const emailPromises = (adminProfiles || []).map(async (admin) => {
+    // Send email notifications to filtered admins
+    const emailPromises = filteredAdminProfiles.map(async (admin) => {
       if (!admin.email) return null;
 
       try {
@@ -204,7 +225,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
                 </table>
                 
                 <p style="font-size: 13px; color: #6b7280; margin: 0; text-align: center;">
-                  Log in to Production Portal to view details and take action.
+                  Log in to ProductionPortal to view details and take action.
                 </p>
               </div>
             </body>
@@ -223,7 +244,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const emailResults = await Promise.all(emailPromises);
     const successfulEmails = emailResults.filter(r => r?.success).length;
 
-    console.log(`Sent ${successfulEmails} of ${adminProfiles?.length || 0} emails`);
+    console.log(`Sent ${successfulEmails} of ${filteredAdminProfiles.length} emails to ${department} department admins`);
 
     return new Response(
       JSON.stringify({ 

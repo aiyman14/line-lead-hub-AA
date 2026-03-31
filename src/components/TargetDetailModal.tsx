@@ -1,6 +1,9 @@
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Clock, CalendarDays, Crosshair, Users } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatDate, formatDateTimeInTimezone } from "@/lib/date-utils";
 
 interface TargetBase {
   id: string;
@@ -20,6 +23,7 @@ interface SewingTargetFields {
   type: 'sewing';
   manpower_planned?: number | null;
   ot_hours_planned?: number | null;
+  stage_name?: string | null;
   planned_stage_progress?: number | null;
   next_milestone?: string | null;
   estimated_ex_factory?: string | null;
@@ -41,20 +45,16 @@ interface TargetDetailModalProps {
 }
 
 export function TargetDetailModal({ target, open, onOpenChange }: TargetDetailModalProps) {
-  if (!target) return null;
+  const { t } = useTranslation();
+  const { factory } = useAuth();
 
+  // Helper to format datetime in factory timezone
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
+    const timezone = factory?.timezone || "Asia/Dhaka";
+    return formatDateTimeInTimezone(dateString, timezone);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      dateStyle: 'medium',
-    });
-  };
+  if (!target) return null;
 
   const isSewing = target.type === 'sewing';
 
@@ -66,7 +66,7 @@ export function TargetDetailModal({ target, open, onOpenChange }: TargetDetailMo
             <Crosshair className="h-5 w-5 text-primary" />
             {target.line_name}
             <StatusBadge variant={target.type} size="sm">{target.type}</StatusBadge>
-            <StatusBadge variant="default" size="sm">Target</StatusBadge>
+            <StatusBadge variant="default" size="sm">{t('modals.target')}</StatusBadge>
           </DialogTitle>
         </DialogHeader>
 
@@ -86,27 +86,27 @@ export function TargetDetailModal({ target, open, onOpenChange }: TargetDetailMo
           {/* Order Info */}
           {target.po_number && (
             <div className="p-3 bg-muted/50 rounded-lg space-y-2">
-              <p className="text-sm font-medium">Order Details</p>
+              <p className="text-sm font-medium">{t('modals.orderDetails')}</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  <span className="text-muted-foreground">PO: </span>
+                  <span className="text-muted-foreground">{t('modals.poNumber')}: </span>
                   <span className="font-mono">{target.po_number}</span>
                 </div>
                 {target.buyer && (
                   <div>
-                    <span className="text-muted-foreground">Buyer: </span>
+                    <span className="text-muted-foreground">{t('modals.buyer')}: </span>
                     <span>{target.buyer}</span>
                   </div>
                 )}
                 {target.style && (
                   <div>
-                    <span className="text-muted-foreground">Style: </span>
+                    <span className="text-muted-foreground">{t('modals.style')}: </span>
                     <span>{target.style}</span>
                   </div>
                 )}
                 {target.order_qty && (
                   <div>
-                    <span className="text-muted-foreground">Order Qty: </span>
+                    <span className="text-muted-foreground">{t('modals.orderQty')}: </span>
                     <span>{target.order_qty.toLocaleString()}</span>
                   </div>
                 )}
@@ -116,20 +116,20 @@ export function TargetDetailModal({ target, open, onOpenChange }: TargetDetailMo
 
           {/* Target Metrics */}
           <div>
-            <p className="text-sm font-medium mb-2">Target Metrics</p>
+            <p className="text-sm font-medium mb-2">{t('modals.targetMetrics')}</p>
             <div className="grid grid-cols-2 gap-3">
-              <MetricCard label="Per Hour Target" value={target.per_hour_target} highlight />
+              <MetricCard label={t('modals.perHourTarget')} value={target.per_hour_target} highlight />
               {isSewing ? (
                 <>
-                  <MetricCard label="Manpower Planned" value={(target as any).manpower_planned} icon={<Users className="h-3 w-3" />} />
-                  <MetricCard label="OT Hours Planned" value={(target as any).ot_hours_planned} />
-                  <MetricCard label="Stage Progress" value={(target as any).planned_stage_progress} suffix="%" />
+                  <MetricCard label={t('modals.manpowerPlanned')} value={(target as any).manpower_planned} icon={<Users className="h-3 w-3" />} />
+                  <MetricCard label={t('modals.otHoursPlanned')} value={(target as any).ot_hours_planned} />
+                  <MetricCard label={t('modals.stageProgress')} value={(target as any).planned_stage_progress} suffix="%" />
                 </>
               ) : (
                 <>
-                  <MetricCard label="M Power Planned" value={(target as any).m_power_planned} icon={<Users className="h-3 w-3" />} />
-                  <MetricCard label="Day Hours Planned" value={(target as any).day_hour_planned} />
-                  <MetricCard label="OT Hours Planned" value={(target as any).day_over_time_planned} />
+                  <MetricCard label={t('modals.mPowerPlanned')} value={(target as any).m_power_planned} icon={<Users className="h-3 w-3" />} />
+                  <MetricCard label={t('modals.dayHoursPlanned')} value={(target as any).day_hour_planned} />
+                  <MetricCard label={t('modals.otHoursPlanned')} value={(target as any).day_over_time_planned} />
                 </>
               )}
             </div>
@@ -138,15 +138,25 @@ export function TargetDetailModal({ target, open, onOpenChange }: TargetDetailMo
           {/* Sewing specific fields */}
           {isSewing && (
             <>
-              {(target as any).next_milestone && (
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-sm font-medium mb-1">Next Milestone</p>
-                  <p className="text-sm">{(target as any).next_milestone}</p>
+              {((target as any).stage_name || (target as any).next_milestone) && (
+                <div className="p-3 bg-primary/10 rounded-lg flex gap-6">
+                  {(target as any).stage_name && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t('modals.plannedStage')}</p>
+                      <p className="font-semibold">{(target as any).stage_name}</p>
+                    </div>
+                  )}
+                  {(target as any).next_milestone && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t('modals.nextMilestone')}</p>
+                      <p className="font-semibold">{(target as any).next_milestone}</p>
+                    </div>
+                  )}
                 </div>
               )}
               {(target as any).estimated_ex_factory && (
                 <div className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-sm font-medium mb-1">Estimated Ex-Factory</p>
+                  <p className="text-sm font-medium mb-1">{t('modals.estimatedExFactory')}</p>
                   <p className="text-sm">{formatDate((target as any).estimated_ex_factory!)}</p>
                 </div>
               )}
@@ -156,7 +166,7 @@ export function TargetDetailModal({ target, open, onOpenChange }: TargetDetailMo
           {/* Remarks */}
           {target.remarks && (
             <div className="p-3 bg-muted/50 rounded-lg">
-              <p className="text-sm font-medium mb-1">Remarks</p>
+              <p className="text-sm font-medium mb-1">{t('modals.remarks')}</p>
               <p className="text-sm text-muted-foreground">{target.remarks}</p>
             </div>
           )}

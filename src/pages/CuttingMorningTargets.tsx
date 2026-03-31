@@ -4,9 +4,8 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Search, Scissors, Target } from "lucide-react";
+import { Loader2, Search, Crosshair } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +23,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { format } from "date-fns";
+import { useOfflineSubmission } from "@/hooks/useOfflineSubmission";
+import { isLateForCutoff, getTodayInTimezone } from "@/lib/date-utils";
 
 interface WorkOrder {
   id: string;
@@ -33,6 +34,7 @@ interface WorkOrder {
   item: string | null;
   order_qty: number;
   color: string | null;
+  line_id: string | null;
 }
 
 interface Line {
@@ -50,17 +52,21 @@ interface ExistingTarget {
   under_qty: number | null;
   day_cutting: number;
   day_input: number;
+  hours_planned: number | null;
+  ot_hours_planned: number | null;
+  ot_manpower_planned: number | null;
 }
 
 export default function CuttingMorningTargets() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user, profile, factory, isAdminOrHigher } = useAuth();
+  const { submit: offlineSubmit } = useOfflineSubmission();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const dateLocale = i18n.language === 'bn' ? 'bn-BD' : 'en-US';
+  const dateLocale = i18n.language === 'bn' ? 'bn-BD' : i18n.language === 'zh' ? 'zh-CN' : 'en-US';
 
   // Master data
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
@@ -77,6 +83,11 @@ export default function CuttingMorningTargets() {
   const [cuttingCapacity, setCuttingCapacity] = useState("");
   const [underQty, setUnderQty] = useState("0");
 
+  // Hours fields
+  const [hoursPlanned, setHoursPlanned] = useState("");
+  const [otHoursPlanned, setOtHoursPlanned] = useState("0");
+  const [otManpowerPlanned, setOtManpowerPlanned] = useState("0");
+
   // Target Daily Actuals fields
   const [dayCutting, setDayCutting] = useState("");
   const [dayInput, setDayInput] = useState("");
@@ -87,6 +98,12 @@ export default function CuttingMorningTargets() {
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Filter work orders by selected line
+  const filteredWorkOrders = workOrders.filter(wo => {
+    if (!selectedLine) return true;
+    return wo.line_id === selectedLine.id || !wo.line_id;
+  });
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -101,6 +118,15 @@ export default function CuttingMorningTargets() {
     }
   }, [selectedLine?.id, selectedWorkOrder?.id, profile?.factory_id]);
 
+  // Clear PO selection when line changes
+  useEffect(() => {
+    if (selectedLine && selectedWorkOrder) {
+      if (selectedWorkOrder.line_id && selectedWorkOrder.line_id !== selectedLine.id) {
+        setSelectedWorkOrder(null);
+      }
+    }
+  }, [selectedLine?.id, selectedWorkOrder?.id, workOrders]);
+
   async function fetchFormData() {
     if (!profile?.factory_id) return;
 
@@ -108,7 +134,7 @@ export default function CuttingMorningTargets() {
       const [workOrdersRes, linesRes] = await Promise.all([
         supabase
           .from("work_orders")
-          .select("id, po_number, buyer, style, item, order_qty, color")
+          .select("id, po_number, buyer, style, item, order_qty, color, line_id")
           .eq("factory_id", profile.factory_id)
           .eq("is_active", true)
           .order("po_number", { ascending: true }),
@@ -143,7 +169,7 @@ export default function CuttingMorningTargets() {
       }
     } catch (error) {
       console.error("Error fetching form data:", error);
-      toast.error("Failed to load form data");
+      toast.error(t('cutting.failedToLoadSubmission'));
     } finally {
       setLoading(false);
     }
@@ -152,12 +178,12 @@ export default function CuttingMorningTargets() {
   async function checkExistingTarget() {
     if (!profile?.factory_id || !selectedLine || !selectedWorkOrder) return;
 
-    const today = format(new Date(), "yyyy-MM-dd");
+    const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
 
     try {
       const { data, error } = await supabase
         .from("cutting_targets")
-        .select("id, man_power, marker_capacity, lay_capacity, cutting_capacity, under_qty, day_cutting, day_input")
+        .select("id, man_power, marker_capacity, lay_capacity, cutting_capacity, under_qty, day_cutting, day_input, hours_planned, ot_hours_planned, ot_manpower_planned")
         .eq("factory_id", profile.factory_id)
         .eq("line_id", selectedLine.id)
         .eq("work_order_id", selectedWorkOrder.id)
@@ -180,6 +206,9 @@ export default function CuttingMorningTargets() {
         setUnderQty(String(data.under_qty || 0));
         setDayCutting(String(data.day_cutting || 0));
         setDayInput(String(data.day_input || 0));
+        setHoursPlanned(data.hours_planned ? String(data.hours_planned) : "");
+        setOtHoursPlanned(String(data.ot_hours_planned || 0));
+        setOtManpowerPlanned(String(data.ot_manpower_planned || 0));
       } else {
         setIsEditing(false);
         setExistingTarget(null);
@@ -192,6 +221,9 @@ export default function CuttingMorningTargets() {
           setUnderQty("0");
           setDayCutting("");
           setDayInput("");
+          setHoursPlanned("");
+          setOtHoursPlanned("0");
+          setOtManpowerPlanned("0");
         }
       }
     } catch (error) {
@@ -206,14 +238,15 @@ export default function CuttingMorningTargets() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedLine) newErrors.line = "Line is required";
-    if (!selectedWorkOrder) newErrors.workOrder = "PO is required";
-    if (!manPower || parseInt(manPower) < 0) newErrors.manPower = "Man Power is required";
-    if (!markerCapacity || parseInt(markerCapacity) < 0) newErrors.markerCapacity = "Marker Capacity is required";
-    if (!layCapacity || parseInt(layCapacity) < 0) newErrors.layCapacity = "Lay Capacity is required";
-    if (!cuttingCapacity || parseInt(cuttingCapacity) < 0) newErrors.cuttingCapacity = "Cutting Capacity is required";
-    if (!dayCutting || parseInt(dayCutting) < 0) newErrors.dayCutting = "Day Cutting is required";
-    if (!dayInput || parseInt(dayInput) < 0) newErrors.dayInput = "Day Input is required";
+    if (!selectedLine) newErrors.line = t('cutting.lineRequired');
+    if (!selectedWorkOrder) newErrors.workOrder = t('cutting.poRequired');
+    if (!manPower || parseInt(manPower) < 0) newErrors.manPower = t('cutting.manPowerRequired');
+    if (!markerCapacity || parseInt(markerCapacity) < 0) newErrors.markerCapacity = t('cutting.markerCapacityRequired');
+    if (!layCapacity || parseInt(layCapacity) < 0) newErrors.layCapacity = t('cutting.layCapacityRequired');
+    if (!cuttingCapacity || parseInt(cuttingCapacity) < 0) newErrors.cuttingCapacity = t('cutting.cuttingCapacityRequired');
+    if (!hoursPlanned || parseFloat(hoursPlanned) < 0.5) newErrors.hoursPlanned = t('cutting.hoursRequired');
+    if (!dayCutting || parseInt(dayCutting) < 0) newErrors.dayCutting = t('cutting.dayCuttingRequired');
+    if (!dayInput || parseInt(dayInput) < 0) newErrors.dayInput = t('cutting.dayInputRequired');
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -223,29 +256,24 @@ export default function CuttingMorningTargets() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error("Please fill all required fields");
+      toast.error(t('cutting.fillAllRequired'));
       return;
     }
 
     if (!profile?.factory_id || !user?.id || !selectedWorkOrder || !selectedLine) {
-      toast.error("Submission failed");
+      toast.error(t('cutting.submissionFailed'));
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const today = format(new Date(), "yyyy-MM-dd");
-      
-      // Check if submission is late
-      let isLate = false;
-      if (factory?.morning_target_cutoff) {
-        const now = new Date();
-        const [cutoffHour, cutoffMinute] = factory.morning_target_cutoff.split(':').map(Number);
-        const cutoffTime = new Date();
-        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
-        isLate = now > cutoffTime;
-      }
+      // Check if submission is late (using factory timezone)
+      const timezone = factory?.timezone || "Asia/Dhaka";
+      const today = getTodayInTimezone(timezone);
+      const isLate = factory?.morning_target_cutoff
+        ? isLateForCutoff(factory.morning_target_cutoff, timezone)
+        : false;
 
       const targetData = {
         factory_id: profile.factory_id,
@@ -264,6 +292,10 @@ export default function CuttingMorningTargets() {
         lay_capacity: parseInt(layCapacity),
         cutting_capacity: parseInt(cuttingCapacity),
         under_qty: parseInt(underQty) || 0,
+        hours_planned: parseFloat(hoursPlanned),
+        target_per_hour: parseFloat(hoursPlanned) > 0 ? Math.round((parseInt(dayCutting) / parseFloat(hoursPlanned)) * 100) / 100 : null,
+        ot_hours_planned: parseFloat(otHoursPlanned) || 0,
+        ot_manpower_planned: parseInt(otManpowerPlanned) || 0,
         day_cutting: parseInt(dayCutting),
         day_input: parseInt(dayInput),
         is_late: isLate,
@@ -276,20 +308,30 @@ export default function CuttingMorningTargets() {
           .eq("id", existingTarget.id);
 
         if (error) throw error;
-        toast.success("Cutting targets updated successfully!");
+        toast.success(t('cutting.cuttingTargetsUpdated'));
       } else {
-        const { error } = await supabase
-          .from("cutting_targets")
-          .insert(targetData as any);
+        const result = await offlineSubmit("cutting_targets", "cutting_targets", targetData as Record<string, unknown>, {
+          showSuccessToast: false,
+          showQueuedToast: true,
+        });
 
-        if (error) {
-          if (error.code === "23505") {
-            toast.error("Targets already submitted for this line/PO today");
+        if (result.queued) {
+          if (isAdminOrHigher()) {
+            navigate("/dashboard");
+          } else {
+            navigate("/cutting/submissions");
+          }
+          return;
+        }
+
+        if (!result.success) {
+          if (result.error?.includes("duplicate") || result.error?.includes("23505")) {
+            toast.error(t('cutting.targetsAlreadySubmitted'));
             return;
           }
-          throw error;
+          throw new Error(result.error);
         }
-        toast.success("Cutting targets submitted successfully!");
+        toast.success(t('cutting.cuttingTargetsSubmitted'));
       }
       
       if (isAdminOrHigher()) {
@@ -299,7 +341,7 @@ export default function CuttingMorningTargets() {
       }
     } catch (error: any) {
       console.error("Error submitting:", error);
-      toast.error(error.message || "Submission failed");
+      toast.error(error?.message || t('cutting.submissionFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -316,38 +358,36 @@ export default function CuttingMorningTargets() {
   if (!profile?.factory_id) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-4">
-        <p className="text-muted-foreground">No factory assigned</p>
+        <p className="text-muted-foreground">{t('cutting.noFactoryAssigned')}</p>
       </div>
     );
   }
 
   return (
-    <div className="container max-w-2xl py-4 px-4 pb-8">
+    <div className="container max-w-2xl py-3 md:py-4 lg:py-6 px-4 pb-8">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Target className="h-5 w-5 text-primary" />
+        <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+          <Crosshair className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold">Cutting Daily Targets</h1>
-            {isEditing && (
-              <Badge variant="secondary">Editing</Badge>
-            )}
+            <h1 className="text-xl md:text-2xl font-bold">{t('cutting.cuttingDailyTargets')}</h1>
+            {isEditing && <Badge variant="secondary">{t('cutting.editing')}</Badge>}
           </div>
           <p className="text-sm text-muted-foreground">
-            {new Date().toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date(getTodayInTimezone(factory?.timezone || "Asia/Dhaka") + "T00:00:00").toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Line Selector */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Line No.</CardTitle>
-          </CardHeader>
-          <CardContent>
+      <form onSubmit={handleSubmit}>
+      <div className="rounded-xl border border-border/50 bg-card p-5 md:p-6 space-y-6">
+        {/* Line & PO */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('cutting.lineNo')} & PO</p>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">{t('cutting.lineNo')} *</Label>
             <Popover open={lineSearchOpen} onOpenChange={setLineSearchOpen}>
               <PopoverTrigger asChild>
                 <Button 
@@ -357,14 +397,14 @@ export default function CuttingMorningTargets() {
                   <Search className="mr-2 h-4 w-4" />
                   {selectedLine 
                     ? (selectedLine.name || selectedLine.line_id)
-                    : "Select a line..."}
+                    : t('cutting.selectALine')}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[350px] p-0" align="start">
+              <PopoverContent className="w-[min(350px,calc(100vw-2rem))] p-0" align="start">
                 <Command shouldFilter={true}>
-                  <CommandInput placeholder="Search lines..." />
+                  <CommandInput placeholder={t('cutting.searchLines')} />
                   <CommandList>
-                    <CommandEmpty>No lines found.</CommandEmpty>
+                    <CommandEmpty>{t('cutting.noLinesFound')}</CommandEmpty>
                     <CommandGroup>
                       {lines.map(line => (
                         <CommandItem 
@@ -384,39 +424,34 @@ export default function CuttingMorningTargets() {
                 </Command>
               </PopoverContent>
             </Popover>
-            {errors.line && <p className="text-sm text-destructive mt-1">{errors.line}</p>}
-          </CardContent>
-        </Card>
-
-        {/* PO Selector */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Select PO / Work Order</CardTitle>
-          </CardHeader>
-          <CardContent>
+            {errors.line && <p className="text-xs text-destructive mt-1">{errors.line}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">{t('cutting.selectPO')} *</Label>
             <Popover open={searchOpen} onOpenChange={setSearchOpen}>
               <PopoverTrigger asChild>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className={`w-full justify-start min-w-0 ${errors.workOrder ? 'border-destructive' : ''}`}
+                  disabled={!selectedLine}
                 >
                   <Search className="mr-2 h-4 w-4 shrink-0" />
                   <span className="truncate">
-                    {selectedWorkOrder 
+                    {selectedWorkOrder
                       ? `${selectedWorkOrder.po_number} - ${selectedWorkOrder.buyer} / ${selectedWorkOrder.style}`
-                      : "Search by PO, Buyer, Style..."}
+                      : selectedLine ? t('cutting.searchPO') : "Select a line first"}
                   </span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[350px] p-0" align="start">
+              <PopoverContent className="w-[min(350px,calc(100vw-2rem))] p-0" align="start">
                 <Command shouldFilter={true}>
-                  <CommandInput placeholder="Search PO, buyer, style, item..." />
+                  <CommandInput placeholder={t('cutting.searchPOLong')} />
                   <CommandList>
-                    <CommandEmpty>No work orders found.</CommandEmpty>
+                    <CommandEmpty>{t('cutting.noWorkOrdersFound')}</CommandEmpty>
                     <CommandGroup>
-                      {workOrders.map(wo => (
-                        <CommandItem 
-                          key={wo.id} 
+                      {filteredWorkOrders.map(wo => (
+                        <CommandItem
+                          key={wo.id}
                           value={getSearchableValue(wo)}
                           onSelect={() => {
                             setSelectedWorkOrder(wo);
@@ -437,163 +472,101 @@ export default function CuttingMorningTargets() {
                 </Command>
               </PopoverContent>
             </Popover>
-            {errors.workOrder && <p className="text-sm text-destructive mt-1">{errors.workOrder}</p>}
-          </CardContent>
-        </Card>
+            {errors.workOrder && <p className="text-xs text-destructive mt-1">{errors.workOrder}</p>}
+          </div>
+        </div>
 
-        {/* Auto-filled Details */}
+        {/* Order Details */}
         {selectedWorkOrder && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Order Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">BUYER:</span>
-                  <p className="font-medium">{selectedWorkOrder.buyer}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">STYLE:</span>
-                  <p className="font-medium">{selectedWorkOrder.style}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">PO - NO:</span>
-                  <p className="font-medium">{selectedWorkOrder.po_number}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">COLOUR:</span>
-                  <p className="font-medium">{selectedWorkOrder.color || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">ORDER QTY:</span>
-                  <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="rounded-lg bg-muted/30 border border-border/40 px-4 py-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-[11px] text-muted-foreground">{t('cutting.buyer')}</span><p className="font-medium">{selectedWorkOrder.buyer}</p></div>
+              <div><span className="text-[11px] text-muted-foreground">{t('cutting.style')}</span><p className="font-medium">{selectedWorkOrder.style}</p></div>
+              <div><span className="text-[11px] text-muted-foreground">{t('cutting.orderQty')}</span><p className="font-medium font-mono">{selectedWorkOrder.order_qty.toLocaleString()}</p></div>
+            </div>
+          </div>
         )}
 
+        <div className="border-t border-border/40" />
+
         {/* Target Capacities */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Scissors className="h-4 w-4" />
-              Target Capacities
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>MAN POWER *</Label>
-              <Input
-                type="number"
-                value={manPower}
-                onChange={(e) => setManPower(e.target.value)}
-                placeholder="0"
-                className={errors.manPower ? "border-destructive" : ""}
-              />
-              {errors.manPower && <p className="text-sm text-destructive">{errors.manPower}</p>}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('cutting.targetCapacities')}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.manPower')} *</Label>
+              <Input type="number" value={manPower} onChange={(e) => setManPower(e.target.value)} placeholder="0" className={`h-10 ${errors.manPower ? "border-destructive" : ""}`} />
+              {errors.manPower && <p className="text-xs text-destructive">{errors.manPower}</p>}
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.markerCapacity')} *</Label>
+              <Input type="number" value={markerCapacity} onChange={(e) => setMarkerCapacity(e.target.value)} placeholder="0" className={`h-10 ${errors.markerCapacity ? "border-destructive" : ""}`} />
+              {errors.markerCapacity && <p className="text-xs text-destructive">{errors.markerCapacity}</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.layCapacity')} *</Label>
+              <Input type="number" value={layCapacity} onChange={(e) => setLayCapacity(e.target.value)} placeholder="0" className={`h-10 ${errors.layCapacity ? "border-destructive" : ""}`} />
+              {errors.layCapacity && <p className="text-xs text-destructive">{errors.layCapacity}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.cuttingCapacity')} *</Label>
+              <Input type="number" value={cuttingCapacity} onChange={(e) => setCuttingCapacity(e.target.value)} placeholder="0" className={`h-10 ${errors.cuttingCapacity ? "border-destructive" : ""}`} />
+              {errors.cuttingCapacity && <p className="text-xs text-destructive">{errors.cuttingCapacity}</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.underQty')}</Label>
+              <Input type="number" value={underQty} onChange={(e) => setUnderQty(e.target.value)} placeholder="0" className="h-10" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.hoursPlanned')} *</Label>
+              <Input type="number" step="0.5" min="0" max="24" value={hoursPlanned} onChange={(e) => setHoursPlanned(e.target.value)} placeholder="0" className={`h-10 ${errors.hoursPlanned ? "border-destructive" : ""}`} />
+              {errors.hoursPlanned && <p className="text-xs text-destructive">{errors.hoursPlanned}</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.otHoursPlanned')}</Label>
+              <Input type="number" step="0.5" value={otHoursPlanned} onChange={(e) => setOtHoursPlanned(e.target.value)} placeholder="0" className="h-10" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.otManpowerPlanned')}</Label>
+              <Input type="number" value={otManpowerPlanned} onChange={(e) => setOtManpowerPlanned(e.target.value)} placeholder="0" className="h-10" />
+            </div>
+          </div>
+        </div>
 
-            <div className="space-y-2">
-              <Label>MARKER CAPACITY *</Label>
-              <Input
-                type="number"
-                value={markerCapacity}
-                onChange={(e) => setMarkerCapacity(e.target.value)}
-                placeholder="0"
-                className={errors.markerCapacity ? "border-destructive" : ""}
-              />
-              {errors.markerCapacity && <p className="text-sm text-destructive">{errors.markerCapacity}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label>LAY CAPACITY *</Label>
-              <Input
-                type="number"
-                value={layCapacity}
-                onChange={(e) => setLayCapacity(e.target.value)}
-                placeholder="0"
-                className={errors.layCapacity ? "border-destructive" : ""}
-              />
-              {errors.layCapacity && <p className="text-sm text-destructive">{errors.layCapacity}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label>CUTTING CAPACITY *</Label>
-              <Input
-                type="number"
-                value={cuttingCapacity}
-                onChange={(e) => setCuttingCapacity(e.target.value)}
-                placeholder="0"
-                className={errors.cuttingCapacity ? "border-destructive" : ""}
-              />
-              {errors.cuttingCapacity && <p className="text-sm text-destructive">{errors.cuttingCapacity}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label>UNDER QTY</Label>
-              <Input
-                type="number"
-                value={underQty}
-                onChange={(e) => setUnderQty(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border-t border-border/40" />
 
         {/* Target Daily Output */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Scissors className="h-4 w-4" />
-              Target Daily Output
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>DAY CUTTING *</Label>
-              <Input
-                type="number"
-                value={dayCutting}
-                onChange={(e) => setDayCutting(e.target.value)}
-                placeholder="0"
-                className={errors.dayCutting ? "border-destructive" : ""}
-              />
-              {errors.dayCutting && <p className="text-sm text-destructive">{errors.dayCutting}</p>}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('cutting.targetDailyOutput')}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.dayCutting')} *</Label>
+              <Input type="number" value={dayCutting} onChange={(e) => setDayCutting(e.target.value)} placeholder="0" className={`h-10 ${errors.dayCutting ? "border-destructive" : ""}`} />
+              {errors.dayCutting && <p className="text-xs text-destructive">{errors.dayCutting}</p>}
             </div>
-
-            <div className="space-y-2">
-              <Label>DAY INPUT *</Label>
-              <Input
-                type="number"
-                value={dayInput}
-                onChange={(e) => setDayInput(e.target.value)}
-                placeholder="0"
-                className={errors.dayInput ? "border-destructive" : ""}
-              />
-              {errors.dayInput && <p className="text-sm text-destructive">{errors.dayInput}</p>}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">{t('cutting.dayInput')} *</Label>
+              <Input type="number" value={dayInput} onChange={(e) => setDayInput(e.target.value)} placeholder="0" className={`h-10 ${errors.dayInput ? "border-destructive" : ""}`} />
+              {errors.dayInput && <p className="text-xs text-destructive">{errors.dayInput}</p>}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      </div>
 
-        {/* Submit Button */}
-        <Button 
-          type="submit" 
-          className="w-full" 
-          size="lg"
-          disabled={submitting}
-        >
+        {/* Submit */}
+        <Button type="submit" className="w-full h-11 font-semibold mt-5" disabled={submitting}>
           {submitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Submitting...
-            </>
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('cutting.submitting')}</>
           ) : isEditing ? (
-            "Update Cutting Targets"
+            t('cutting.updateCuttingTargets')
           ) : (
-            "Submit Cutting Targets"
+            t('cutting.submitCuttingTargets')
           )}
         </Button>
       </form>

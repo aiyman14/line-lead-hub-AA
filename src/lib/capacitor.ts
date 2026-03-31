@@ -107,16 +107,22 @@ export async function initializeCapacitor() {
       // otherwise the native window background can show through as black during overscroll.
       await StatusBar.setOverlaysWebView({ overlay: platform === 'ios' });
 
-      // Light UI -> dark content (dark icons/text) for readability
-      // If the app is in dark mode, flip to light content.
-      const isDarkMode = document.documentElement.classList.contains('dark');
-      await StatusBar.setStyle({ style: isDarkMode ? Style.Light : Style.Dark });
+      // Style.Dark = light/white text (for dark backgrounds)
+      // Style.Light = dark/black text (for light backgrounds)
+      const applyStatusBarStyle = async (isDark: boolean) => {
+        await StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light });
+        if (platform === 'android') {
+          await StatusBar.setBackgroundColor({ color: isDark ? '#0a0a0a' : '#f1f3f5' });
+        }
+      };
 
-      // Android only: set an explicit status bar background color.
-      // (iOS ignores setBackgroundColor; it uses the WebView behind it.)
-      if (platform === 'android') {
-        await StatusBar.setBackgroundColor({ color: '#f1f3f5' }); // matches hsl(var(--background)) in light theme
-      }
+      await applyStatusBarStyle(document.documentElement.classList.contains('dark'));
+
+      // Update status bar whenever the theme class changes
+      const observer = new MutationObserver(() => {
+        applyStatusBarStyle(document.documentElement.classList.contains('dark'));
+      });
+      observer.observe(document.documentElement, { attributeFilter: ['class'] });
 
       console.log('StatusBar configured successfully');
     } catch (statusBarError) {
@@ -167,6 +173,10 @@ export async function initializeCapacitor() {
         } catch (error) {
           console.warn('Failed to sync on app active:', error);
         }
+
+        // Trigger visibility-based refresh so useMidnightRefresh and other
+        // listeners detect a potential date change.
+        document.dispatchEvent(new Event('visibilitychange'));
       }
     });
 
@@ -224,7 +234,14 @@ export async function initializePushNotifications() {
     }
 
     // Register for push notifications
-    await PushNotifications.register();
+    // Wrapped in try/catch because register() crashes at native level
+    // if google-services.json / Firebase is not configured
+    try {
+      await PushNotifications.register();
+    } catch (registerError) {
+      console.warn('Push notification registration failed (Firebase may not be configured):', registerError);
+      return null;
+    }
 
     // Handle registration success
     PushNotifications.addListener('registration', async (token) => {
@@ -237,10 +254,16 @@ export async function initializePushNotifications() {
       console.error('Push registration error:', error);
     });
 
-    // Handle received push notification (foreground)
+    // Handle received push notification (foreground) — show an in-app toast
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.log('Push notification received:', notification);
-      // Could show an in-app toast or banner here
+      console.log('Push notification received in foreground:', notification);
+      // Dynamically import sonner to avoid circular deps
+      import('sonner').then(({ toast }) => {
+        toast(notification.title ?? 'New notification', {
+          description: notification.body,
+          duration: 5000,
+        });
+      });
     });
 
     // Handle notification tap
@@ -271,20 +294,20 @@ export async function initializePushNotifications() {
 async function savePushToken(token: string) {
   try {
     const { supabase } = await import('@/integrations/supabase/client');
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
 
     if (user) {
-      // Store token - you may want to create a separate table for push tokens
-      // to support multiple devices per user
-      console.log('Push token for user', user.id, ':', token);
-      
-      // TODO: Implement push token storage when the column/table is added
-      // await supabase.from('push_tokens').upsert({
-      //   user_id: user.id,
-      //   token,
-      //   platform,
-      //   updated_at: new Date().toISOString(),
-      // });
+      await (supabase.from as any)('push_tokens').upsert(
+        {
+          user_id: user.id,
+          token,
+          platform,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,token' }
+      );
+      console.log('Push token saved for user', user.id, 'platform:', platform);
     }
   } catch (error) {
     console.error('Failed to save push token:', error);
@@ -328,6 +351,94 @@ export async function shareContent(title: string, text: string, url?: string) {
   } catch (error) {
     console.warn('Share failed:', error);
   }
+}
+
+/**
+ * Download / share a file. On native platforms (iOS/Android) this writes the
+ * file to a temporary directory and opens the native share sheet so the user
+ * can save, AirDrop, email, etc. On web it falls back to the standard
+ * anchor-click download approach.
+ */
+export async function downloadFile(
+  blob: Blob,
+  filename: string,
+): Promise<void> {
+  if (!isNative) {
+    // Standard browser download
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  try {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    const { Share } = await import('@capacitor/share');
+
+    // Convert blob → base64
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1]); // strip data:…;base64, prefix
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Write to cache directory
+    const written = await Filesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: Directory.Cache,
+    });
+
+    // Open native share sheet with the file
+    await Share.share({
+      title: filename,
+      files: [written.uri],
+      dialogTitle: 'Export',
+    });
+  } catch (error) {
+    console.error('Native file download failed:', error);
+    // Fallback to web approach (may not work but worth trying)
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Save a jsPDF document. On native, opens the share sheet; on web, triggers download.
+ */
+export async function savePdf(
+  doc: import('jspdf').jsPDF,
+  filename: string,
+): Promise<void> {
+  if (!isNative) {
+    doc.save(filename);
+    return;
+  }
+  const blob = doc.output('blob');
+  await downloadFile(blob, filename);
+}
+
+/**
+ * Download CSV content as a file. Handles native share sheet on mobile.
+ */
+export async function downloadCsv(
+  csvContent: string,
+  filename: string,
+): Promise<void> {
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+  await downloadFile(blob, filename);
 }
 
 /**

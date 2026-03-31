@@ -1,10 +1,17 @@
 import { useState, useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { effectivePoly, effectiveCarton } from "@/lib/finishing-utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatShortDate, formatTimeInTimezone, getTodayInTimezone, getCurrentTimeInTimezone } from "@/lib/date-utils";
+import { format } from "date-fns";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -13,10 +20,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Package, Search, ClipboardList, Eye, Target, TrendingUp } from "lucide-react";
-import { FinishingLogDetailModal } from "@/components/FinishingLogDetailModal";
+import { Package, Search, ClipboardList, Eye, Target, TrendingUp, Download, X } from "lucide-react";
+import { TableSkeleton, StatsCardsSkeleton } from "@/components/ui/table-skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FinishingSubmissionView, FinishingTargetData, FinishingActualData } from "@/components/FinishingSubmissionView";
+import { EditFinishingLogModal } from "@/components/EditFinishingLogModal";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { useSortableTable } from "@/hooks/useSortableTable";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import type { Database } from "@/integrations/supabase/types";
 
 type FinishingLogType = Database["public"]["Enums"]["finishing_log_type"];
@@ -25,7 +37,10 @@ interface DailyLogRow {
   id: string;
   production_date: string;
   line_name: string;
+  line_id: string;
+  work_order_id: string | null;
   po_number: string | null;
+  buyer: string | null;
   style: string | null;
   log_type: FinishingLogType;
   thread_cutting: number;
@@ -36,6 +51,10 @@ interface DailyLogRow {
   get_up: number;
   poly: number;
   carton: number;
+  planned_hours: number | null;
+  actual_hours: number | null;
+  ot_hours_actual: number | null;
+  remarks: string | null;
   submitted_at: string;
   is_locked: boolean;
 }
@@ -45,6 +64,8 @@ interface FinishingDailySheetsTableProps {
   dateRange: string;
   searchTerm: string;
   onSearchChange: (value: string) => void;
+  activeTab: "targets" | "outputs";
+  onCountsChange?: (counts: { targets: number; outputs: number }) => void;
 }
 
 export function FinishingDailySheetsTable({
@@ -52,12 +73,23 @@ export function FinishingDailySheetsTable({
   dateRange,
   searchTerm,
   onSearchChange,
+  activeTab,
+  onCountsChange,
 }: FinishingDailySheetsTableProps) {
+  const { factory, isAdminOrHigher } = useAuth();
+  const isAdmin = isAdminOrHigher();
   const [logs, setLogs] = useState<DailyLogRow[]>([]);
+  const [editingLog, setEditingLog] = useState<DailyLogRow | null>(null);
+
+  // Helper to format time in factory timezone
+  const formatTime = (dateString: string) => {
+    const timezone = factory?.timezone || "Asia/Dhaka";
+    return formatTimeInTimezone(dateString, timezone);
+  };
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"targets" | "outputs">("targets");
   const [selectedLog, setSelectedLog] = useState<DailyLogRow | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(25);
   useEffect(() => {
     fetchLogs();
@@ -65,9 +97,11 @@ export function FinishingDailySheetsTable({
 
   async function fetchLogs() {
     setLoading(true);
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - parseInt(dateRange));
+    const timezone = factory?.timezone || "Asia/Dhaka";
+    const endDateStr = getTodayInTimezone(timezone);
+    const startDateObj = getCurrentTimeInTimezone(timezone);
+    startDateObj.setDate(startDateObj.getDate() - parseInt(dateRange));
+    const startDateStr = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, "0")}-${String(startDateObj.getDate()).padStart(2, "0")}`;
 
     try {
       const { data, error } = await supabase
@@ -75,11 +109,11 @@ export function FinishingDailySheetsTable({
         .select(`
           *,
           lines(id, line_id, name),
-          work_orders(po_number, style)
+          work_orders(po_number, buyer, style)
         `)
         .eq("factory_id", factoryId)
-        .gte("production_date", startDate.toISOString().split("T")[0])
-        .lte("production_date", endDate.toISOString().split("T")[0])
+        .gte("production_date", startDateStr)
+        .lte("production_date", endDateStr)
         .order("production_date", { ascending: false })
         .order("submitted_at", { ascending: false });
 
@@ -88,8 +122,11 @@ export function FinishingDailySheetsTable({
       const formatted: DailyLogRow[] = (data || []).map((log: any) => ({
         id: log.id,
         production_date: log.production_date,
-        line_name: log.lines?.name || log.lines?.line_id || "Unknown",
+        line_name: "",
+        line_id: "",
+        work_order_id: log.work_order_id || null,
         po_number: log.work_orders?.po_number || null,
+        buyer: log.work_orders?.buyer || null,
         style: log.work_orders?.style || null,
         log_type: log.log_type,
         thread_cutting: log.thread_cutting || 0,
@@ -100,11 +137,21 @@ export function FinishingDailySheetsTable({
         get_up: log.get_up || 0,
         poly: log.poly || 0,
         carton: log.carton || 0,
+        planned_hours: log.planned_hours ?? null,
+        actual_hours: log.actual_hours ?? null,
+        ot_hours_actual: log.ot_hours_actual ?? null,
+        remarks: log.remarks || null,
         submitted_at: log.submitted_at,
         is_locked: log.is_locked,
       }));
 
       setLogs(formatted);
+
+      if (onCountsChange) {
+        const targets = formatted.filter(l => l.log_type === "TARGET").length;
+        const outputs = formatted.filter(l => l.log_type === "OUTPUT").length;
+        onCountsChange({ targets, outputs });
+      }
     } catch (error) {
       console.error("Error fetching logs:", error);
     } finally {
@@ -119,12 +166,14 @@ export function FinishingDailySheetsTable({
       if (!searchTerm) return true;
       const search = searchTerm.toLowerCase();
       return (
-        log.line_name.toLowerCase().includes(search) ||
         (log.po_number?.toLowerCase() || "").includes(search) ||
-        (log.style?.toLowerCase() || "").includes(search)
+        (log.style?.toLowerCase() || "").includes(search) ||
+        (log.buyer?.toLowerCase() || "").includes(search)
       );
     });
   }, [logs, activeTab, searchTerm]);
+
+  const { sortedData, sortConfig, requestSort } = useSortableTable(filteredLogs, { column: "production_date", direction: "desc" });
 
   const {
     currentPage,
@@ -139,100 +188,239 @@ export function FinishingDailySheetsTable({
     canGoPrevious,
     startIndex,
     endIndex,
-  } = usePagination(filteredLogs, { pageSize });
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  } = usePagination(sortedData, { pageSize });
 
   // Stats based on active tab
   const tabLogs = logs.filter(l => activeTab === "targets" ? l.log_type === "TARGET" : l.log_type === "OUTPUT");
   const totalLogs = tabLogs.length;
-  const totalPoly = tabLogs.reduce((sum, l) => sum + l.poly, 0);
-  const totalCarton = tabLogs.reduce((sum, l) => sum + l.carton, 0);
+  const totalPoly = tabLogs.reduce((sum, l) => sum + effectivePoly(l.poly, l.actual_hours, l.ot_hours_actual), 0);
+  const totalCarton = tabLogs.reduce((sum, l) => sum + effectiveCarton(l.carton, l.actual_hours, l.ot_hours_actual), 0);
+
+  // Daily output trend chart data
+  const finishingDailyTrend = useMemo(() => {
+    if (logs.length === 0) return [];
+    // Collect dates that have OUTPUT logs (actuals)
+    const datesWithOutput = new Set(
+      logs.filter(l => l.log_type === "OUTPUT").map(l => l.production_date)
+    );
+    const byDate: Record<string, { carton: number; poly: number; targetPoly: number }> = {};
+    for (const l of logs) {
+      const d = l.production_date;
+      if (!byDate[d]) byDate[d] = { carton: 0, poly: 0, targetPoly: 0 };
+      if (l.log_type === "TARGET") {
+        // Only include targets for dates that have matching outputs
+        if (!datesWithOutput.has(d)) continue;
+        const plannedHrs = l.planned_hours || 1;
+        byDate[d].targetPoly += (l.poly || 0) * plannedHrs;
+      } else {
+        byDate[d].carton += effectiveCarton(l.carton, l.actual_hours, l.ot_hours_actual);
+        byDate[d].poly += effectivePoly(l.poly, l.actual_hours, l.ot_hours_actual);
+      }
+    }
+    return Object.entries(byDate)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, vals]) => ({
+        date,
+        displayDate: new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        targetPoly: vals.targetPoly,
+        carton: vals.carton,
+        poly: vals.poly,
+      }));
+  }, [logs]);
+
+  const allPageSelected = paginatedData.length > 0 && paginatedData.every(l => selectedIds.has(l.id));
+  const somePageSelected = paginatedData.some(l => selectedIds.has(l.id));
+
+  function toggleSelectAll() {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        paginatedData.forEach(l => next.delete(l.id));
+      } else {
+        paginatedData.forEach(l => next.add(l.id));
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectRow(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function exportSelectedCsv() {
+    const selected = sortedData.filter(l => selectedIds.has(l.id));
+    const esc = (cell: string) => `"${String(cell ?? "").replace(/"/g, '""')}"`;
+    const exportDate = format(new Date(), "PPpp");
+    const fileDate = format(new Date(), "yyyy-MM-dd");
+
+    const rows: string[][] = [];
+
+    // Report header
+    rows.push([`FINISHING ${activeTab.toUpperCase()} REPORT`]);
+    rows.push([`Factory: ${factory?.name || "—"}`]);
+    rows.push([`Period: Last ${dateRange} days`]);
+    rows.push([`Exported: ${exportDate}`]);
+    rows.push([]);
+
+    // Section summary
+    const totalPoly = selected.reduce((s, l) => s + effectivePoly(l.poly, l.actual_hours, l.ot_hours_actual), 0);
+    const totalCarton = selected.reduce((s, l) => s + effectiveCarton(l.carton, l.actual_hours, l.ot_hours_actual), 0);
+    rows.push(["SUMMARY"]);
+    rows.push(["Metric", "Value"]);
+    rows.push(["Total Records", String(selected.length)]);
+    rows.push(["Total Poly", totalPoly.toLocaleString()]);
+    rows.push(["Total Carton", totalCarton.toLocaleString()]);
+    rows.push([]);
+
+    // Data section
+    rows.push([`═══ FINISHING ${activeTab.toUpperCase()} ═══`]);
+    rows.push(["Date", "PO", "Buyer", "Style", "Type", "Thread Cutting", "Inside Check", "Top Side Check", "Buttoning", "Iron", "Get Up", "Poly", "Carton", "Planned Hours", "Actual Hours"]);
+    selected.forEach(l => {
+      rows.push([
+        l.production_date,
+        l.po_number || "-",
+        l.buyer || "-",
+        l.style || "-",
+        l.log_type,
+        String(l.thread_cutting),
+        String(l.inside_check),
+        String(l.top_side_check),
+        String(l.buttoning),
+        String(l.iron),
+        String(l.get_up),
+        String(effectivePoly(l.poly, l.actual_hours, l.ot_hours_actual)),
+        String(effectiveCarton(l.carton, l.actual_hours, l.ot_hours_actual)),
+        String(l.planned_hours ?? "-"),
+        String(l.actual_hours ?? "-"),
+      ]);
+    });
+    rows.push([]);
+    rows.push(["═══ END OF REPORT ═══"]);
+
+    const csvContent = rows.map(row => row.map(esc).join(",")).join("\n");
+    const { downloadCsv } = await import("@/lib/capacitor");
+    await downloadCsv(csvContent, `finishing-${activeTab}-${fileDate}.csv`);
+    toast.success(`Exported ${selected.length} rows`);
+  }
 
   if (loading) {
     return (
-      <div className="flex min-h-[300px] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="space-y-4">
+        <StatsCardsSkeleton count={3} />
+        <TableSkeleton columns={7} rows={6} headers={["Date", "PO / Style", "Buyer", "Poly", "Carton", "Status", ""]} />
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "targets" | "outputs")}>
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="targets" className="flex items-center gap-2">
-            <Target className="h-4 w-4" />
-            Daily Targets
-          </TabsTrigger>
-          <TabsTrigger value="outputs" className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Daily Outputs
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value={activeTab} className="mt-4 space-y-4">
           {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <ClipboardList className="h-5 w-5 text-primary" />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Card className="bg-gradient-to-br from-violet-50 via-white to-violet-50/50 dark:from-violet-950/40 dark:via-card dark:to-violet-950/20 border-violet-200/60 dark:border-violet-800/40 hover:shadow-lg transition-all duration-300">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-violet-500/20 flex items-center justify-center">
+                    <ClipboardList className="h-3.5 w-3.5 text-white" />
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold">{totalLogs}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {activeTab === "targets" ? "Targets" : "Outputs"}
-                    </p>
-                  </div>
+                  <p className="text-[11px] text-muted-foreground font-medium">
+                    {activeTab === "targets" ? "Targets" : "Outputs"}
+                  </p>
                 </div>
+                <div className="text-xl font-bold text-violet-700 dark:text-violet-300">{totalLogs}</div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
-                    <Package className="h-5 w-5 text-success" />
+            <Card className="bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 dark:from-emerald-950/40 dark:via-card dark:to-emerald-950/20 border-emerald-200/60 dark:border-emerald-800/40 hover:shadow-lg transition-all duration-300">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 shadow-md shadow-emerald-500/20 flex items-center justify-center">
+                    <Package className="h-3.5 w-3.5 text-white" />
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold text-success">{totalPoly.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Total Poly</p>
-                  </div>
+                  <p className="text-[11px] text-muted-foreground font-medium">Total Poly</p>
                 </div>
+                <div className="text-xl font-bold text-emerald-700 dark:text-emerald-300 font-mono tabular-nums">{totalPoly.toLocaleString()}</div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                    <Package className="h-5 w-5 text-warning" />
+            <Card className="bg-gradient-to-br from-amber-50 via-white to-amber-50/50 dark:from-amber-950/40 dark:via-card dark:to-amber-950/20 border-amber-200/60 dark:border-amber-800/40 hover:shadow-lg transition-all duration-300">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 shadow-md shadow-amber-500/20 flex items-center justify-center">
+                    <Package className="h-3.5 w-3.5 text-white" />
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold text-warning">{totalCarton.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Total Cartons</p>
-                  </div>
+                  <p className="text-[11px] text-muted-foreground font-medium">Total Cartons</p>
                 </div>
+                <div className="text-xl font-bold text-amber-700 dark:text-amber-300 font-mono tabular-nums">{totalCarton.toLocaleString()}</div>
               </CardContent>
             </Card>
           </div>
+
+          {/* Target vs Actual Chart */}
+          {finishingDailyTrend.length > 1 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-violet-500/20 flex items-center justify-center">
+                    <TrendingUp className="h-3.5 w-3.5 text-white" />
+                  </div>
+                  Target vs Actual (Poly)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={finishingDailyTrend}>
+                    <defs>
+                      <linearGradient id="colorFinishingPoly" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorFinishingTarget" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="displayDate" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                    <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} width={45} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="targetPoly"
+                      name="Target"
+                      stroke="#10b981"
+                      fill="url(#colorFinishingTarget)"
+                      strokeWidth={2}
+                      strokeDasharray="5 3"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="poly"
+                      name="Actual"
+                      stroke="#8b5cf6"
+                      fill="url(#colorFinishingPoly)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Search */}
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by line, PO, or style..."
+              placeholder="Search by PO, buyer, or style..."
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
               className="pl-9"
@@ -244,48 +432,78 @@ export function FinishingDailySheetsTable({
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 {activeTab === "targets" ? (
-                  <Target className="h-4 w-4 text-primary" />
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-violet-500/20 flex items-center justify-center">
+                    <Target className="h-3.5 w-3.5 text-white" />
+                  </div>
                 ) : (
-                  <TrendingUp className="h-4 w-4 text-primary" />
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-violet-500/20 flex items-center justify-center">
+                    <Package className="h-3.5 w-3.5 text-white" />
+                  </div>
                 )}
-                {activeTab === "targets" ? "Daily Targets" : "Daily Outputs"}
+                {activeTab === "targets" ? "Finishing Targets" : "Finishing End of Day"}
                 <Badge variant="secondary" className="ml-2">
                   {filteredLogs.length}
                 </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border-b">
+                  <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                  <Button variant="outline" size="sm" onClick={exportSelectedCsv}>
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    Export CSV
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                    <X className="h-3.5 w-3.5 mr-1" />
+                    Clear
+                  </Button>
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead>Date</TableHead>
-                      <TableHead>Line</TableHead>
+                      <TableHead className="w-[40px]">
+                        <Checkbox
+                          checked={allPageSelected}
+                          onCheckedChange={toggleSelectAll}
+                          aria-label="Select all"
+                          {...(somePageSelected && !allPageSelected ? { "data-state": "indeterminate" } : {})}
+                        />
+                      </TableHead>
+                      <SortableTableHead column="production_date" sortConfig={sortConfig} onSort={requestSort}>Date</SortableTableHead>
                       <TableHead>PO / Style</TableHead>
-                      <TableHead className="text-right">Poly</TableHead>
-                      <TableHead className="text-right">Carton</TableHead>
+                      <SortableTableHead column="buyer" sortConfig={sortConfig} onSort={requestSort}>Buyer</SortableTableHead>
+                      <SortableTableHead column="poly" sortConfig={sortConfig} onSort={requestSort} className="text-right">Poly</SortableTableHead>
+                      <SortableTableHead column="carton" sortConfig={sortConfig} onSort={requestSort} className="text-right">Carton</SortableTableHead>
+                      <TableHead className="text-right">Hours</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="w-[60px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                       {paginatedData.map((log) => (
-                        <TableRow 
-                          key={log.id} 
-                          className="hover:bg-muted/50 cursor-pointer"
+                        <TableRow
+                          key={log.id}
+                          className={`hover:bg-muted/50 cursor-pointer ${selectedIds.has(log.id) ? "bg-primary/5" : ""}`}
                           onClick={() => {
                             setSelectedLog(log);
                             setDetailModalOpen(true);
                           }}
                         >
-                          <TableCell>
-                            <div>
-                              <p className="font-mono text-sm">{formatDate(log.production_date)}</p>
-                              <p className="text-xs text-muted-foreground">{formatTime(log.submitted_at)}</p>
-                            </div>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedIds.has(log.id)}
+                              onCheckedChange={() => toggleSelectRow(log.id)}
+                              aria-label={`Select row`}
+                            />
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium">{log.line_name}</span>
+                            <div>
+                              <p className="font-mono text-sm">{formatShortDate(log.production_date)}</p>
+                              <p className="text-xs text-muted-foreground">{formatTime(log.submitted_at)}</p>
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div>
@@ -293,14 +511,22 @@ export function FinishingDailySheetsTable({
                               <p className="text-xs text-muted-foreground">{log.style || "-"}</p>
                             </div>
                           </TableCell>
+                          <TableCell>{log.buyer || "-"}</TableCell>
                           <TableCell className="text-right">
                             <span className="font-mono font-bold text-success">
-                              {log.poly.toLocaleString()}
+                              {effectivePoly(log.poly, log.actual_hours, log.ot_hours_actual).toLocaleString()}
                             </span>
                           </TableCell>
                           <TableCell className="text-right">
                             <span className="font-mono font-bold text-warning">
-                              {log.carton.toLocaleString()}
+                              {effectiveCarton(log.carton, log.actual_hours, log.ot_hours_actual).toLocaleString()}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="font-mono text-sm">
+                              {activeTab === "targets"
+                                ? (log.planned_hours != null ? `${log.planned_hours}h` : "—")
+                                : (log.actual_hours != null ? `${log.actual_hours}h` : "—")}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -321,7 +547,7 @@ export function FinishingDailySheetsTable({
                       ))}
                       {paginatedData.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                          <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                             <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
                             <p>No {activeTab === "targets" ? "targets" : "outputs"} found</p>
                           </TableCell>
@@ -348,41 +574,89 @@ export function FinishingDailySheetsTable({
               />
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Finishing Submission View */}
+      {(() => {
+        const counterpart = selectedLog
+          ? logs.find(l =>
+              l.log_type !== selectedLog.log_type &&
+              l.production_date === selectedLog.production_date &&
+              l.work_order_id === selectedLog.work_order_id
+            )
+          : null;
 
-      {/* Finishing Log Detail Modal */}
-      <FinishingLogDetailModal
-        log={selectedLog ? {
-          id: selectedLog.id,
-          production_date: selectedLog.production_date,
-          line_id: selectedLog.line_name,
-          work_order_id: null,
-          log_type: selectedLog.log_type,
-          shift: null,
-          thread_cutting: selectedLog.thread_cutting,
-          inside_check: selectedLog.inside_check,
-          top_side_check: selectedLog.top_side_check,
-          buttoning: selectedLog.buttoning,
-          iron: selectedLog.iron,
-          get_up: selectedLog.get_up,
-          poly: selectedLog.poly,
-          carton: selectedLog.carton,
-          remarks: null,
-          submitted_at: selectedLog.submitted_at,
-          is_locked: selectedLog.is_locked,
-          line: {
-            line_id: selectedLog.line_name,
-            name: selectedLog.line_name
-          },
-          work_order: selectedLog.po_number ? {
-            po_number: selectedLog.po_number,
-            style: selectedLog.style || "",
-            buyer: ""
-          } : null
-        } : null}
-        open={detailModalOpen}
-        onOpenChange={setDetailModalOpen}
+        const targetLog = selectedLog?.log_type === "TARGET" ? selectedLog : counterpart?.log_type === "TARGET" ? counterpart : null;
+        const actualLog = selectedLog?.log_type === "OUTPUT" ? selectedLog : counterpart?.log_type === "OUTPUT" ? counterpart : null;
+
+        const target: FinishingTargetData | null = targetLog ? {
+          id: targetLog.id,
+          production_date: targetLog.production_date,
+          submitted_at: targetLog.submitted_at,
+          po_number: targetLog.po_number,
+          buyer: targetLog.buyer,
+          style: targetLog.style,
+          thread_cutting: targetLog.thread_cutting,
+          inside_check: targetLog.inside_check,
+          top_side_check: targetLog.top_side_check,
+          buttoning: targetLog.buttoning,
+          iron: targetLog.iron,
+          get_up: targetLog.get_up,
+          poly: targetLog.poly,
+          carton: targetLog.carton,
+          m_power_planned: (targetLog as any).m_power_planned ?? null,
+          planned_hours: targetLog.planned_hours ?? null,
+          ot_hours_planned: (targetLog as any).ot_hours_planned ?? null,
+          ot_manpower_planned: (targetLog as any).ot_manpower_planned ?? null,
+          remarks: targetLog.remarks ?? null,
+        } : null;
+
+        const actual: FinishingActualData | null = actualLog ? {
+          id: actualLog.id,
+          production_date: actualLog.production_date,
+          submitted_at: actualLog.submitted_at,
+          po_number: actualLog.po_number,
+          buyer: actualLog.buyer,
+          style: actualLog.style,
+          thread_cutting: actualLog.thread_cutting,
+          inside_check: actualLog.inside_check,
+          top_side_check: actualLog.top_side_check,
+          buttoning: actualLog.buttoning,
+          iron: actualLog.iron,
+          get_up: actualLog.get_up,
+          poly: actualLog.poly,
+          carton: actualLog.carton,
+          m_power_actual: (actualLog as any).m_power_actual ?? null,
+          actual_hours: actualLog.actual_hours ?? null,
+          ot_hours_actual: (actualLog as any).ot_hours_actual ?? null,
+          ot_manpower_actual: (actualLog as any).ot_manpower_actual ?? null,
+          remarks: actualLog.remarks ?? null,
+        } : null;
+
+        return (
+          <FinishingSubmissionView
+            target={target}
+            actual={actual}
+            open={detailModalOpen}
+            onOpenChange={setDetailModalOpen}
+            onEditTarget={isAdmin && targetLog ? () => {
+              setEditingLog(targetLog);
+              setDetailModalOpen(false);
+            } : undefined}
+            onEditActual={isAdmin && actualLog ? () => {
+              setEditingLog(actualLog);
+              setDetailModalOpen(false);
+            } : undefined}
+            onDeleteTarget={isAdmin && targetLog ? () => fetchLogs() : undefined}
+            onDeleteActual={isAdmin && actualLog ? () => fetchLogs() : undefined}
+          />
+        );
+      })()}
+
+      {/* Finishing Edit Modal */}
+      <EditFinishingLogModal
+        log={editingLog}
+        open={!!editingLog}
+        onOpenChange={(open) => !open && setEditingLog(null)}
+        onSaved={fetchLogs}
       />
     </div>
   );

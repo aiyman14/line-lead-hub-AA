@@ -1,13 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatTimeInTimezone, getTodayInTimezone } from "@/lib/date-utils";
+import { useMidnightRefresh } from "@/hooks/useMidnightRefresh";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FinishingLogDetailModal } from "@/components/FinishingLogDetailModal";
+import { FinishingSubmissionView, FinishingTargetData, FinishingActualData } from "@/components/FinishingSubmissionView";
 import {
   Package,
   Clock,
@@ -24,6 +26,7 @@ interface DailyLogSummary {
   line_name: string;
   work_order_id: string | null;
   po_number: string | null;
+  buyer: string | null;
   style: string | null;
   log_type: "TARGET" | "OUTPUT";
   thread_cutting: number;
@@ -34,7 +37,17 @@ interface DailyLogSummary {
   get_up: number;
   poly: number;
   carton: number;
+  m_power_planned: number | null;
+  m_power_actual: number | null;
+  planned_hours: number | null;
+  actual_hours: number | null;
+  remarks: string | null;
+  ot_hours_actual: number | null;
+  ot_manpower_actual: number | null;
+  ot_hours_planned: number | null;
+  ot_manpower_planned: number | null;
   submitted_at: string;
+  production_date: string;
 }
 
 interface FinishingStats {
@@ -46,7 +59,7 @@ interface FinishingStats {
 
 export function FinishingDashboard() {
   const { t, i18n } = useTranslation();
-  const { profile } = useAuth();
+  const { profile, factory } = useAuth();
   const [logs, setLogs] = useState<DailyLogSummary[]>([]);
   const [stats, setStats] = useState<FinishingStats>({
     totalTargets: 0,
@@ -56,7 +69,7 @@ export function FinishingDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"targets" | "outputs">("targets");
-  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [selectedLog, setSelectedLog] = useState<DailyLogSummary | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   useEffect(() => {
@@ -65,17 +78,24 @@ export function FinishingDashboard() {
     }
   }, [profile?.factory_id]);
 
+  // Auto-refresh at midnight (factory timezone) and on tab refocus
+  useMidnightRefresh(useCallback(() => {
+    if (profile?.factory_id) {
+      fetchFinishingData();
+    }
+  }, [profile?.factory_id]));
+
   async function fetchFinishingData() {
     if (!profile?.factory_id) return;
     
     setLoading(true);
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
 
     try {
       // Fetch today's daily logs from new table
       const { data: logsData } = await supabase
         .from('finishing_daily_logs')
-        .select('*, lines(id, line_id, name), work_orders(po_number, style)')
+        .select('*, lines(id, line_id, name), work_orders(po_number, buyer, style)')
         .eq('factory_id', profile.factory_id)
         .eq('production_date', today)
         .order('submitted_at', { ascending: false });
@@ -83,10 +103,11 @@ export function FinishingDashboard() {
       // Format logs
       const formattedLogs: DailyLogSummary[] = (logsData || []).map((log: any) => ({
         id: log.id,
-        line_id: log.lines?.line_id || 'Unknown',
-        line_name: log.lines?.name || log.lines?.line_id || 'Unknown',
+        line_id: '',
+        line_name: '',
         work_order_id: log.work_order_id,
         po_number: log.work_orders?.po_number || null,
+        buyer: log.work_orders?.buyer || null,
         style: log.work_orders?.style || null,
         log_type: log.log_type,
         thread_cutting: log.thread_cutting || 0,
@@ -97,7 +118,17 @@ export function FinishingDashboard() {
         get_up: log.get_up || 0,
         poly: log.poly || 0,
         carton: log.carton || 0,
+        m_power_planned: log.m_power_planned ?? null,
+        m_power_actual: log.m_power_actual ?? null,
+        planned_hours: log.planned_hours ?? null,
+        actual_hours: log.actual_hours ?? null,
+        remarks: log.remarks || null,
+        ot_hours_actual: log.ot_hours_actual ?? null,
+        ot_manpower_actual: log.ot_manpower_actual ?? null,
+        ot_hours_planned: log.ot_hours_planned ?? null,
+        ot_manpower_planned: log.ot_manpower_planned ?? null,
         submitted_at: log.submitted_at,
+        production_date: log.production_date,
       }));
 
       // Calculate stats
@@ -107,8 +138,18 @@ export function FinishingDashboard() {
       const totalStats: FinishingStats = {
         totalTargets: targets.length,
         totalOutputs: outputs.length,
-        totalPoly: outputs.reduce((sum, l) => sum + l.poly, 0),
-        totalCarton: outputs.reduce((sum, l) => sum + l.carton, 0),
+        totalPoly: outputs.reduce((sum, l) => {
+          const effectivePoly = l.actual_hours && l.actual_hours > 0 && l.ot_hours_actual && l.ot_hours_actual > 0
+            ? Math.round((l.poly / l.actual_hours) * (l.actual_hours + l.ot_hours_actual))
+            : l.poly;
+          return sum + effectivePoly;
+        }, 0),
+        totalCarton: outputs.reduce((sum, l) => {
+          const effectiveCarton = l.actual_hours && l.actual_hours > 0 && l.ot_hours_actual && l.ot_hours_actual > 0
+            ? Math.round((l.carton / l.actual_hours) * (l.actual_hours + l.ot_hours_actual))
+            : l.carton;
+          return sum + effectiveCarton;
+        }, 0),
       };
 
       setLogs(formattedLogs);
@@ -121,10 +162,9 @@ export function FinishingDashboard() {
   }
 
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString(i18n.language === 'bn' ? 'bn-BD' : 'en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    // Use factory timezone for display
+    const timezone = factory?.timezone || "Asia/Dhaka";
+    return formatTimeInTimezone(dateString, timezone);
   };
 
   const filteredLogs = logs.filter(log => 
@@ -204,7 +244,7 @@ export function FinishingDashboard() {
                     <p className="text-sm text-muted-foreground">Poly Packed</p>
                   </div>
                   <div>
-                    <p className="text-3xl font-bold text-warning">{stats.totalCarton.toLocaleString()}</p>
+                    <p className="text-xl font-semibold text-muted-foreground">{stats.totalCarton.toLocaleString()}</p>
                     <p className="text-sm text-muted-foreground">Cartons Packed</p>
                   </div>
                 </div>
@@ -241,34 +281,7 @@ export function FinishingDashboard() {
                     <div
                       key={log.id}
                       onClick={() => {
-                        setSelectedLog({
-                          id: log.id,
-                          production_date: new Date().toISOString().split('T')[0],
-                          line_id: log.line_id,
-                          work_order_id: log.work_order_id,
-                          log_type: log.log_type,
-                          shift: null,
-                          thread_cutting: log.thread_cutting,
-                          inside_check: log.inside_check,
-                          top_side_check: log.top_side_check,
-                          buttoning: log.buttoning,
-                          iron: log.iron,
-                          get_up: log.get_up,
-                          poly: log.poly,
-                          carton: log.carton,
-                          remarks: null,
-                          submitted_at: log.submitted_at,
-                          is_locked: false,
-                          line: {
-                            line_id: log.line_id,
-                            name: log.line_name,
-                          },
-                          work_order: log.po_number ? {
-                            po_number: log.po_number,
-                            style: log.style || '',
-                            buyer: '',
-                          } : null,
-                        });
+                        setSelectedLog(log);
                         setDetailModalOpen(true);
                       }}
                       className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
@@ -283,13 +296,13 @@ export function FinishingDashboard() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold">{log.line_name}</span>
+                            <span className="font-semibold">{log.po_number || 'No PO'}</span>
                             <Badge variant={activeTab === "targets" ? "secondary" : "default"} className="text-xs">
                               {activeTab === "targets" ? "Target" : "Output"}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {log.po_number || 'No PO'} • {log.style || 'No Style'}
+                            {log.buyer || 'No Buyer'} • {log.style || 'No Style'}
                           </p>
                           <span className="text-xs text-muted-foreground">
                             Submitted {formatTime(log.submitted_at)}
@@ -299,13 +312,25 @@ export function FinishingDashboard() {
                       <div className="text-right">
                         <div className="flex gap-4">
                           <div>
-                            <p className="font-mono font-bold text-lg text-success">{log.poly.toLocaleString()}</p>
+                            <p className="font-mono font-bold text-lg text-success">
+                              {(log.actual_hours && log.actual_hours > 0 && log.ot_hours_actual && log.ot_hours_actual > 0
+                                ? Math.round((log.poly / log.actual_hours) * (log.actual_hours + log.ot_hours_actual))
+                                : log.poly
+                              ).toLocaleString()}
+                            </p>
                             <p className="text-xs text-muted-foreground">poly</p>
                           </div>
+                          {log.carton > 0 && (
                           <div>
-                            <p className="font-mono font-bold text-lg text-warning">{log.carton.toLocaleString()}</p>
+                            <p className="font-mono font-semibold text-base text-muted-foreground">
+                              {(log.actual_hours && log.actual_hours > 0 && log.ot_hours_actual && log.ot_hours_actual > 0
+                                ? Math.round((log.carton / log.actual_hours) * (log.actual_hours + log.ot_hours_actual))
+                                : log.carton
+                              ).toLocaleString()}
+                            </p>
                             <p className="text-xs text-muted-foreground">carton</p>
                           </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -329,11 +354,71 @@ export function FinishingDashboard() {
         </TabsContent>
       </Tabs>
 
-      <FinishingLogDetailModal
-        log={selectedLog}
-        open={detailModalOpen}
-        onOpenChange={setDetailModalOpen}
-      />
+      {(() => {
+        if (!selectedLog) return null;
+
+        const counterpart = logs.find(l =>
+          l.log_type !== selectedLog.log_type &&
+          l.production_date === selectedLog.production_date &&
+          l.work_order_id === selectedLog.work_order_id
+        ) ?? null;
+
+        const targetLog = selectedLog.log_type === "TARGET" ? selectedLog : counterpart;
+        const actualLog = selectedLog.log_type === "OUTPUT" ? selectedLog : counterpart;
+
+        const target: FinishingTargetData | null = targetLog ? {
+          id: targetLog.id,
+          production_date: targetLog.production_date,
+          submitted_at: targetLog.submitted_at,
+          po_number: targetLog.po_number ?? null,
+          buyer: targetLog.buyer ?? null,
+          style: targetLog.style ?? null,
+          thread_cutting: targetLog.thread_cutting,
+          inside_check: targetLog.inside_check,
+          top_side_check: targetLog.top_side_check,
+          buttoning: targetLog.buttoning,
+          iron: targetLog.iron,
+          get_up: targetLog.get_up,
+          poly: targetLog.poly,
+          carton: targetLog.carton,
+          m_power_planned: targetLog.m_power_planned ?? null,
+          planned_hours: targetLog.planned_hours ?? null,
+          ot_hours_planned: targetLog.ot_hours_planned ?? null,
+          ot_manpower_planned: targetLog.ot_manpower_planned ?? null,
+          remarks: targetLog.remarks ?? null,
+        } : null;
+
+        const actual: FinishingActualData | null = actualLog ? {
+          id: actualLog.id,
+          production_date: actualLog.production_date,
+          submitted_at: actualLog.submitted_at,
+          po_number: actualLog.po_number ?? null,
+          buyer: actualLog.buyer ?? null,
+          style: actualLog.style ?? null,
+          thread_cutting: actualLog.thread_cutting,
+          inside_check: actualLog.inside_check,
+          top_side_check: actualLog.top_side_check,
+          buttoning: actualLog.buttoning,
+          iron: actualLog.iron,
+          get_up: actualLog.get_up,
+          poly: actualLog.poly,
+          carton: actualLog.carton,
+          m_power_actual: actualLog.m_power_actual ?? null,
+          actual_hours: actualLog.actual_hours ?? null,
+          ot_hours_actual: actualLog.ot_hours_actual ?? null,
+          ot_manpower_actual: actualLog.ot_manpower_actual ?? null,
+          remarks: actualLog.remarks ?? null,
+        } : null;
+
+        return (
+          <FinishingSubmissionView
+            target={target}
+            actual={actual}
+            open={detailModalOpen}
+            onOpenChange={setDetailModalOpen}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-project_id = "phbehenczyryrlxmgjju"
+project_id = "varolnwetchstlfholbl"
 
 [functions.send-insights-report]
 verify_jwt = false
@@ -40,4 +40,19 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.process-scheduled-emails]
+verify_jwt = false
+
+[functions.generate-embedding]
+verify_jwt = false
+
+[functions.ingest-document]
+verify_jwt = false
+
+[functions.chat]
+verify_jwt = false
+
+[functions.get-source]
+verify_jwt = false
+
+[functions.chat-feedback]
 verify_jwt = false

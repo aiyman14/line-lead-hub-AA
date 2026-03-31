@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFn, networkErrorMessage } from "@/lib/network-utils";
 import { openExternalUrl } from "@/lib/capacitor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { 
   Loader2, 
   CreditCard, 
@@ -67,7 +67,7 @@ interface BillingData {
 export default function Billing() {
   const { user, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+
   
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -82,17 +82,13 @@ export default function Billing() {
     
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('get-billing-history');
-      
+      const { data, error } = await invokeEdgeFn('get-billing-history');
+
       if (error) throw error;
       setBillingData(data);
     } catch (err) {
       console.error('Error fetching billing history:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load billing history.",
-      });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setLoading(false);
     }
@@ -101,20 +97,16 @@ export default function Billing() {
   const handleManageBilling = async () => {
     setPortalLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('customer-portal');
-      
+      const { data, error } = await invokeEdgeFn('customer-portal');
+
       if (error) throw error;
-      
+
       if (data.url) {
         await openExternalUrl(data.url);
       }
     } catch (err) {
       console.error('Error opening portal:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to open billing portal. Please try again.",
-      });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setPortalLoading(false);
     }
@@ -231,7 +223,7 @@ export default function Billing() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Production Portal</p>
+                      <p className="font-medium">ProductionPortal</p>
                       <p className="text-sm text-muted-foreground">
                         {activeSubscription.items[0]?.amount 
                           ? formatCurrency(activeSubscription.items[0].amount, activeSubscription.items[0].currency)

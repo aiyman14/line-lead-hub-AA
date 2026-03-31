@@ -1,17 +1,32 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import type { AppRole } from "@/lib/constants";
 import { supabase } from "@/integrations/supabase/client";
+import { getTodayInTimezone } from "@/lib/date-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2, Package, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
+import { Loader2, Package, ArrowLeft, CheckCircle2, Search } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { EmptyState } from "@/components/EmptyState";
+import { useOfflineSubmission } from "@/hooks/useOfflineSubmission";
+import { useHeadcountCost } from "@/hooks/useHeadcountCost";
+import { EstimatedCostDisplay } from "@/components/EstimatedCostDisplay";
 
 interface Line {
   id: string;
@@ -47,13 +62,35 @@ interface WorkOrder {
 interface Factory {
   id: string;
   name: string;
+  timezone: string | null;
 }
+
+const finishingSchema = z.object({
+  line_id: z.string().min(1, "Line is required"),
+  work_order_id: z.string().min(1, "PO is required"),
+  m_power: z.number().min(0, "Cannot be negative").max(1000, "Too high"),
+  per_hour_target: z.number().min(0, "Cannot be negative").max(10000, "Too high"),
+  day_qc_pass: z.number().min(0, "Cannot be negative").max(100000, "Too high"),
+  total_qc_pass: z.number().min(0, "Cannot be negative").max(10000000, "Too high"),
+  day_poly: z.number().min(0, "Cannot be negative").max(100000, "Too high"),
+  total_poly: z.number().min(0, "Cannot be negative").max(10000000, "Too high"),
+  average_production: z.number().min(0, "Cannot be negative").max(100000, "Too high"),
+  day_over_time: z.number().min(0, "Cannot be negative").max(24, "Max 24 hours"),
+  total_over_time: z.number().min(0, "Cannot be negative").max(10000, "Too high"),
+  day_hour: z.number().min(0, "Cannot be negative").max(24, "Max 24 hours"),
+  total_hour: z.number().min(0, "Cannot be negative").max(10000, "Too high"),
+  day_carton: z.number().min(0, "Cannot be negative").max(10000, "Too high"),
+  total_carton: z.number().min(0, "Cannot be negative").max(1000000, "Too high"),
+  remarks: z.string().max(1000, "Remarks too long").optional(),
+});
 
 export default function FinishingUpdate() {
   const { t, i18n } = useTranslation();
   const { profile, user, hasRole, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+
+  const { submit: offlineSubmit } = useOfflineSubmission();
+  const { calculateEstimatedCost } = useHeadcountCost();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -94,6 +131,7 @@ export default function FinishingUpdate() {
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [poSearchOpen, setPoSearchOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -190,7 +228,7 @@ export default function FinishingUpdate() {
           .eq('is_active', true),
         supabase
           .from('factory_accounts')
-          .select('id, name')
+          .select('id, name, timezone')
           .eq('id', profile.factory_id)
           .maybeSingle(),
       ]);
@@ -223,62 +261,72 @@ export default function FinishingUpdate() {
   }
 
   function validateForm(): boolean {
-    const newErrors: Record<string, string> = {};
+    const formData = {
+      line_id: selectedLine,
+      work_order_id: selectedPO,
+      m_power: parseInt(mPower) || 0,
+      per_hour_target: parseInt(perHourTarget) || 0,
+      day_qc_pass: parseInt(dayQcPass) || 0,
+      total_qc_pass: parseInt(totalQcPass) || 0,
+      day_poly: parseInt(dayPoly) || 0,
+      total_poly: parseInt(totalPoly) || 0,
+      average_production: parseInt(averageProduction) || 0,
+      day_over_time: parseFloat(dayOverTime) || 0,
+      total_over_time: parseFloat(totalOverTime) || 0,
+      day_hour: parseFloat(dayHour) || 0,
+      total_hour: parseFloat(totalHour) || 0,
+      day_carton: parseInt(dayCarton) || 0,
+      total_carton: parseInt(totalCarton) || 0,
+      remarks: remarks || undefined,
+    };
 
-    // Required selections
-    if (!selectedPO) newErrors.po = "PO ID is required";
-    if (!selectedLine) newErrors.line = "Line No. is required";
+    const result = finishingSchema.safeParse(formData);
 
-    // Required metrics - must be non-negative numbers
-    const numericFields = [
-      { key: "mPower", value: mPower, label: "M Power" },
-      { key: "perHourTarget", value: perHourTarget, label: "Per Hour Target" },
-      { key: "dayQcPass", value: dayQcPass, label: "Day QC Pass" },
-      { key: "totalQcPass", value: totalQcPass, label: "Total QC Pass" },
-      { key: "dayPoly", value: dayPoly, label: "Day Poly" },
-      { key: "totalPoly", value: totalPoly, label: "Total Poly" },
-      { key: "averageProduction", value: averageProduction, label: "Average Production" },
-      { key: "dayOverTime", value: dayOverTime, label: "Day Over Time" },
-      { key: "totalOverTime", value: totalOverTime, label: "Total Over Time" },
-      { key: "dayHour", value: dayHour, label: "Day Hour" },
-      { key: "totalHour", value: totalHour, label: "Total Hour" },
-      { key: "dayCarton", value: dayCarton, label: "Day Carton" },
-      { key: "totalCarton", value: totalCarton, label: "Total Carton" },
-    ];
+    if (!result.success) {
+      const fieldErrors = result.error.flatten().fieldErrors;
+      const newErrors: Record<string, string> = {};
+      if (fieldErrors.line_id) newErrors.line = "Line No. is required";
+      if (fieldErrors.work_order_id) newErrors.po = "PO ID is required";
+      if (fieldErrors.m_power) newErrors.mPower = fieldErrors.m_power[0];
+      if (fieldErrors.per_hour_target) newErrors.perHourTarget = fieldErrors.per_hour_target[0];
+      if (fieldErrors.day_qc_pass) newErrors.dayQcPass = fieldErrors.day_qc_pass[0];
+      if (fieldErrors.total_qc_pass) newErrors.totalQcPass = fieldErrors.total_qc_pass[0];
+      if (fieldErrors.day_poly) newErrors.dayPoly = fieldErrors.day_poly[0];
+      if (fieldErrors.total_poly) newErrors.totalPoly = fieldErrors.total_poly[0];
+      if (fieldErrors.average_production) newErrors.averageProduction = fieldErrors.average_production[0];
+      if (fieldErrors.day_over_time) newErrors.dayOverTime = fieldErrors.day_over_time[0];
+      if (fieldErrors.total_over_time) newErrors.totalOverTime = fieldErrors.total_over_time[0];
+      if (fieldErrors.day_hour) newErrors.dayHour = fieldErrors.day_hour[0];
+      if (fieldErrors.total_hour) newErrors.totalHour = fieldErrors.total_hour[0];
+      if (fieldErrors.day_carton) newErrors.dayCarton = fieldErrors.day_carton[0];
+      if (fieldErrors.total_carton) newErrors.totalCarton = fieldErrors.total_carton[0];
+      if (fieldErrors.remarks) newErrors.remarks = fieldErrors.remarks[0];
+      setErrors(newErrors);
+      return false;
+    }
 
-    numericFields.forEach(({ key, value, label }) => {
-      if (value === "" || value === null || value === undefined) {
-        newErrors[key] = `${label} is required`;
-      } else {
-        const num = parseFloat(value);
-        if (isNaN(num)) {
-          newErrors[key] = `${label} must be a valid number`;
-        } else if (num < 0) {
-          newErrors[key] = `${label} cannot be negative`;
-        }
-      }
-    });
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setErrors({});
+    return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast({ variant: "destructive", title: "Please fix the errors below" });
+      toast.error("Please fix the errors below");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      const estimatedCost = calculateEstimatedCost(parseInt(mPower), parseFloat(dayHour));
+
       const insertData = {
         factory_id: profile?.factory_id,
         line_id: selectedLine,
         work_order_id: selectedPO,
-        production_date: new Date().toISOString().split('T')[0],
+        production_date: getTodayInTimezone(factory?.timezone || "Asia/Dhaka"),
         submitted_by: user?.id,
         
         // Stored snapshots from PO/Line
@@ -309,18 +357,31 @@ export default function FinishingUpdate() {
         // Legacy fields (set defaults)
         qc_pass_qty: parseInt(dayQcPass) || 0,
         manpower: parseInt(mPower) || 0,
+        estimated_cost_value: estimatedCost.value,
+        estimated_cost_currency: estimatedCost.value != null ? estimatedCost.currency : null,
       };
 
-      const { error } = await supabase.from('production_updates_finishing').insert(insertData);
-
-      if (error) throw error;
-
-      toast({
-        title: "Update submitted!",
-        description: "Your finishing daily update has been recorded.",
+      const result = await offlineSubmit("production_updates_finishing", "production_updates_finishing", insertData as Record<string, unknown>, {
+        showSuccessToast: false,
+        showQueuedToast: true,
       });
 
-      // Navigate workers to my-submissions, others can stay and add more
+      if (result.queued) {
+        const isWorker = hasRole('worker') && !isAdminOrHigher();
+        if (isWorker) {
+          navigate('/my-submissions');
+        } else {
+          resetForm();
+        }
+        return;
+      }
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      toast.success("Update submitted!", { description: "Your finishing daily update has been recorded." });
+
       const isWorker = hasRole('worker') && !isAdminOrHigher();
       if (isWorker) {
         navigate('/my-submissions');
@@ -329,11 +390,7 @@ export default function FinishingUpdate() {
       }
     } catch (error: any) {
       console.error('Error submitting update:', error);
-      toast({
-        variant: "destructive",
-        title: "Submission failed",
-        description: error.message || "Please try again.",
-      });
+      toast.error("Submission failed", { description: error?.message || "Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -369,25 +426,17 @@ export default function FinishingUpdate() {
 
   if (!profile?.factory_id) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-4">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">{t('common.noFactoryAssigned')}</h2>
-            <p className="text-muted-foreground text-sm">
-              {t('common.needFactoryAssigned')}
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/dashboard')}>
-              {t('common.goToDashboard')}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={Package}
+        title={t('common.noFactoryAssigned')}
+        description={t('common.needFactoryAssigned')}
+        action={{ label: t('common.goToDashboard'), onClick: () => navigate('/dashboard') }}
+      />
     );
   }
 
   return (
-    <div className="p-4 lg:p-6 max-w-2xl mx-auto pb-6">
+    <div className="py-4 lg:py-6 max-w-2xl mx-auto pb-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
@@ -400,7 +449,7 @@ export default function FinishingUpdate() {
           <div>
             <h1 className="text-xl font-bold">{t('finishing.title')}</h1>
             <p className="text-sm text-muted-foreground">
-              {new Date().toLocaleDateString(i18n.language === 'bn' ? 'bn-BD' : 'en-US', { dateStyle: 'full' })}
+              {new Date(getTodayInTimezone(factory?.timezone || "Asia/Dhaka") + "T00:00:00").toLocaleDateString(i18n.language === 'bn' ? 'bn-BD' : 'en-US', { dateStyle: 'full' })}
             </p>
           </div>
         </div>
@@ -434,22 +483,51 @@ export default function FinishingUpdate() {
             {/* PO ID */}
             <div className="space-y-2">
               <Label htmlFor="po">{t('sewing.poId')} *</Label>
-              <Select 
-                value={selectedPO} 
-                onValueChange={setSelectedPO}
-                disabled={!selectedLine || filteredWorkOrders.length === 0}
-              >
-                <SelectTrigger className={`h-12 ${errors.po ? 'border-destructive' : ''}`}>
-                  <SelectValue placeholder={!selectedLine ? t('common.selectLineFirst') : filteredWorkOrders.length === 0 ? t('common.noPOsForLine') : t('common.selectPO')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredWorkOrders.map((wo) => (
-                    <SelectItem key={wo.id} value={wo.id}>
-                      {wo.po_number} - {wo.style} ({wo.buyer})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    disabled={!selectedLine || filteredWorkOrders.length === 0}
+                    className={`w-full h-12 justify-start ${errors.po ? 'border-destructive' : ''}`}
+                  >
+                    <Search className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {selectedPO
+                        ? (() => {
+                            const wo = filteredWorkOrders.find(w => w.id === selectedPO);
+                            return wo ? `${wo.po_number} - ${wo.style} (${wo.buyer})` : t('common.selectPO');
+                          })()
+                        : !selectedLine ? t('common.selectLineFirst') : filteredWorkOrders.length === 0 ? t('common.noPOsForLine') : t('common.selectPO')}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[350px] p-0" align="start">
+                  <Command shouldFilter={true}>
+                    <CommandInput placeholder="Search PO, buyer, style..." />
+                    <CommandList>
+                      <CommandEmpty>No PO found.</CommandEmpty>
+                      <CommandGroup>
+                        {filteredWorkOrders.map((wo) => (
+                          <CommandItem
+                            key={wo.id}
+                            value={`${wo.po_number} ${wo.buyer} ${wo.style} ${wo.item || ''}`}
+                            onSelect={() => {
+                              setSelectedPO(wo.id);
+                              setPoSearchOpen(false);
+                            }}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-medium">{wo.po_number} - {wo.style}</span>
+                              <span className="text-xs text-muted-foreground">{wo.buyer}{wo.item ? ` / ${wo.item}` : ''}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {errors.po && <p className="text-xs text-destructive">{errors.po}</p>}
             </div>
           </CardContent>
@@ -681,6 +759,8 @@ export default function FinishingUpdate() {
                 {errors.totalHour && <p className="text-xs text-destructive">{errors.totalHour}</p>}
               </div>
             </div>
+
+            <EstimatedCostDisplay manpower={mPower} hours={dayHour} />
 
             {/* Row 7: Day Carton & Total Carton */}
             <div className="grid grid-cols-2 gap-4">

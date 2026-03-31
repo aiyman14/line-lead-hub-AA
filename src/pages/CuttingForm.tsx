@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useOfflineSubmission } from "@/hooks/useOfflineSubmission";
 import { toast } from "sonner";
 import { Loader2, Search, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format } from "date-fns";
+import { isLateForCutoff, getTodayInTimezone } from "@/lib/date-utils";
 
 interface WorkOrder {
   id: string;
@@ -36,12 +37,13 @@ interface WorkOrder {
 
 export default function CuttingForm() {
   const navigate = useNavigate();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user, profile, factory, isAdminOrHigher } = useAuth();
+  const { submit: offlineSubmit } = useOfflineSubmission();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const dateLocale = i18n.language === 'bn' ? 'bn-BD' : 'en-US';
+  const dateLocale = i18n.language === 'bn' ? 'bn-BD' : i18n.language === 'zh' ? 'zh-CN' : 'en-US';
 
   // Master data
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
@@ -125,7 +127,7 @@ export default function CuttingForm() {
       setWorkOrders(data || []);
     } catch (error) {
       console.error("Error fetching work orders:", error);
-      toast.error("Failed to load work orders");
+      toast.error(t('cutting.failedToLoadWorkOrders'));
     } finally {
       setLoading(false);
     }
@@ -145,7 +147,7 @@ export default function CuttingForm() {
         .select("day_cutting, day_input")
         .eq("factory_id", profile.factory_id)
         .eq("work_order_id", selectedWorkOrder.id)
-        .lt("production_date", format(new Date(), "yyyy-MM-dd"));
+        .lt("production_date", getTodayInTimezone(factory?.timezone || "Asia/Dhaka"));
 
       const prevTotalCutting = previousActuals?.reduce((sum, a) => sum + (a.day_cutting || 0), 0) || 0;
       const prevTotalInput = previousActuals?.reduce((sum, a) => sum + (a.day_input || 0), 0) || 0;
@@ -169,14 +171,14 @@ export default function CuttingForm() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedLine) newErrors.line = "Transfer To Line is required";
-    if (!selectedWorkOrder) newErrors.workOrder = "PO is required";
-    if (!manPower || parseInt(manPower) < 0) newErrors.manPower = "Man Power is required";
-    if (!markerCapacity || parseInt(markerCapacity) < 0) newErrors.markerCapacity = "Marker Capacity is required";
-    if (!layCapacity || parseInt(layCapacity) < 0) newErrors.layCapacity = "Lay Capacity is required";
-    if (!cuttingCapacity || parseInt(cuttingCapacity) < 0) newErrors.cuttingCapacity = "Cutting Capacity is required";
-    if (!dayCutting || parseInt(dayCutting) < 0) newErrors.dayCutting = "Day Cutting is required";
-    if (!dayInput || parseInt(dayInput) < 0) newErrors.dayInput = "Day Input is required";
+    if (!selectedLine) newErrors.line = t('cutting.lineRequired');
+    if (!selectedWorkOrder) newErrors.workOrder = t('cutting.poRequired');
+    if (!manPower || parseInt(manPower) < 0) newErrors.manPower = t('cutting.manPowerRequired');
+    if (!markerCapacity || parseInt(markerCapacity) < 0) newErrors.markerCapacity = t('cutting.markerCapacityRequired');
+    if (!layCapacity || parseInt(layCapacity) < 0) newErrors.layCapacity = t('cutting.layCapacityRequired');
+    if (!cuttingCapacity || parseInt(cuttingCapacity) < 0) newErrors.cuttingCapacity = t('cutting.cuttingCapacityRequired');
+    if (!dayCutting || parseInt(dayCutting) < 0) newErrors.dayCutting = t('cutting.dayCuttingRequired');
+    if (!dayInput || parseInt(dayInput) < 0) newErrors.dayInput = t('cutting.dayInputRequired');
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -186,39 +188,29 @@ export default function CuttingForm() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error("Please fill all required fields");
+      toast.error(t('cutting.fillAllRequired'));
       return;
     }
 
     if (!profile?.factory_id || !user?.id || !selectedWorkOrder || !selectedLine) {
-      toast.error("Submission failed");
+      toast.error(t('cutting.submissionFailed'));
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const today = format(new Date(), "yyyy-MM-dd");
-      
-      // Check if submission is late
-      let isLateMorning = false;
-      let isLateEvening = false;
-      
-      if (factory?.morning_target_cutoff) {
-        const now = new Date();
-        const [cutoffHour, cutoffMinute] = factory.morning_target_cutoff.split(':').map(Number);
-        const cutoffTime = new Date();
-        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
-        isLateMorning = now > cutoffTime;
-      }
-      
-      if (factory?.evening_actual_cutoff) {
-        const now = new Date();
-        const [cutoffHour, cutoffMinute] = factory.evening_actual_cutoff.split(':').map(Number);
-        const cutoffTime = new Date();
-        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
-        isLateEvening = now > cutoffTime;
-      }
+      // Check if submission is late (using factory timezone)
+      const timezone = factory?.timezone || "Asia/Dhaka";
+      const today = getTodayInTimezone(timezone);
+
+      const isLateMorning = factory?.morning_target_cutoff
+        ? isLateForCutoff(factory.morning_target_cutoff, timezone)
+        : false;
+
+      const isLateEvening = factory?.evening_actual_cutoff
+        ? isLateForCutoff(factory.evening_actual_cutoff, timezone)
+        : false;
 
       const lineId = selectedLine.id;
 
@@ -242,18 +234,56 @@ export default function CuttingForm() {
         is_late: isLateMorning,
       };
 
-      const { error: targetError } = await supabase.from("cutting_targets").insert(targetData as any);
+      // Insert targets via offline-capable hook
+      const targetResult = await offlineSubmit("cutting_targets", "cutting_targets", targetData as Record<string, unknown>, {
+        showSuccessToast: false,
+        showQueuedToast: false,
+      });
 
-      if (targetError) {
-        if (targetError.code === "23505") {
+      if (targetResult.queued) {
+        // Queued offline — queue actuals too and navigate away
+        const actualData = {
+          factory_id: profile.factory_id,
+          production_date: today,
+          submitted_by: user.id,
+          line_id: lineId,
+          work_order_id: selectedWorkOrder.id,
+          buyer: selectedWorkOrder.buyer,
+          style: selectedWorkOrder.style,
+          po_no: selectedWorkOrder.po_number,
+          colour: selectedWorkOrder.color || "",
+          order_qty: selectedWorkOrder.order_qty,
+          day_cutting: parseInt(dayCutting),
+          total_cutting: totalCutting,
+          day_input: parseInt(dayInput),
+          total_input: totalInput,
+          balance: balance,
+          is_late: isLateEvening,
+          transfer_to_line_id: selectedLine.id,
+        };
+        await offlineSubmit("cutting_actuals", "cutting_actuals", actualData as Record<string, unknown>, {
+          showSuccessToast: false,
+          showQueuedToast: true,
+          queuedMessage: "Cutting report saved offline. Will sync when online.",
+        });
+        if (isAdminOrHigher()) {
+          navigate("/dashboard");
+        } else {
+          navigate("/cutting/submissions");
+        }
+        return;
+      }
+
+      if (!targetResult.success) {
+        if (targetResult.error?.includes("duplicate")) {
           // Already submitted targets, continue with actuals only
           console.log("Targets already submitted for today, updating actuals only");
         } else {
-          throw targetError;
+          throw new Error(targetResult.error);
         }
       }
 
-      // Insert actuals
+      // Insert actuals via offline-capable hook
       const actualData = {
         factory_id: profile.factory_id,
         production_date: today,
@@ -274,18 +304,30 @@ export default function CuttingForm() {
         transfer_to_line_id: selectedLine.id,
       };
 
-      const { error: actualError } = await supabase.from("cutting_actuals").insert(actualData as any);
+      const actualResult = await offlineSubmit("cutting_actuals", "cutting_actuals", actualData as Record<string, unknown>, {
+        showSuccessToast: false,
+        showQueuedToast: true,
+      });
 
-      if (actualError) {
-        if (actualError.code === "23505") {
-          toast.error("Already submitted for this PO today");
+      if (actualResult.queued) {
+        if (isAdminOrHigher()) {
+          navigate("/dashboard");
         } else {
-          throw actualError;
+          navigate("/cutting/submissions");
         }
         return;
       }
 
-      toast.success("Cutting report submitted successfully!");
+      if (!actualResult.success) {
+        if (actualResult.error?.includes("duplicate")) {
+          toast.error(t('cutting.alreadySubmittedToday'));
+        } else {
+          throw new Error(actualResult.error);
+        }
+        return;
+      }
+
+      toast.success(t('cutting.cuttingReportSubmitted'));
       
       if (isAdminOrHigher()) {
         navigate("/dashboard");
@@ -294,7 +336,7 @@ export default function CuttingForm() {
       }
     } catch (error: any) {
       console.error("Error submitting:", error);
-      toast.error("Submission failed");
+      toast.error(t('cutting.submissionFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -311,7 +353,7 @@ export default function CuttingForm() {
   if (!profile?.factory_id) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-4">
-        <p className="text-muted-foreground">No factory assigned</p>
+        <p className="text-muted-foreground">{t('cutting.noFactoryAssigned')}</p>
       </div>
     );
   }
@@ -322,9 +364,9 @@ export default function CuttingForm() {
       <div className="flex items-center gap-3 mb-6">
         <Scissors className="h-8 w-8 text-primary" />
         <div>
-          <h1 className="text-xl font-bold">DAILY CUTTING REPORT</h1>
+          <h1 className="text-xl font-bold">{t('cutting.dailyCuttingReport')}</h1>
           <p className="text-sm text-muted-foreground">
-            {new Date().toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date(getTodayInTimezone(factory?.timezone || "Asia/Dhaka") + "T00:00:00").toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
       </div>
@@ -333,7 +375,7 @@ export default function CuttingForm() {
         {/* Step 1: Transfer To Line Selector */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Line No.</CardTitle>
+            <CardTitle className="text-base">{t('cutting.lineNo')}</CardTitle>
           </CardHeader>
           <CardContent>
             <Popover open={lineSearchOpen} onOpenChange={setLineSearchOpen}>
@@ -345,14 +387,14 @@ export default function CuttingForm() {
                   <Search className="mr-2 h-4 w-4" />
                   {selectedLine 
                     ? (selectedLine.name || selectedLine.line_id)
-                    : "Select a line..."}
+                    : t('cutting.selectALine')}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[350px] p-0" align="start">
                 <Command shouldFilter={true}>
-                  <CommandInput placeholder="Search lines..." />
+                  <CommandInput placeholder={t('cutting.searchLines')} />
                   <CommandList>
-                    <CommandEmpty>No lines found.</CommandEmpty>
+                    <CommandEmpty>{t('cutting.noLinesFound')}</CommandEmpty>
                     <CommandGroup>
                       {lines.map(line => (
                         <CommandItem 
@@ -379,7 +421,7 @@ export default function CuttingForm() {
         {/* Step 2: PO Selector */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Select PO / Work Order</CardTitle>
+            <CardTitle className="text-base">{t('cutting.selectPO')}</CardTitle>
           </CardHeader>
           <CardContent>
             <Popover open={searchOpen} onOpenChange={setSearchOpen}>
@@ -392,15 +434,15 @@ export default function CuttingForm() {
                   <span className="truncate">
                     {selectedWorkOrder 
                       ? `${selectedWorkOrder.po_number} - ${selectedWorkOrder.buyer} / ${selectedWorkOrder.style}`
-                      : "Search by PO, Buyer, Style..."}
+                      : t('cutting.searchPO')}
                   </span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[350px] p-0" align="start">
                 <Command shouldFilter={true}>
-                  <CommandInput placeholder="Search PO, buyer, style, item..." />
+                  <CommandInput placeholder={t('cutting.searchPOLong')} />
                   <CommandList>
-                    <CommandEmpty>No work orders found.</CommandEmpty>
+                    <CommandEmpty>{t('cutting.noWorkOrdersFound')}</CommandEmpty>
                     <CommandGroup>
                       {workOrders.map(wo => (
                         <CommandItem 
@@ -433,28 +475,28 @@ export default function CuttingForm() {
         {selectedWorkOrder && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Order Details</CardTitle>
+              <CardTitle className="text-base">{t('cutting.orderDetails')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-muted-foreground">BUYER:</span>
+                  <span className="text-muted-foreground">{t('cutting.buyerLabel')}</span>
                   <p className="font-medium">{selectedWorkOrder.buyer}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">STYLE:</span>
+                  <span className="text-muted-foreground">{t('cutting.styleLabel')}</span>
                   <p className="font-medium">{selectedWorkOrder.style}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">PO - NO:</span>
+                  <span className="text-muted-foreground">{t('cutting.poNoLabel')}</span>
                   <p className="font-medium">{selectedWorkOrder.po_number}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">COLOUR:</span>
+                  <span className="text-muted-foreground">{t('cutting.colourLabel')}</span>
                   <p className="font-medium">{selectedWorkOrder.color || "-"}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">ORDER QTY:</span>
+                  <span className="text-muted-foreground">{t('cutting.orderQtyLabel')}</span>
                   <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
                 </div>
               </div>
@@ -465,11 +507,11 @@ export default function CuttingForm() {
         {/* Target Capacities */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Target Capacities</CardTitle>
+            <CardTitle className="text-base">{t('cutting.targetCapacities')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>MAN POWER *</Label>
+              <Label>{t('cutting.manPower')} *</Label>
               <Input
                 type="number"
                 value={manPower}
@@ -482,7 +524,7 @@ export default function CuttingForm() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="block h-10 leading-5">MARKER CAPACITY *</Label>
+                <Label className="block h-10 leading-5">{t('cutting.markerCapacity')} *</Label>
                 <Input
                   type="number"
                   value={markerCapacity}
@@ -494,7 +536,7 @@ export default function CuttingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label className="block h-10 leading-5">LAY CAPACITY *</Label>
+                <Label className="block h-10 leading-5">{t('cutting.layCapacity')} *</Label>
                 <Input
                   type="number"
                   value={layCapacity}
@@ -506,7 +548,7 @@ export default function CuttingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label className="block h-10 leading-5">CUTTING CAPACITY *</Label>
+                <Label className="block h-10 leading-5">{t('cutting.cuttingCapacity')} *</Label>
                 <Input
                   type="number"
                   value={cuttingCapacity}
@@ -518,7 +560,7 @@ export default function CuttingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label className="block h-10 leading-5">UNDER QTY</Label>
+                <Label className="block h-10 leading-5">{t('cutting.underQty')}</Label>
                 <Input
                   type="number"
                   value={underQty}
@@ -533,12 +575,12 @@ export default function CuttingForm() {
         {/* End of Day Actuals */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Daily Actuals</CardTitle>
+            <CardTitle className="text-base">{t('cutting.dailyActuals')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>DAY CUTTING *</Label>
+                <Label>{t('cutting.dayCutting')} *</Label>
                 <Input
                   type="number"
                   value={dayCutting}
@@ -550,7 +592,7 @@ export default function CuttingForm() {
               </div>
 
               <div className="space-y-2">
-                <Label>DAY INPUT *</Label>
+                <Label>{t('cutting.dayInput')} *</Label>
                 <Input
                   type="number"
                   value={dayInput}
@@ -566,15 +608,15 @@ export default function CuttingForm() {
             {selectedWorkOrder && (
               <div className="grid grid-cols-3 gap-4 pt-4 border-t">
                 <div className="text-center p-3 bg-muted rounded-lg">
-                  <p className="text-xs text-muted-foreground">TOTAL CUTTING</p>
+                  <p className="text-xs text-muted-foreground">{t('cutting.totalCutting')}</p>
                   <p className="text-lg font-bold">{totalCutting.toLocaleString()}</p>
                 </div>
                 <div className="text-center p-3 bg-muted rounded-lg">
-                  <p className="text-xs text-muted-foreground">TOTAL INPUT</p>
+                  <p className="text-xs text-muted-foreground">{t('cutting.totalInput')}</p>
                   <p className="text-lg font-bold">{totalInput.toLocaleString()}</p>
                 </div>
                 <div className={`text-center p-3 rounded-lg ${balance < 0 ? 'bg-destructive/10' : 'bg-primary/10'}`}>
-                  <p className="text-xs text-muted-foreground">BALANCE</p>
+                  <p className="text-xs text-muted-foreground">{t('cutting.balance')}</p>
                   <p className={`text-lg font-bold ${balance < 0 ? 'text-destructive' : ''}`}>
                     {balance.toLocaleString()}
                   </p>
@@ -595,10 +637,10 @@ export default function CuttingForm() {
             {submitting ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Submitting...
+                {t('cutting.submitting')}
               </>
             ) : (
-              "Submit Daily Cutting Report"
+              t('cutting.submitDailyCuttingReport')
             )}
           </Button>
         </div>

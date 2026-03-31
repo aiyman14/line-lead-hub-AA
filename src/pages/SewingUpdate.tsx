@@ -3,18 +3,31 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { getTodayInTimezone } from "@/lib/date-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2, Factory, ArrowLeft, CheckCircle, Upload, X, Image as ImageIcon, Calendar as CalendarIcon } from "lucide-react";
+import { toast } from "sonner";
+import { Loader2, ArrowLeft, CheckCircle, Upload, X, Image as ImageIcon, Calendar as CalendarIcon, ClipboardList, TrendingUp, Package, AlertTriangle, Search, Factory } from "lucide-react";
+import { SewingMachine } from "@/components/icons/SewingMachine";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { EmptyState } from "@/components/EmptyState";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useOfflineSubmission } from "@/hooks/useOfflineSubmission";
+import { useHeadcountCost } from "@/hooks/useHeadcountCost";
 
 interface Line {
   id: string;
@@ -59,7 +72,7 @@ interface Stage {
 interface DropdownOption {
   id: string;
   label: string;
-  is_active: boolean;
+  is_active: boolean | null;
 }
 
 interface FactoryType {
@@ -71,7 +84,8 @@ export default function SewingUpdate() {
   const { t, i18n } = useTranslation();
   const { profile, user, factory, hasRole, isAdminOrHigher } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { submit: offlineSubmit } = useOfflineSubmission();
+  const { calculateEstimatedCost } = useHeadcountCost();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -120,8 +134,12 @@ export default function SewingUpdate() {
   const [remarks, setRemarks] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // KPI stats
+  const [kpiStats, setKpiStats] = useState({ submissions: 0, avgOutput: 0, totalOutput: 0, totalRejects: 0 });
+
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [poSearchOpen, setPoSearchOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.factory_id) {
@@ -229,6 +247,25 @@ export default function SewingUpdate() {
       setStages(stagesRes.data || []);
       setStageProgressOptions(stageProgressRes.data || []);
       setNextMilestoneOptions(nextMilestoneRes.data || []);
+
+      // Fetch today's KPI stats
+      const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
+      const { data: todayData } = await supabase
+        .from('production_updates_sewing')
+        .select('output_qty, reject_qty')
+        .eq('factory_id', profile.factory_id)
+        .eq('production_date', today);
+
+      if (todayData && todayData.length > 0) {
+        const totalOutput = todayData.reduce((sum, r) => sum + (r.output_qty || 0), 0);
+        const totalRejects = todayData.reduce((sum, r) => sum + (r.reject_qty || 0), 0);
+        setKpiStats({
+          submissions: todayData.length,
+          avgOutput: Math.round(totalOutput / todayData.length),
+          totalOutput,
+          totalRejects,
+        });
+      }
     } catch (error) {
       console.error('Error fetching form data:', error);
     } finally {
@@ -265,7 +302,7 @@ export default function SewingUpdate() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast({ variant: "destructive", title: "Please fill all required fields" });
+      toast.error("Please fill all required fields");
       return;
     }
 
@@ -279,11 +316,14 @@ export default function SewingUpdate() {
       // Get next milestone label
       const nextMilestoneLabel = nextMilestoneOptions.find(n => n.id === nextMilestone)?.label || "";
 
+      // SewingUpdate only has OT hours, no regular hours — cost stored using OT hours if available
+      const estimatedCost = calculateEstimatedCost(parseInt(mPower), parseFloat(overTime));
+
       const insertData: any = {
         factory_id: profile?.factory_id,
         line_id: selectedLine,
         work_order_id: selectedPO || null,
-        production_date: new Date().toISOString().split('T')[0],
+        production_date: getTodayInTimezone(factory?.timezone || "Asia/Dhaka"),
         
         // Auto-filled from PO (stored for historical record)
         buyer_name: buyerName,
@@ -320,27 +360,32 @@ export default function SewingUpdate() {
         // Notes
         notes: remarks || null,
         submitted_by: user?.id,
+        estimated_cost_value: estimatedCost.value,
+        estimated_cost_currency: estimatedCost.value != null ? estimatedCost.currency : null,
       };
 
-      const { error } = await supabase.from('production_updates_sewing').insert(insertData);
-
-      if (error) throw error;
-
-      toast({
-        title: "Update submitted!",
-        description: "Your daily production update has been recorded.",
+      const result = await offlineSubmit("production_updates_sewing", "production_updates_sewing", insertData as Record<string, unknown>, {
+        showSuccessToast: false,
+        showQueuedToast: true,
       });
 
-      // Clear form and navigate - workers go to my-submissions, others to dashboard
+      if (result.queued) {
+        const isWorker = hasRole('worker') && !isAdminOrHigher();
+        navigate(isWorker ? '/my-submissions' : '/dashboard');
+        return;
+      }
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      toast.success("Update submitted!", { description: "Your daily production update has been recorded." });
+
       const isWorker = hasRole('worker') && !isAdminOrHigher();
       navigate(isWorker ? '/my-submissions' : '/dashboard');
     } catch (error: any) {
       console.error('Error submitting update:', error);
-      toast({
-        variant: "destructive",
-        title: "Submission failed",
-        description: error.message || "Please try again.",
-      });
+      toast.error("Submission failed", { description: error?.message || "Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -356,25 +401,17 @@ export default function SewingUpdate() {
 
   if (!profile?.factory_id) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-4">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <Factory className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">{t('common.noFactoryAssigned')}</h2>
-            <p className="text-muted-foreground text-sm">
-              {t('common.needFactoryAssigned')}
-            </p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/dashboard')}>
-              {t('common.goToDashboard')}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={Factory}
+        title={t('common.noFactoryAssigned')}
+        description={t('common.needFactoryAssigned')}
+        action={{ label: t('common.goToDashboard'), onClick: () => navigate('/dashboard') }}
+      />
     );
   }
 
   return (
-    <div className="p-4 lg:p-6 max-w-2xl mx-auto pb-6">
+    <div className="py-4 lg:py-6 max-w-2xl mx-auto pb-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
@@ -382,15 +419,57 @@ export default function SewingUpdate() {
         </Button>
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Factory className="h-5 w-5 text-primary" />
+            <SewingMachine className="h-5 w-5 text-primary" />
           </div>
           <div>
             <h1 className="text-xl font-bold">{t('sewing.title')}</h1>
             <p className="text-sm text-muted-foreground">
-              {new Date().toLocaleDateString(i18n.language === 'bn' ? 'bn-BD' : 'en-US', { dateStyle: 'full' })}
+              {new Date(getTodayInTimezone(factory?.timezone || "Asia/Dhaka") + "T00:00:00").toLocaleDateString(i18n.language === 'bn' ? 'bn-BD' : 'en-US', { dateStyle: 'full' })}
             </p>
           </div>
         </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">Today's Submissions</p>
+            </div>
+            <div className="text-2xl font-bold text-primary">{kpiStats.submissions}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">Avg Output</p>
+            </div>
+            <div className="text-2xl font-bold text-blue-600">{kpiStats.avgOutput.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Package className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">Total Output</p>
+            </div>
+            <div className="text-2xl font-bold text-green-600">{kpiStats.totalOutput.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">Total Rejects</p>
+            </div>
+            <div className={`text-2xl font-bold ${kpiStats.totalRejects > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+              {kpiStats.totalRejects.toLocaleString()}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -421,22 +500,51 @@ export default function SewingUpdate() {
             {/* PO ID */}
             <div className="space-y-2">
               <Label htmlFor="po">{t('sewing.poId')} *</Label>
-              <Select 
-                value={selectedPO} 
-                onValueChange={setSelectedPO}
-                disabled={!selectedLine || filteredWorkOrders.length === 0}
-              >
-                <SelectTrigger className={`h-12 ${errors.po ? 'border-destructive' : ''}`}>
-                  <SelectValue placeholder={!selectedLine ? t('common.selectLineFirst') : filteredWorkOrders.length === 0 ? t('common.noPOsForLine') : t('common.selectPO')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredWorkOrders.map((wo) => (
-                    <SelectItem key={wo.id} value={wo.id}>
-                      {wo.po_number} - {wo.style} ({wo.buyer})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    disabled={!selectedLine || filteredWorkOrders.length === 0}
+                    className={`w-full h-12 justify-start ${errors.po ? 'border-destructive' : ''}`}
+                  >
+                    <Search className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {selectedPO
+                        ? (() => {
+                            const wo = filteredWorkOrders.find(w => w.id === selectedPO);
+                            return wo ? `${wo.po_number} - ${wo.style} (${wo.buyer})` : t('common.selectPO');
+                          })()
+                        : !selectedLine ? t('common.selectLineFirst') : filteredWorkOrders.length === 0 ? t('common.noPOsForLine') : t('common.selectPO')}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[350px] p-0" align="start">
+                  <Command shouldFilter={true}>
+                    <CommandInput placeholder="Search PO, buyer, style..." />
+                    <CommandList>
+                      <CommandEmpty>No PO found.</CommandEmpty>
+                      <CommandGroup>
+                        {filteredWorkOrders.map((wo) => (
+                          <CommandItem
+                            key={wo.id}
+                            value={`${wo.po_number} ${wo.buyer} ${wo.style} ${wo.item || ''}`}
+                            onSelect={() => {
+                              setSelectedPO(wo.id);
+                              setPoSearchOpen(false);
+                            }}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-medium">{wo.po_number} - {wo.style}</span>
+                              <span className="text-xs text-muted-foreground">{wo.buyer}{wo.item ? ` / ${wo.item}` : ''}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {errors.po && <p className="text-xs text-destructive">{errors.po}</p>}
             </div>
           </CardContent>
@@ -707,10 +815,7 @@ export default function SewingUpdate() {
                 onChange={(e) => {
                   const files = Array.from(e.target.files || []);
                   if (photos.length + files.length > 2) {
-                    toast({
-                      variant: "destructive",
-                      title: "Maximum 2 photos allowed",
-                    });
+                    toast.error("Maximum 2 photos allowed");
                     return;
                   }
                   const newPhotos = [...photos, ...files].slice(0, 2);

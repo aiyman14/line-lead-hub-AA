@@ -53,9 +53,9 @@ serve(async (req) => {
         adminClient,
         identifier,
         action,
-        action === "login" ? 5 : 3, // Fewer attempts for sensitive actions
-        action === "login" ? 15 : 30, // Longer window for sensitive actions
-        action === "login" ? 15 : 60 // Longer block for sensitive actions
+        action === "login" ? 10 : 5, // 10 login attempts, 5 for other actions
+        action === "login" ? 10 : 30, // 10 minute window for login
+        action === "login" ? 5 : 30 // 5 minute block for login, 30 for others
       );
 
       if (!result.allowed) {

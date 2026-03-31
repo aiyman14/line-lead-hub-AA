@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,12 +39,12 @@ interface ExtrasLedgerModalProps {
 }
 
 const TRANSACTION_TYPES: { value: ExtrasTransactionType; label: string; icon: typeof ShoppingCart; description: string }[] = [
-  { value: 'transferred_to_stock', label: 'Transferred to Stock', icon: Package, description: 'Moved to inventory/stock' },
-  { value: 'sold', label: 'Sold', icon: ShoppingCart, description: 'Sold to buyer or customer' },
-  { value: 'replacement_shipment', label: 'Replacement Shipment', icon: Truck, description: 'Sent as replacement for defects' },
-  { value: 'scrapped', label: 'Scrapped', icon: Trash2, description: 'Defective or unusable' },
-  { value: 'donated', label: 'Donated', icon: Gift, description: 'Given away' },
-  { value: 'adjustment', label: 'Adjustment (Admin)', icon: Settings, description: 'Admin correction' },
+  { value: 'transferred_to_stock', label: 'transferredToStock', icon: Package, description: 'transferDesc' },
+  { value: 'sold', label: 'sold', icon: ShoppingCart, description: 'soldDesc' },
+  { value: 'replacement_shipment', label: 'replacementShipment', icon: Truck, description: 'replacementDesc' },
+  { value: 'scrapped', label: 'scrapped', icon: Trash2, description: 'scrappedDesc' },
+  { value: 'donated', label: 'donated', icon: Gift, description: 'donatedDesc' },
+  { value: 'adjustment', label: 'adjustmentAdmin', icon: Settings, description: 'adjustmentDesc' },
 ];
 
 export function ExtrasLedgerModal({
@@ -54,12 +55,13 @@ export function ExtrasLedgerModal({
   extrasAvailable,
   onLedgerChange,
 }: ExtrasLedgerModalProps) {
+  const { t } = useTranslation();
   const { profile, user, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [showForm, setShowForm] = useState(false);
-  
+
   // Form state
   const [transactionType, setTransactionType] = useState<ExtrasTransactionType>('sold');
   const [quantity, setQuantity] = useState('');
@@ -87,7 +89,7 @@ export function ExtrasLedgerModal({
       setEntries(data || []);
     } catch (error) {
       console.error('Error fetching ledger:', error);
-      toast.error('Failed to load ledger entries');
+      toast.error(t('modals.failedToLoadLedger'));
     } finally {
       setLoading(false);
     }
@@ -99,24 +101,24 @@ export function ExtrasLedgerModal({
 
     const qty = parseInt(quantity);
     if (isNaN(qty) || qty <= 0) {
-      toast.error('Please enter a valid quantity');
+      toast.error(t('modals.enterValidQuantity'));
       return;
     }
 
     // Validation: cannot consume more than available (except admin adjustment)
     const isAdjustment = transactionType === 'adjustment';
     if (!isAdjustment && qty > extrasAvailable) {
-      toast.error(`Cannot consume more than available extras (${extrasAvailable})`);
+      toast.error(t('modals.cannotConsumeMore', { available: extrasAvailable }));
       return;
     }
 
     if (isAdjustment && !isAdmin) {
-      toast.error('Only admins can make adjustments');
+      toast.error(t('modals.onlyAdminsAdjust'));
       return;
     }
 
     if (isAdjustment && !notes.trim()) {
-      toast.error('Reason is required for adjustments');
+      toast.error(t('modals.reasonRequired'));
       return;
     }
 
@@ -137,24 +139,25 @@ export function ExtrasLedgerModal({
 
       if (error) throw error;
 
-      toast.success('Ledger entry added');
+      toast.success(t('modals.ledgerEntryAdded'));
       setShowForm(false);
       setQuantity('');
       setNotes('');
       setReferenceNumber('');
       setTransactionType('sold');
-      fetchEntries();
       onLedgerChange?.();
+      // Close modal to force refresh with updated data
+      onOpenChange(false);
     } catch (error) {
       console.error('Error adding entry:', error);
-      toast.error('Failed to add entry');
+      toast.error(t('modals.failedToAddEntry'));
     } finally {
       setSubmitting(false);
     }
   }
 
   const getTypeInfo = (type: ExtrasTransactionType) => {
-    return TRANSACTION_TYPES.find(t => t.value === type) || TRANSACTION_TYPES[0];
+    return TRANSACTION_TYPES.find(tt => tt.value === type) || TRANSACTION_TYPES[0];
   };
 
   const totalStocked = entries
@@ -171,7 +174,7 @@ export function ExtrasLedgerModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Extras Ledger
+            {t('modals.extrasLedger')}
           </DialogTitle>
           <p className="text-sm text-muted-foreground font-mono">{poNumber}</p>
         </DialogHeader>
@@ -179,15 +182,15 @@ export function ExtrasLedgerModal({
         {/* Summary */}
         <div className="grid grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
           <div>
-            <p className="text-xs text-muted-foreground">Available</p>
+            <p className="text-xs text-muted-foreground">{t('modals.available')}</p>
             <p className="text-xl font-bold font-mono text-warning">{extrasAvailable.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Stocked</p>
+            <p className="text-xs text-muted-foreground">{t('modals.stocked')}</p>
             <p className="text-xl font-bold font-mono text-primary">{totalStocked.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Consumed</p>
+            <p className="text-xs text-muted-foreground">{t('modals.consumed')}</p>
             <p className="text-xl font-bold font-mono">{totalConsumed.toLocaleString()}</p>
           </div>
         </div>
@@ -198,19 +201,19 @@ export function ExtrasLedgerModal({
         {showForm ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label>Transaction Type</Label>
+              <Label>{t('modals.transactionType')}</Label>
               <Select value={transactionType} onValueChange={(v) => setTransactionType(v as ExtrasTransactionType)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TRANSACTION_TYPES.filter(t => t.value !== 'adjustment' || isAdmin).map((type) => {
+                  {TRANSACTION_TYPES.filter(tt => tt.value !== 'adjustment' || isAdmin).map((type) => {
                     const Icon = type.icon;
                     return (
                       <SelectItem key={type.value} value={type.value}>
                         <div className="flex items-center gap-2">
                           <Icon className="h-4 w-4" />
-                          {type.label}
+                          {t('modals.' + type.label)}
                         </div>
                       </SelectItem>
                     );
@@ -218,67 +221,70 @@ export function ExtrasLedgerModal({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {getTypeInfo(transactionType).description}
+                {t('modals.' + getTypeInfo(transactionType).description)}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label>Quantity *</Label>
+              <Label>{t('modals.quantity') + ' *'}</Label>
               <Input
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                placeholder="Enter quantity"
+                placeholder={t('modals.enterQuantity')}
                 min={1}
                 max={transactionType === 'adjustment' ? undefined : extrasAvailable}
               />
               {transactionType !== 'adjustment' && extrasAvailable > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Max: {extrasAvailable.toLocaleString()}
+                  {t('modals.maxQuantity', { max: extrasAvailable.toLocaleString() })}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label>Reference Number</Label>
+              <Label>{t('modals.referenceNumber')}</Label>
               <Input
                 value={referenceNumber}
                 onChange={(e) => setReferenceNumber(e.target.value)}
-                placeholder="Invoice #, shipment ID, etc."
+                placeholder={t('modals.referencePlaceholder')}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>{transactionType === 'adjustment' ? 'Reason *' : 'Notes'}</Label>
+              <Label>{transactionType === 'adjustment' ? t('modals.reason') + ' *' : t('modals.notes')}</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={transactionType === 'adjustment' ? 'Reason for adjustment (required)' : 'Optional notes'}
+                placeholder={transactionType === 'adjustment' ? t('modals.reasonForAdjustment') : t('modals.optionalNotes')}
                 rows={2}
               />
             </div>
 
             <div className="flex gap-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setShowForm(false)}>
-                Cancel
+                {t('modals.cancel')}
               </Button>
               <Button type="submit" className="flex-1" disabled={submitting}>
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Add Entry
+                {submitting ? (
+                  <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {t('modals.submitting')}</>
+                ) : (
+                  t('modals.addEntry')
+                )}
               </Button>
             </div>
           </form>
         ) : (
           <Button onClick={() => setShowForm(true)} disabled={extrasAvailable <= 0 && !isAdmin}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Entry
+            {t('modals.addEntry')}
           </Button>
         )}
 
         {extrasAvailable <= 0 && !showForm && !isAdmin && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
             <AlertCircle className="h-4 w-4" />
-            No extras available to consume
+            {t('modals.noExtrasAvailable')}
           </div>
         )}
 
@@ -286,13 +292,13 @@ export function ExtrasLedgerModal({
 
         {/* Ledger entries list */}
         <div className="flex-1 overflow-hidden">
-          <h4 className="text-sm font-medium mb-2">Transaction History</h4>
+          <h4 className="text-sm font-medium mb-2">{t('modals.transactionHistory')}</h4>
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : entries.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No entries yet</p>
+            <p className="text-center text-muted-foreground py-8">{t('modals.noEntriesYet')}</p>
           ) : (
             <ScrollArea className="h-[200px]">
               <div className="space-y-2 pr-4">
@@ -304,15 +310,15 @@ export function ExtrasLedgerModal({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Icon className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">{typeInfo.label}</span>
+                          <span className="font-medium">{t('modals.' + typeInfo.label)}</span>
                           {entry.is_admin_adjustment && (
-                            <Badge variant="outline" className="text-xs">Admin</Badge>
+                            <Badge variant="outline" className="text-xs">{t('modals.adminBadge')}</Badge>
                           )}
                         </div>
                         <span className="font-mono font-bold">-{entry.quantity.toLocaleString()}</span>
                       </div>
                       {entry.reference_number && (
-                        <p className="text-xs text-muted-foreground">Ref: {entry.reference_number}</p>
+                        <p className="text-xs text-muted-foreground">{t('modals.refLabel')}: {entry.reference_number}</p>
                       )}
                       {entry.notes && (
                         <p className="text-sm text-muted-foreground">{entry.notes}</p>

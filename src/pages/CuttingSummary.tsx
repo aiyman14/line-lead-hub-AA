@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays } from "date-fns";
+import { getTodayInTimezone } from "@/lib/date-utils";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Download, RefreshCw, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,7 +37,7 @@ import {
 interface CuttingSubmission {
   id: string;
   production_date: string;
-  submitted_at: string;
+  submitted_at: string | null;
   line_id: string;
   work_order_id: string;
   buyer: string | null;
@@ -53,6 +55,8 @@ interface CuttingSubmission {
   day_input: number;
   total_input: number | null;
   balance: number | null;
+  ot_hours_actual: number | null;
+  ot_manpower_actual: number | null;
   lines?: { line_id: string; name: string | null };
   work_orders?: { po_number: string; buyer: string; style: string };
 }
@@ -65,7 +69,8 @@ interface Line {
 
 export default function CuttingSummary() {
   const navigate = useNavigate();
-  const { profile, isAdminOrHigher } = useAuth();
+  const { profile, factory, isAdminOrHigher } = useAuth();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [submissions, setSubmissions] = useState<CuttingSubmission[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
@@ -140,6 +145,8 @@ export default function CuttingSummary() {
           day_input: actual.day_input,
           total_input: actual.total_input,
           balance: actual.balance,
+          ot_hours_actual: actual.ot_hours_actual,
+          ot_manpower_actual: actual.ot_manpower_actual,
           lines: actual.lines,
           work_orders: actual.work_orders,
         };
@@ -149,7 +156,7 @@ export default function CuttingSummary() {
       setLines(linesRes.data || []);
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast.error("Failed to load data");
+      toast.error(t('cutting.failedToLoadSubmission'));
     } finally {
       setLoading(false);
     }
@@ -177,7 +184,7 @@ export default function CuttingSummary() {
   }, [submissions, selectedLine, selectedPO]);
 
   const stats = useMemo(() => {
-    const today = format(new Date(), "yyyy-MM-dd");
+    const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
     const todaySubmissions = submissions.filter(s => s.production_date === today);
     return {
       submissionsToday: todaySubmissions.length,
@@ -216,20 +223,16 @@ export default function CuttingSummary() {
     downloadCSV(csv, `cutting-summary-${dateFrom}-to-${dateTo}.csv`);
   }
 
-  function downloadCSV(csv: string, filename: string) {
+  async function downloadCSV(csv: string, filename: string) {
+    const { downloadFile } = await import("@/lib/capacitor");
     const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadFile(blob, filename);
   }
 
   if (!isAdminOrHigher()) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-4">
-        <p className="text-muted-foreground">Access denied. Admin or higher role required.</p>
+        <p className="text-muted-foreground">{t('cutting.accessDenied')}</p>
       </div>
     );
   }
@@ -251,18 +254,18 @@ export default function CuttingSummary() {
             <Scissors className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Cutting Summary</h1>
-            <p className="text-sm text-muted-foreground">View all cutting reports</p>
+            <h1 className="text-xl font-bold">{t('cutting.cuttingSummary')}</h1>
+            <p className="text-sm text-muted-foreground">{t('cutting.viewAllCuttingReports')}</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => fetchData()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {t('cutting.refresh')}
           </Button>
           <Button variant="outline" size="sm" onClick={exportToCSV}>
             <Download className="h-4 w-4 mr-2" />
-            Export
+            {t('cutting.export')}
           </Button>
         </div>
       </div>
@@ -272,7 +275,7 @@ export default function CuttingSummary() {
         <CardContent className="pt-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <Label>From Date</Label>
+              <Label>{t('cutting.from')}</Label>
               <Input
                 type="date"
                 value={dateFrom}
@@ -280,7 +283,7 @@ export default function CuttingSummary() {
               />
             </div>
             <div className="space-y-2">
-              <Label>To Date</Label>
+              <Label>{t('cutting.to')}</Label>
               <Input
                 type="date"
                 value={dateTo}
@@ -288,13 +291,13 @@ export default function CuttingSummary() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Line</Label>
+              <Label>{t('cutting.line')}</Label>
               <Select value={selectedLine} onValueChange={setSelectedLine}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All Lines" />
+                  <SelectValue placeholder={t('cutting.allLines')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Lines</SelectItem>
+                  <SelectItem value="all">{t('cutting.allLines')}</SelectItem>
                   {lines.map(l => (
                     <SelectItem key={l.id} value={l.id}>{l.name || l.line_id}</SelectItem>
                   ))}
@@ -302,13 +305,13 @@ export default function CuttingSummary() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>PO Number</Label>
+              <Label>{t('cutting.po')}</Label>
               <Select value={selectedPO} onValueChange={setSelectedPO}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All POs" />
+                  <SelectValue placeholder={t('cutting.allPOs')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All POs</SelectItem>
+                  <SelectItem value="all">{t('cutting.allPOs')}</SelectItem>
                   {uniquePOs.map(po => (
                     <SelectItem key={po} value={po}>{po}</SelectItem>
                   ))}
@@ -321,28 +324,28 @@ export default function CuttingSummary() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-l-4 border-l-primary">
+        <Card className="bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 border-emerald-200/60 dark:border-emerald-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Submissions Today</p>
             <p className="text-2xl font-bold">{stats.submissionsToday}</p>
             <p className="text-xs text-muted-foreground">Today's entries</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-success">
+        <Card className="bg-gradient-to-br from-green-50 via-white to-green-50/50 border-green-200/60 dark:border-green-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Cutting Today</p>
             <p className="text-2xl font-bold">{stats.cuttingToday.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-info">
+        <Card className="bg-gradient-to-br from-teal-50 via-white to-teal-50/50 border-teal-200/60 dark:border-teal-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Input Today</p>
             <p className="text-2xl font-bold">{stats.inputToday.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">Total pieces</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-warning">
+        <Card className="bg-gradient-to-br from-amber-50 via-white to-amber-50/50 border-amber-200/60 dark:border-amber-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Under QTY Today</p>
             <p className="text-2xl font-bold">{stats.underQtyToday.toLocaleString()}</p>
@@ -500,6 +503,14 @@ export default function CuttingSummary() {
                     <p className={`font-medium ${selectedSubmission.balance && selectedSubmission.balance < 0 ? "text-destructive" : ""}`}>
                       {selectedSubmission.balance?.toLocaleString() || "—"}
                     </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">OT Hours Actual</p>
+                    <p className="font-medium">{selectedSubmission.ot_hours_actual ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">OT Manpower Actual</p>
+                    <p className="font-medium">{selectedSubmission.ot_manpower_actual ?? "—"}</p>
                   </div>
                 </div>
               </div>

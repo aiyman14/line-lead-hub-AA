@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFn, networkErrorMessage } from "@/lib/network-utils";
 import {
   Dialog,
   DialogContent,
@@ -21,10 +24,10 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, UserPlus, Mail, User, Shield, GitBranch, Briefcase, Key, Eye, EyeOff } from "lucide-react";
+import { Loader2, UserPlus, Mail, User, Shield, GitBranch, Key, Eye, EyeOff, Info, Building2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { ROLE_LABELS, type AppRole } from "@/lib/constants";
+import { ROLE_LABELS, DEPARTMENT_WIDE_ROLES, type AppRole } from "@/lib/constants";
 
 interface InviteUserDialogProps {
   open: boolean;
@@ -38,11 +41,24 @@ interface Line {
   name: string | null;
 }
 
-const ASSIGNABLE_ROLES: AppRole[] = ['worker', 'admin', 'storage', 'cutting'];
-const DEPARTMENTS = ['sewing', 'finishing', 'both'] as const;
-type Department = typeof DEPARTMENTS[number];
+interface WorkOrder {
+  id: string;
+  po_number: string;
+  style: string;
+  buyer: string;
+}
+
+const ASSIGNABLE_ROLES: AppRole[] = ['sewing', 'finishing', 'admin', 'storage', 'cutting', 'gate_officer', 'buyer'];
+
+const inviteUserSchema = z.object({
+  email: z.string().email("Invalid email address").max(255, "Email too long"),
+  fullName: z.string().min(1, "Full name is required").max(100, "Name too long"),
+  role: z.enum(["sewing", "finishing", "admin", "storage", "cutting", "gate_officer", "buyer"]),
+  temporaryPassword: z.string().min(6, "Password must be at least 6 characters").max(100, "Password too long").optional(),
+});
 
 export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDialogProps) {
+  const { t } = useTranslation();
   const { profile, hasRole } = useAuth();
   const [loading, setLoading] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
@@ -53,18 +69,26 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
   const [formData, setFormData] = useState({
     email: "",
     fullName: "",
-    role: "worker" as AppRole,
-    department: "both" as Department,
+    role: "sewing" as AppRole,
   });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [buyerCompanyName, setBuyerCompanyName] = useState("");
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [selectedWorkOrderIds, setSelectedWorkOrderIds] = useState<string[]>([]);
 
   // Admins can invite all roles including other admins
   const availableRoles = hasRole('admin') || hasRole('owner')
-    ? ASSIGNABLE_ROLES 
+    ? ASSIGNABLE_ROLES
     : ASSIGNABLE_ROLES.filter(r => r !== 'admin');
+
+  const isDeptWide = DEPARTMENT_WIDE_ROLES.includes(formData.role);
+  const isBuyerRole = formData.role === 'buyer';
+  const showLinePicker = formData.role === 'sewing';
 
   useEffect(() => {
     if (open && profile?.factory_id) {
       fetchLines();
+      fetchWorkOrders();
     }
   }, [open, profile?.factory_id]);
 
@@ -88,9 +112,30 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     }
   }
 
+  async function fetchWorkOrders() {
+    if (!profile?.factory_id) return;
+
+    const { data } = await supabase
+      .from('work_orders')
+      .select('id, po_number, style, buyer')
+      .eq('factory_id', profile.factory_id)
+      .eq('is_active', true)
+      .order('po_number');
+
+    if (data) setWorkOrders(data);
+  }
+
+  function toggleWorkOrder(woId: string) {
+    setSelectedWorkOrderIds(prev =>
+      prev.includes(woId)
+        ? prev.filter(id => id !== woId)
+        : [...prev, woId]
+    );
+  }
+
   function toggleLine(lineId: string) {
-    setSelectedLineIds(prev => 
-      prev.includes(lineId) 
+    setSelectedLineIds(prev =>
+      prev.includes(lineId)
         ? prev.filter(id => id !== lineId)
         : [...prev, lineId]
     );
@@ -100,36 +145,57 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     e.preventDefault();
     if (!profile?.factory_id) return;
 
-    // Validate password if using temporary password
-    if (useTemporaryPassword && temporaryPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    const dataToValidate = {
+      email: formData.email,
+      fullName: formData.fullName,
+      role: formData.role,
+      temporaryPassword: useTemporaryPassword ? temporaryPassword : undefined,
+    };
+
+    const result = inviteUserSchema.safeParse(dataToValidate);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) fieldErrors[err.path[0] as string] = err.message;
+      });
+      setFormErrors(fieldErrors);
       return;
     }
+    setFormErrors({});
 
     setLoading(true);
 
     try {
+      // Map standalone roles to department for the profile record
+      const department = formData.role === 'sewing' ? 'sewing'
+        : formData.role === 'finishing' ? 'finishing'
+        : null;
+
+      // Sewing is line-bound; finishing/storage/cutting get all lines; admin/buyer gets none
+      const lineIds = isBuyerRole
+        ? []
+        : formData.role === 'sewing'
+          ? selectedLineIds
+          : isDeptWide
+            ? lines.map(l => l.id)
+            : [];
+
       // Use edge function to create user (doesn't affect current session)
-      const { data, error } = await supabase.functions.invoke('admin-invite-user', {
-        body: {
-          email: formData.email,
-          fullName: formData.fullName,
-          factoryId: profile.factory_id,
-          role: formData.role,
-          department: formData.role === 'worker' ? formData.department : null,
-          // Storage and cutting roles get all lines automatically, workers get selected lines
-          lineIds: formData.role === 'worker' 
-            ? selectedLineIds 
-            : ['storage', 'cutting'].includes(formData.role) 
-              ? lines.map(l => l.id) 
-              : [],
-          temporaryPassword: useTemporaryPassword ? temporaryPassword : undefined,
-        },
+      const { data, error } = await invokeEdgeFn('admin-invite-user', {
+        email: formData.email,
+        fullName: formData.fullName,
+        factoryId: profile.factory_id,
+        role: formData.role,
+        department,
+        lineIds,
+        temporaryPassword: useTemporaryPassword ? temporaryPassword : undefined,
+        buyerCompanyName: isBuyerRole ? buyerCompanyName : undefined,
+        workOrderIds: isBuyerRole ? selectedWorkOrderIds : undefined,
       });
 
       if (error) {
         console.error("Invite error:", error);
-        toast.error(error.message || "Failed to invite user");
+        toast.error(networkErrorMessage(error));
         return;
       }
 
@@ -146,13 +212,11 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           .eq('id', profile.factory_id)
           .single();
 
-        await supabase.functions.invoke('send-welcome-email', {
-          body: {
-            email: formData.email,
-            fullName: formData.fullName,
-            resetLink: `${window.location.origin}/reset-password`,
-            factoryName: factoryData?.name,
-          },
+        await invokeEdgeFn('send-welcome-email', {
+          email: formData.email,
+          fullName: formData.fullName,
+          resetLink: `${window.location.origin}/reset-password`,
+          factoryName: factoryData?.name,
         });
       } catch (emailErr) {
         console.error("Welcome email error:", emailErr);
@@ -160,20 +224,22 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       }
 
       toast.success(
-        useTemporaryPassword 
-          ? `User ${formData.fullName} created with temporary password` 
-          : `User ${formData.fullName} invited successfully`
+        useTemporaryPassword
+          ? t('modals.userCreatedWithPassword', { name: formData.fullName })
+          : t('modals.userInvitedSuccess', { name: formData.fullName })
       );
       onSuccess();
       onOpenChange(false);
-      setFormData({ email: "", fullName: "", role: "worker", department: "both" });
+      setFormData({ email: "", fullName: "", role: "sewing" });
       setSelectedLineIds([]);
+      setSelectedWorkOrderIds([]);
+      setBuyerCompanyName("");
       setUseTemporaryPassword(false);
       setTemporaryPassword("");
       setShowPassword(false);
     } catch (error) {
       console.error("Error inviting user:", error);
-      toast.error("Failed to invite user");
+      toast.error(t('modals.failedToInviteUser'));
     } finally {
       setLoading(false);
     }
@@ -185,10 +251,10 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />
-            Invite New User
+            {t('modals.inviteNewUser')}
           </DialogTitle>
           <DialogDescription>
-            Add a new user to your factory. They will receive an email to set their password.
+            {t('modals.inviteDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -196,30 +262,32 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           <div className="space-y-2">
             <Label htmlFor="fullName" className="flex items-center gap-2">
               <User className="h-4 w-4 text-muted-foreground" />
-              Full Name
+              {t('modals.fullName')}
             </Label>
             <Input
               id="fullName"
               value={formData.fullName}
               onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-              placeholder="Enter full name"
+              placeholder={t('modals.enterFullName')}
               required
             />
+            {formErrors.fullName && <p className="text-sm text-destructive">{formErrors.fullName}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="email" className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-muted-foreground" />
-              Email Address
+              {t('modals.emailAddress')}
             </Label>
             <Input
               id="email"
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="user@example.com"
+              placeholder={t('modals.emailPlaceholder')}
               required
             />
+            {formErrors.email && <p className="text-sm text-destructive">{formErrors.email}</p>}
           </div>
 
           {/* Temporary Password Toggle */}
@@ -228,10 +296,10 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               <Key className="h-4 w-4 text-muted-foreground" />
               <div>
                 <Label htmlFor="usePassword" className="text-sm font-medium cursor-pointer">
-                  Set temporary password
+                  {t('modals.setTempPassword')}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  For in-person onboarding without email
+                  {t('modals.forOnboarding')}
                 </p>
               </div>
             </div>
@@ -247,7 +315,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             <div className="space-y-2">
               <Label htmlFor="temporaryPassword" className="flex items-center gap-2">
                 <Key className="h-4 w-4 text-muted-foreground" />
-                Temporary Password
+                {t('modals.tempPassword')}
               </Label>
               <div className="relative">
                 <Input
@@ -255,7 +323,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                   type={showPassword ? "text" : "password"}
                   value={temporaryPassword}
                   onChange={(e) => setTemporaryPassword(e.target.value)}
-                  placeholder="Enter a temporary password"
+                  placeholder={t('modals.enterTempPassword')}
                   minLength={6}
                   required={useTemporaryPassword}
                   className="pr-10"
@@ -275,22 +343,23 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Share this password with the user. They should change it after first login.
+                {t('modals.shareTempPassword')}
               </p>
+              {formErrors.temporaryPassword && <p className="text-sm text-destructive">{formErrors.temporaryPassword}</p>}
             </div>
           )}
 
           <div className="space-y-2">
             <Label htmlFor="role" className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-muted-foreground" />
-              Role
+              {t('modals.role')}
             </Label>
             <Select
               value={formData.role}
               onValueChange={(value: AppRole) => setFormData({ ...formData, role: value })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select role" />
+                <SelectValue placeholder={t('modals.selectRole')} />
               </SelectTrigger>
               <SelectContent>
                 {availableRoles.map((role) => (
@@ -302,48 +371,81 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             </Select>
           </div>
 
-          {/* Department selector - only for workers */}
-          {formData.role === 'worker' && (
-            <div className="space-y-2">
-              <Label htmlFor="department" className="flex items-center gap-2">
-                <Briefcase className="h-4 w-4 text-muted-foreground" />
-                Department
-              </Label>
-              <Select
-                value={formData.department}
-                onValueChange={(value: Department) => setFormData({ ...formData, department: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sewing">Sewing Only</SelectItem>
-                  <SelectItem value="finishing">Finishing Only</SelectItem>
-                  <SelectItem value="both">Both Sewing & Finishing</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                This determines which update form the worker can access.
-              </p>
-            </div>
+          {/* Buyer-specific fields */}
+          {isBuyerRole && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="buyerCompany" className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  Company Name
+                </Label>
+                <Input
+                  id="buyerCompany"
+                  value={buyerCompanyName}
+                  onChange={(e) => setBuyerCompanyName(e.target.value)}
+                  placeholder="e.g. Acme Apparel Inc."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-muted-foreground" />
+                  Assign POs
+                  {selectedWorkOrderIds.length > 0 && (
+                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                      {selectedWorkOrderIds.length} selected
+                    </span>
+                  )}
+                </Label>
+                <ScrollArea className="h-40 border rounded-md p-2">
+                  {workOrders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No active work orders found
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {workOrders.map((wo) => (
+                        <div key={wo.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`wo-${wo.id}`}
+                            checked={selectedWorkOrderIds.includes(wo.id)}
+                            onCheckedChange={() => toggleWorkOrder(wo.id)}
+                          />
+                          <label
+                            htmlFor={`wo-${wo.id}`}
+                            className="text-sm cursor-pointer flex-1"
+                          >
+                            <span className="font-medium">{wo.po_number}</span>
+                            <span className="text-muted-foreground"> — {wo.style}</span>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+                <p className="text-xs text-muted-foreground">
+                  Select which POs this buyer can view. You can add more later.
+                </p>
+              </div>
+            </>
           )}
 
-          {/* Line assignments - only for workers (storage and cutting get all lines automatically) */}
-          {formData.role === 'worker' && (
+          {/* Line assignments - only for sewing (line-bound) */}
+          {showLinePicker && (
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <GitBranch className="h-4 w-4 text-muted-foreground" />
-                Assigned Lines
+                {t('modals.assignedLines')}
                 {selectedLineIds.length > 0 && (
                   <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                    {selectedLineIds.length} selected
+                    {selectedLineIds.length} {t('modals.selected')}
                   </span>
                 )}
               </Label>
               <ScrollArea className="h-32 border rounded-md p-2">
                 {lines.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    No lines available
+                    {t('modals.noLinesAvailable')}
                   </p>
                 ) : (
                   <div className="space-y-2">
@@ -366,18 +468,29 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                 )}
               </ScrollArea>
               <p className="text-xs text-muted-foreground">
-                Select which lines this worker can submit updates for.
+                {t('modals.selectWhichLines')}
               </p>
+            </div>
+          )}
+
+          {/* Info note for department-wide roles (not shown for buyer) */}
+          {isDeptWide && !isBuyerRole && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 border text-sm text-muted-foreground">
+              <Info className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{t('modals.roleAllAccess')}</span>
             </div>
           )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t('modals.cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Invite User
+              {loading ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('modals.inviting')}</>
+              ) : (
+                t('modals.inviteUser')
+              )}
             </Button>
           </DialogFooter>
         </form>

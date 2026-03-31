@@ -55,15 +55,23 @@ export function useNetworkStatus() {
       updateCounts();
     };
 
+    // Cross-tab sync: update counts when another tab modifies the queue in localStorage
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'pp_offline_submission_queue') {
+        updateCounts();
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('offline-queue-updated', handleQueueUpdate);
+    window.addEventListener('storage', handleStorageChange);
 
     // Setup automatic sync on online
     const cleanup = setupOnlineSync((result) => {
       setLastSyncResult(result);
       updateCounts();
-      
+
       if (result.successful.length > 0) {
         toast.success(`Synced ${result.successful.length} submission(s)`);
       }
@@ -78,6 +86,7 @@ export function useNetworkStatus() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('offline-queue-updated', handleQueueUpdate);
+      window.removeEventListener('storage', handleStorageChange);
       cleanup();
     };
   }, [updateCounts]);

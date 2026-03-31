@@ -7,16 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, Loader2, Calendar, Clock, Send, Globe } from "lucide-react";
+import { Mail, Loader2, Calendar, Clock, Send, Globe, AlertCircle, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
 interface EmailSchedule {
   id?: string;
-  schedule_type: "daily" | "weekly";
+  schedule_type: "daily" | "weekly" | "monthly";
   is_active: boolean;
   send_time: string;
   day_of_week: number;
+  day_of_month?: number;
   last_sent_at: string | null;
 }
 
@@ -39,6 +40,14 @@ export function EmailScheduleSettings() {
     is_active: false,
     send_time: "18:00",
     day_of_week: 5,
+    last_sent_at: null,
+  });
+  const [monthlySchedule, setMonthlySchedule] = useState<EmailSchedule>({
+    schedule_type: "monthly",
+    is_active: false,
+    send_time: "18:00",
+    day_of_week: 0,
+    day_of_month: 1,
     last_sent_at: null,
   });
 
@@ -100,6 +109,16 @@ export function EmailScheduleSettings() {
             day_of_week: schedule.day_of_week ?? 5,
             last_sent_at: schedule.last_sent_at,
           });
+        } else if (schedule.schedule_type === "monthly") {
+          setMonthlySchedule({
+            id: schedule.id,
+            schedule_type: "monthly",
+            is_active: schedule.is_active ?? false,
+            send_time: schedule.send_time?.slice(0, 5) || "18:00",
+            day_of_week: schedule.day_of_week ?? 0,
+            day_of_month: 1, // Default since not in DB
+            last_sent_at: schedule.last_sent_at,
+          });
         }
       });
     } catch (error) {
@@ -122,6 +141,7 @@ export function EmailScheduleSettings() {
         is_active: schedule.is_active,
         send_time: schedule.send_time + ":00",
         day_of_week: schedule.day_of_week,
+        day_of_month: schedule.day_of_month || null,
       };
 
       if (schedule.id) {
@@ -140,12 +160,15 @@ export function EmailScheduleSettings() {
         
         if (schedule.schedule_type === "daily") {
           setDailySchedule((prev) => ({ ...prev, id: data.id }));
-        } else {
+        } else if (schedule.schedule_type === "weekly") {
           setWeeklySchedule((prev) => ({ ...prev, id: data.id }));
+        } else {
+          setMonthlySchedule((prev) => ({ ...prev, id: data.id }));
         }
       }
 
-      toast.success(`${schedule.schedule_type === "daily" ? "Daily" : "Weekly"} schedule saved`);
+      const scheduleTypeLabel = schedule.schedule_type === "daily" ? "Daily" : schedule.schedule_type === "weekly" ? "Weekly" : "Monthly";
+      toast.success(`${scheduleTypeLabel} schedule saved`);
     } catch (error) {
       console.error("Error saving schedule:", error);
       toast.error("Failed to save schedule");
@@ -154,7 +177,7 @@ export function EmailScheduleSettings() {
     }
   }
 
-  async function sendTestEmail(scheduleType: "daily" | "weekly") {
+  async function sendTestEmail(scheduleType: "daily" | "weekly" | "monthly") {
     if (!profile?.factory_id) return;
     setSending(true);
 
@@ -173,7 +196,7 @@ export function EmailScheduleSettings() {
       toast.success("Test email sent! Check your inbox.");
     } catch (error: any) {
       console.error("Error sending test email:", error);
-      toast.error(error.message || "Failed to send test email");
+      toast.error(error?.message || "Failed to send test email");
     } finally {
       setSending(false);
     }
@@ -211,6 +234,26 @@ export function EmailScheduleSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Setup Instructions Notice */}
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-warning/10 border border-warning/20">
+          <AlertCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-warning">Setup Required for Automated Emails</p>
+            <p className="text-sm text-muted-foreground">
+              Email scheduling requires an external cron service to trigger scheduled emails.
+              The "Test" button works immediately, but automated schedules need additional setup.
+            </p>
+            <a
+              href="https://github.com/anthropics/claude-code/blob/main/docs/EMAIL_SCHEDULING_SETUP.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+            >
+              View Setup Guide <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+
         {/* Timezone Notice */}
         <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
           <Globe className="h-4 w-4 text-muted-foreground" />
@@ -368,9 +411,93 @@ export function EmailScheduleSettings() {
           )}
         </div>
 
+        {/* Monthly Report */}
+        <div className="p-4 rounded-lg border space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">Monthly Report</span>
+              <Badge variant="secondary" className="text-xs">CSV Export</Badge>
+            </div>
+            <Switch
+              checked={monthlySchedule.is_active}
+              onCheckedChange={(checked) => {
+                const updated = { ...monthlySchedule, is_active: checked };
+                setMonthlySchedule(updated);
+                saveSchedule(updated);
+              }}
+            />
+          </div>
+
+          {monthlySchedule.is_active && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Includes 30-day insights report and CSV export of all submissions
+              </p>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="monthly-day" className="text-sm">Day of month:</Label>
+                  <Select
+                    value={monthlySchedule.day_of_month?.toString() || "1"}
+                    onValueChange={(v) => setMonthlySchedule({ ...monthlySchedule, day_of_month: parseInt(v) })}
+                  >
+                    <SelectTrigger id="monthly-day" className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                        <SelectItem key={day} value={day.toString()}>
+                          {day}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor="monthly-time" className="text-sm">at:</Label>
+                  <Input
+                    id="monthly-time"
+                    type="time"
+                    value={monthlySchedule.send_time}
+                    onChange={(e) => setMonthlySchedule({ ...monthlySchedule, send_time: e.target.value })}
+                    className="w-28"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => saveSchedule(monthlySchedule)}
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => sendTestEmail("monthly")}
+                  disabled={sending}
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                  Test
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {monthlySchedule.last_sent_at && (
+            <p className="text-xs text-muted-foreground">
+              Last sent: {new Date(monthlySchedule.last_sent_at).toLocaleString()}
+            </p>
+          )}
+        </div>
+
         <div className="text-xs text-muted-foreground space-y-1">
           <p>
             <strong>How it works:</strong> Emails are automatically sent at the scheduled times based on your factory timezone ({factoryTimezone}).
+          </p>
+          <p>
+            Monthly reports include a CSV file with all submissions from the last 30 days and comprehensive insights.
           </p>
           <p>
             You can change your factory timezone in <a href="/setup/factory" className="text-primary underline">Factory Settings</a>.

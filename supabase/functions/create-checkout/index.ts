@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeaders } from "../_shared/security.ts";
 
 // Plan tier configuration - matches frontend plan-tiers.ts (LIVE)
 const PLAN_TIERS = {
@@ -35,6 +31,9 @@ const logStep = (step: string, details?: any) => {
 };
 
 serve(async (req) => {
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -53,9 +52,15 @@ serve(async (req) => {
   try {
     logStep("Function started");
     
-    const authHeader = req.headers.get("Authorization")!;
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      throw new Error("No authorization header provided");
+    }
     const token = authHeader.replace("Bearer ", "");
-    const { data } = await supabaseClient.auth.getUser(token);
+    const { data, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError) {
+      throw new Error(`Authentication error: ${authError.message}`);
+    }
     const user = data.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
@@ -73,6 +78,10 @@ serve(async (req) => {
 
     const factoryId = profile?.factory_id;
     logStep("Profile checked", { factoryId: factoryId || 'none' });
+
+    if (!factoryId) {
+      logStep("No factory ID - will link via user_id after checkout completes");
+    }
 
     const body = await req.json().catch(() => ({}));
     const { tier = 'starter', startTrial = false, interval = 'month' } = body;
@@ -105,7 +114,7 @@ serve(async (req) => {
       logStep("Existing customer found", { customerId });
     }
 
-    const origin = req.headers.get("origin") || "https://production-portal.lovable.app";
+    const origin = req.headers.get("origin") || "https://productionportal.cloud";
     
     // If starting trial, create checkout with trial period
     if (startTrial) {

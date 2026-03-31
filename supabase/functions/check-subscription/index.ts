@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeaders } from "../_shared/security.ts";
 
 // Product ID to tier mapping - must match frontend plan-tiers.ts (LIVE)
 const PRODUCT_TO_TIER: Record<string, string> = {
@@ -28,12 +24,43 @@ const TIER_MAX_LINES: Record<string, number> = {
   'enterprise': 999999, // Unlimited
 };
 
+const TIER_PRIORITY: Record<string, number> = {
+  'starter': 1,
+  'growth': 2,
+  'scale': 3,
+  'enterprise': 4,
+};
+
+const getHigherTier = (defaultTier: string, existingTier: string | null | undefined): string => {
+  if (!existingTier) return defaultTier;
+  const defaultPriority = TIER_PRIORITY[defaultTier] ?? 0;
+  const existingPriority = TIER_PRIORITY[existingTier] ?? 0;
+  return existingPriority > defaultPriority ? existingTier : defaultTier;
+};
+
+// Emails granted free access without Stripe subscription.
+// Map email → tier. These users skip all Stripe checks.
+const GRANTED_FREE_ACCESS: Record<string, string> = {
+  'karimsabbagh21@gmail.com': 'starter',
+  'karimsabbagh@woventex.co': 'growth',
+};
+
+// Stripe may return timestamps as Unix seconds (number) or ISO strings depending on API version.
+const parseStripeTimestamp = (value: unknown): Date => {
+  if (typeof value === 'number') return new Date(value * 1000);
+  if (typeof value === 'string') return new Date(value);
+  return new Date(NaN); // fallback — caller should handle
+};
+
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[CHECK-SUBSCRIPTION] ${step}${detailsStr}`);
 };
 
 serve(async (req) => {
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -52,14 +79,90 @@ serve(async (req) => {
     logStep("Stripe key verified");
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header provided");
+    if (!authHeader || authHeader.trim() === "Bearer") {
+      logStep("No valid authorization header");
+      return new Response(JSON.stringify({
+        error: "No authorization header",
+        authError: true,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
 
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
+    if (userError || !userData.user?.email) {
+      logStep("Auth failed, returning unauthenticated response", { error: userError?.message });
+      return new Response(JSON.stringify({
+        error: "Auth session missing or expired",
+        authError: true,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
     const user = userData.user;
-    if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
+
+    // Check if user has been granted free access
+    const grantedTier = GRANTED_FREE_ACCESS[user.email!.toLowerCase()];
+    if (grantedTier) {
+      logStep("Granted free access", { email: user.email, tier: grantedTier });
+
+      // Look up their factory (if any) to include factory name and sync DB
+      const { data: grantedProfile } = await supabaseClient
+        .from('profiles')
+        .select('factory_id')
+        .eq('id', user.id)
+        .single();
+
+      if (grantedProfile?.factory_id) {
+        const { data: existingFactory } = await supabaseClient
+          .from('factory_accounts')
+          .select('name, subscription_tier')
+          .eq('id', grantedProfile.factory_id)
+          .maybeSingle();
+
+        const effectiveTier = getHigherTier(grantedTier, existingFactory?.subscription_tier);
+
+        // Sync the factory record so DB-based checks also work.
+        // Never downgrade an existing tier for free-access users.
+        await supabaseClient
+          .from('factory_accounts')
+          .update({
+            subscription_status: 'active',
+            subscription_tier: effectiveTier,
+            max_lines: TIER_MAX_LINES[effectiveTier] || 30,
+          })
+          .eq('id', grantedProfile.factory_id);
+
+        return new Response(JSON.stringify({
+          subscribed: true,
+          hasAccess: true,
+          isTrial: false,
+          currentTier: effectiveTier,
+          maxLines: TIER_MAX_LINES[effectiveTier] || 30,
+          factoryName: existingFactory?.name,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      // No factory yet — still grant access so they can create one
+      return new Response(JSON.stringify({
+        subscribed: true,
+        hasAccess: true,
+        isTrial: false,
+        needsFactory: true,
+        currentTier: grantedTier,
+        maxLines: TIER_MAX_LINES[grantedTier] || 30,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
 
     // Get user's factory
     const { data: profile } = await supabaseClient
@@ -88,8 +191,9 @@ serve(async (req) => {
         
         if (activeSub) {
           const isTrial = activeSub.status === 'trialing';
-          const daysRemaining = isTrial && activeSub.trial_end
-            ? Math.ceil((activeSub.trial_end * 1000 - Date.now()) / (1000 * 60 * 60 * 24))
+          const trialEndDate = activeSub.trial_end ? parseStripeTimestamp(activeSub.trial_end) : null;
+          const daysRemaining = isTrial && trialEndDate && !isNaN(trialEndDate.getTime())
+            ? Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
             : null;
           
           // Get tier from subscription
@@ -139,7 +243,7 @@ serve(async (req) => {
     // Get factory subscription status
     const { data: factory } = await supabaseClient
       .from('factory_accounts')
-      .select('subscription_status, trial_end_date, stripe_customer_id, stripe_subscription_id, subscription_tier, max_lines, name')
+      .select('subscription_status, trial_end_date, stripe_customer_id, stripe_subscription_id, subscription_tier, max_lines, name, payment_failed_at')
       .eq('id', profile.factory_id)
       .single();
 
@@ -199,13 +303,16 @@ serve(async (req) => {
           subscription_tier: tier,
           max_lines: maxLines,
           subscription_status: subscription.status,
+          payment_failed_at: null,
         })
         .eq('id', profile.factory_id);
 
       const isTrial = subscription.status === 'trialing';
-      const subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
-      const daysRemaining = isTrial && subscription.trial_end
-        ? Math.ceil((subscription.trial_end * 1000 - Date.now()) / (1000 * 60 * 60 * 24))
+      const periodEnd = parseStripeTimestamp(subscription.current_period_end);
+      const subscriptionEnd = !isNaN(periodEnd.getTime()) ? periodEnd.toISOString() : null;
+      const trialEnd = subscription.trial_end ? parseStripeTimestamp(subscription.trial_end) : null;
+      const daysRemaining = isTrial && trialEnd && !isNaN(trialEnd.getTime())
+        ? Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
         : null;
 
       return new Response(JSON.stringify({
@@ -234,55 +341,125 @@ serve(async (req) => {
       
       logStep("Found Stripe customers by email", { count: customers.data.length, ids: customers.data.map((c: Stripe.Customer) => c.id) });
       
-      // Check all customers for an active subscription
+      // Check all customers for an active or past_due subscription
+      let pastDueSub: Stripe.Subscription | null = null;
       for (const customer of customers.data) {
         const subs = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 10 });
         const activeSub = subs.data.find((s: Stripe.Subscription) => s.status === 'active' || s.status === 'trialing');
-        
+
         if (activeSub) {
-          logStep("Active subscription found", { 
-            customerId: customer.id, 
-            subscriptionId: activeSub.id, 
-            status: activeSub.status 
+          logStep("Active subscription found", {
+            customerId: customer.id,
+            subscriptionId: activeSub.id,
+            status: activeSub.status
           });
           return activeSub;
         }
+
+        // Track past_due as fallback (recoverable subscription)
+        if (!pastDueSub) {
+          const pdSub = subs.data.find((s: Stripe.Subscription) => s.status === 'past_due');
+          if (pdSub) pastDueSub = pdSub;
+        }
       }
-      
-      logStep("No active subscriptions found across all customers");
+
+      // Return past_due subscription if no active one found
+      if (pastDueSub) {
+        logStep("Past due subscription found (no active)", {
+          subscriptionId: pastDueSub.id,
+          status: pastDueSub.status,
+        });
+        return pastDueSub;
+      }
+
+      logStep("No active or past_due subscriptions found across all customers");
       return null;
+    };
+
+    const GRACE_PERIOD_DAYS = 7;
+    const now = new Date();
+
+    const respondWithPastDueSubscription = (paymentFailedAt: string | null) => {
+      const failedAt = paymentFailedAt ? new Date(paymentFailedAt) : null;
+      const withinGrace = failedAt &&
+        (now.getTime() - failedAt.getTime()) < GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+
+      logStep("Past due subscription", { paymentFailedAt, withinGrace });
+
+      return new Response(JSON.stringify({
+        subscribed: false,
+        hasAccess: !!withinGrace,
+        isPastDue: true,
+        needsPayment: !withinGrace,
+        paymentFailedAt,
+        gracePeriodDays: GRACE_PERIOD_DAYS,
+        currentTier: factory.subscription_tier || 'starter',
+        maxLines: factory.max_lines || 30,
+        factoryName: factory.name,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     };
 
     // IMPORTANT: Always check for active subscription by email first
     // This catches cases where customer ID in DB doesn't match the one with active subscription
+    let stripeCheckedSuccessfully = false;
     try {
-      const activeSubByEmail = await tryFindSubscriptionByCustomerEmail();
-      if (activeSubByEmail) {
-        const currentCustomerId = typeof activeSubByEmail.customer === 'string' 
-          ? activeSubByEmail.customer 
-          : activeSubByEmail.customer.id;
-        
+      const subByEmail = await tryFindSubscriptionByCustomerEmail();
+      stripeCheckedSuccessfully = true; // Stripe API responded (even if no sub found)
+      if (subByEmail) {
+        const currentCustomerId = typeof subByEmail.customer === 'string'
+          ? subByEmail.customer
+          : subByEmail.customer.id;
+
         // Check if we need to sync the Stripe IDs
-        if (factory.stripe_customer_id !== currentCustomerId || 
-            factory.stripe_subscription_id !== activeSubByEmail.id) {
+        if (factory.stripe_customer_id !== currentCustomerId ||
+            factory.stripe_subscription_id !== subByEmail.id) {
           logStep("Syncing mismatched Stripe IDs", {
             oldCustomerId: factory.stripe_customer_id,
             newCustomerId: currentCustomerId,
             oldSubId: factory.stripe_subscription_id,
-            newSubId: activeSubByEmail.id,
+            newSubId: subByEmail.id,
           });
         }
-        
-        return await respondWithActiveSubscription(activeSubByEmail);
+
+        if (subByEmail.status === 'past_due') {
+          // If the DB already says 'active', the webhook likely processed a successful
+          // payment but Stripe hasn't transitioned the subscription status yet.
+          // Trust the webhook — don't downgrade to past_due.
+          if (factory.subscription_status === 'active') {
+            logStep("Stripe says past_due but DB says active — trusting webhook, not downgrading");
+            return await respondWithActiveSubscription(subByEmail);
+          }
+
+          // Only set payment_failed_at if it's not already set.
+          // Never re-create it — the webhook clears it on successful payment.
+          const paymentFailedAt = factory.payment_failed_at || new Date().toISOString();
+          await supabaseClient
+            .from('factory_accounts')
+            .update({
+              stripe_customer_id: currentCustomerId,
+              stripe_subscription_id: subByEmail.id,
+              subscription_status: 'past_due',
+              payment_failed_at: paymentFailedAt,
+            })
+            .eq('id', profile.factory_id);
+          return respondWithPastDueSubscription(paymentFailedAt);
+        }
+
+        return await respondWithActiveSubscription(subByEmail);
       }
     } catch (err) {
       logStep("Error checking subscription by email", { error: String(err) });
+      // stripeCheckedSuccessfully stays false — don't make destructive DB changes
     }
 
     // Fall back to checking stored subscription ID if email lookup failed
     if (factory.stripe_subscription_id) {
       try {
         const subscription = await stripe.subscriptions.retrieve(factory.stripe_subscription_id);
+        stripeCheckedSuccessfully = true;
         logStep("Stripe subscription retrieved by stored ID", {
           id: subscription.id,
           status: subscription.status,
@@ -290,6 +467,26 @@ serve(async (req) => {
 
         if (subscription.status === 'active' || subscription.status === 'trialing') {
           return await respondWithActiveSubscription(subscription);
+        }
+
+        if (subscription.status === 'past_due') {
+          // If the DB already says 'active', the webhook likely processed a successful
+          // payment but Stripe hasn't transitioned the subscription status yet.
+          // Trust the webhook — don't downgrade to past_due.
+          if (factory.subscription_status === 'active') {
+            logStep("Stripe says past_due but DB says active — trusting webhook, not downgrading");
+            return await respondWithActiveSubscription(subscription);
+          }
+
+          const paymentFailedAt = factory.payment_failed_at || new Date().toISOString();
+          await supabaseClient
+            .from('factory_accounts')
+            .update({
+              subscription_status: 'past_due',
+              payment_failed_at: paymentFailedAt,
+            })
+            .eq('id', profile.factory_id);
+          return respondWithPastDueSubscription(paymentFailedAt);
         }
 
         // Subscription not active - update status
@@ -300,10 +497,9 @@ serve(async (req) => {
         logStep("Stored subscription not active", { status: subscription.status });
       } catch (err) {
         logStep("Error checking stored Stripe subscription", { error: String(err) });
+        // stripeCheckedSuccessfully stays unchanged — don't make destructive DB changes
       }
     }
-
-    const now = new Date();
 
     // Database-backed access (authoritative when webhook/checkout updates factory_accounts).
     // This also protects against missing Stripe permissions on restricted keys.
@@ -323,7 +519,11 @@ serve(async (req) => {
     }
 
     if (factory.subscription_status === 'trialing') {
-      logStep("Access granted from DB status", { status: factory.subscription_status });
+      const trialEnd = factory.trial_end_date ? new Date(factory.trial_end_date) : null;
+      const daysRemaining = trialEnd && trialEnd > now
+        ? Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      logStep("Access granted from DB status", { status: factory.subscription_status, daysRemaining });
       return new Response(JSON.stringify({
         subscribed: true,
         hasAccess: true,
@@ -331,6 +531,8 @@ serve(async (req) => {
         currentTier: factory.subscription_tier || 'starter',
         maxLines: factory.max_lines || 30,
         factoryName: factory.name,
+        ...(daysRemaining !== null && { daysRemaining }),
+        ...(factory.trial_end_date && { trialEndDate: factory.trial_end_date }),
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -358,12 +560,23 @@ serve(async (req) => {
         });
       }
 
-      // Trial expired
-      await supabaseClient
-        .from('factory_accounts')
-        .update({ subscription_status: 'expired' })
-        .eq('id', profile.factory_id);
-      logStep("Trial expired");
+      // Trial expired — only mark as 'expired' in DB if we successfully confirmed
+      // with Stripe that there's no active subscription. If Stripe checks failed
+      // (transient API error), the user may have a valid subscription we couldn't reach.
+      if (stripeCheckedSuccessfully) {
+        await supabaseClient
+          .from('factory_accounts')
+          .update({ subscription_status: 'expired' })
+          .eq('id', profile.factory_id);
+        logStep("Trial expired (confirmed via Stripe)");
+      } else {
+        logStep("Trial expired locally but Stripe check failed — not marking as expired in DB");
+      }
+    }
+
+    // Past due: grant grace period access
+    if (factory.subscription_status === 'past_due') {
+      return respondWithPastDueSubscription(factory.payment_failed_at);
     }
 
     // No active subscription or trial

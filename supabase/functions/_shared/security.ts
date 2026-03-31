@@ -1,7 +1,50 @@
 // Shared security utilities for edge functions
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
+// Allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  "https://productionportal.cloud",
+  "https://www.productionportal.cloud",
+  "https://woventex.co",
+  "https://www.woventex.co",
+  "capacitor://localhost",  // iOS Capacitor
+  "http://localhost",       // Android Capacitor
+  "tauri://localhost",      // Tauri desktop (macOS/Linux)
+  "https://tauri.localhost", // Tauri desktop (Windows)
+  "http://localhost:5173",  // Vite dev server
+  "http://localhost:8080",  // Vite dev server (alt port)
+  "http://localhost:8100",  // Ionic dev server
+];
+
+// Check if origin is allowed
+export function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
+// Get CORS headers with dynamic origin validation
+export function getCorsHeaders(origin: string | null): Record<string, string> {
+  if (isAllowedOrigin(origin)) {
+    return {
+      "Access-Control-Allow-Origin": origin!,
+      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    };
+  }
+  // Fallback to wildcard for unrecognized origins (e.g. desktop apps whose
+  // custom-protocol origins may be serialized as "null" by the webview).
+  // Security is enforced via Bearer-token authentication, not CORS.
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  };
+}
+
+// Legacy corsHeaders for backwards compatibility - should be replaced with getCorsHeaders(req)
+// @deprecated Use getCorsHeaders(req.headers.get("origin")) instead
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",

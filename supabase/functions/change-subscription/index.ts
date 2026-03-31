@@ -1,14 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { getCorsHeaders } from "../_shared/security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-// Plan tier configuration - matches frontend plan-tiers.ts (LIVE)
-// Tiers are ordered from lowest to highest
+// Plan tier configuration - must match frontend plan-tiers.ts
 const PLAN_TIERS = {
   starter: {
     priceIdMonthly: "price_1SnFcPHWgEvVObNzV8DUHzpe",
@@ -16,8 +11,6 @@ const PLAN_TIERS = {
     productId: "prod_Tkl8Q1w6HfSqER",
     maxLines: 30,
     order: 1,
-    monthlyAmount: 39999,
-    yearlyAmount: 407990,
   },
   growth: {
     priceIdMonthly: "price_1SnFcNHWgEvVObNzag27TfQY",
@@ -25,8 +18,6 @@ const PLAN_TIERS = {
     productId: "prod_Tkl8hBoNi8dZZL",
     maxLines: 60,
     order: 2,
-    monthlyAmount: 54999,
-    yearlyAmount: 560990,
   },
   scale: {
     priceIdMonthly: "price_1SnFcIHWgEvVObNz2u1IfoEw",
@@ -34,87 +25,75 @@ const PLAN_TIERS = {
     productId: "prod_Tkl8LGqEjZVnRG",
     maxLines: 100,
     order: 3,
-    monthlyAmount: 62999,
-    yearlyAmount: 642590,
   },
 };
 
-// Map price IDs to tier names and intervals for current plan detection
+// Maps Stripe price IDs to tier names for detecting current plan
 const PRICE_TO_TIER: Record<string, { tier: string; interval: "month" | "year" }> = {
-  // Monthly
   price_1SnFcPHWgEvVObNzV8DUHzpe: { tier: "starter", interval: "month" },
   price_1SnFcNHWgEvVObNzag27TfQY: { tier: "growth", interval: "month" },
   price_1SnFcIHWgEvVObNz2u1IfoEw: { tier: "scale", interval: "month" },
-  // Yearly
   price_1SnGNvHWgEvVObNzzSlIyDmj: { tier: "starter", interval: "year" },
   price_1SnGPGHWgEvVObNz1cEK82X6: { tier: "growth", interval: "year" },
   price_1SnGQQHWgEvVObNz6Gf4ff6Y: { tier: "scale", interval: "year" },
 };
 
-const logStep = (step: string, details?: any) => {
+const logStep = (step: string, details?: Record<string, unknown>) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[CHANGE-SUBSCRIPTION] ${step}${detailsStr}`);
 };
 
-const pickBestSubscription = (subs: Stripe.Subscription[]) => {
-  const priority: Stripe.Subscription.Status[] = [
-    "active",
-    "trialing",
-    "past_due",
-    "unpaid",
-    "incomplete",
-  ];
-
+/**
+ * Finds the best subscription from a list, prioritizing active/trialing statuses.
+ */
+function pickBestSubscription(subs: Stripe.Subscription[]): Stripe.Subscription | null {
+  const priority: Stripe.Subscription.Status[] = ["active", "trialing", "past_due", "unpaid", "incomplete"];
   for (const status of priority) {
     const found = subs.find((s) => s.status === status);
     if (found) return found;
   }
-
   return subs[0] ?? null;
-};
+}
 
-const resolveSubscription = async (args: {
+/**
+ * Resolves the user's active Stripe subscription, attempting recovery if stored IDs are stale.
+ * Updates the database with corrected IDs if recovery is needed.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resolveSubscription(args: {
   stripe: Stripe;
   supabaseAdmin: any;
   factoryId: string;
   userEmail: string;
   stripeSubscriptionId: string | null;
   stripeCustomerId: string | null;
-}) => {
+}): Promise<{ subscription: Stripe.Subscription; customerId: string | null }> {
   const { stripe, supabaseAdmin, factoryId, userEmail } = args;
 
-  // 1) Try stored subscription id first (fast path)
+  // Try stored subscription ID first (fast path)
   if (args.stripeSubscriptionId) {
     try {
       const subscription = await stripe.subscriptions.retrieve(args.stripeSubscriptionId);
-      const customerId =
-        typeof subscription.customer === "string"
-          ? subscription.customer
-          : subscription.customer.id;
-
-      return { subscription, customerId, repaired: false };
-    } catch (e: any) {
-      const msg = e?.message ? String(e.message) : String(e);
+      const customerId = typeof subscription.customer === "string"
+        ? subscription.customer
+        : subscription.customer.id;
+      return { subscription, customerId };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes("No such subscription")) throw e;
-      logStep("Stored subscription id invalid; attempting recovery", {
-        stripeSubscriptionId: args.stripeSubscriptionId,
-      });
+      logStep("Stored subscription ID invalid, attempting recovery");
     }
   }
 
-  // 2) Recover by customer id or email
+  // Recover by customer ID or email lookup
   let customerId = args.stripeCustomerId || null;
 
-  // Validate stored customer id (it may be stale / from a different Stripe environment)
   if (customerId) {
     try {
       await stripe.customers.retrieve(customerId);
-    } catch (e: any) {
-      const msg = e?.message ? String(e.message) : String(e);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("No such customer")) {
-        logStep("Stored customer id invalid; attempting recovery by email", {
-          stripeCustomerId: customerId,
-        });
         customerId = null;
       } else {
         throw e;
@@ -122,79 +101,45 @@ const resolveSubscription = async (args: {
     }
   }
 
+  // Look up customer by email if no valid customer ID
   if (!customerId) {
     const customers = await stripe.customers.list({ email: userEmail, limit: 1 });
     if (customers.data.length === 0) {
-      throw new Error(
-        "No billing customer found for this account. Please subscribe first (or use Manage Billing)."
-      );
+      throw new Error("No billing customer found. Please subscribe first.");
     }
     customerId = customers.data[0].id;
   }
 
-  let subs;
-  try {
-    subs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
-  } catch (e: any) {
-    const msg = e?.message ? String(e.message) : String(e);
-    if (msg.includes("No such customer")) {
-      logStep("Customer id rejected by Stripe; retrying lookup by email", { customerId });
-      const customers = await stripe.customers.list({ email: userEmail, limit: 1 });
-      if (customers.data.length === 0) {
-        throw new Error(
-          "No billing customer found for this account. Please subscribe first (or use Manage Billing)."
-        );
-      }
-      customerId = customers.data[0].id;
-      subs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
-    } else {
-      throw e;
-    }
-  }
-
+  // Find active subscriptions for this customer
+  const subs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
   const candidates = subs.data.filter(
     (s: Stripe.Subscription) => s.status !== "canceled" && (s.items?.data?.length ?? 0) > 0
   );
 
   const subscription = pickBestSubscription(candidates);
   if (!subscription) {
-    throw new Error(
-      "No active subscription found. Please subscribe first (or use Manage Billing)."
-    );
+    throw new Error("No active subscription found. Please subscribe first.");
   }
 
-  // Persist repaired ids so the next call is fast + reliable
-  await (supabaseAdmin as any)
+  // Update database with recovered IDs for future requests
+  await supabaseAdmin
     .from("factory_accounts")
-    .update({
-      stripe_customer_id: customerId,
-      stripe_subscription_id: subscription.id,
-    })
+    .update({ stripe_customer_id: customerId, stripe_subscription_id: subscription.id })
     .eq("id", factoryId);
 
-  logStep("Recovered Stripe IDs and updated factory account", {
-    factoryId,
-    stripe_customer_id: customerId,
-    stripe_subscription_id: subscription.id,
-  });
-
-  return { subscription, customerId, repaired: true };
-};
-
-// Get effective amount for comparison (normalize yearly to monthly equivalent)
-const getEffectiveAmount = (tierConfig: typeof PLAN_TIERS.starter, interval: "month" | "year"): number => {
-  if (interval === "year") {
-    return tierConfig.yearlyAmount / 12; // Monthly equivalent
-  }
-  return tierConfig.monthlyAmount;
-};
+  logStep("Recovered Stripe IDs", { factoryId, customerId, subscriptionId: subscription.id });
+  return { subscription, customerId };
+}
 
 serve(async (req) => {
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const supabaseAdmin: any = createClient(
+  const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { auth: { persistSession: false } }
@@ -206,22 +151,27 @@ serve(async (req) => {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
 
-    const authHeader = req.headers.get("Authorization")!;
+    // Authenticate user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) throw new Error("No authorization header provided");
+
     const token = authHeader.replace("Bearer ", "");
     const { data } = await supabaseAdmin.auth.getUser(token);
     const user = data.user;
-    if (!user?.email) throw new Error("User not authenticated or email not available");
+    if (!user?.email) throw new Error("User not authenticated");
 
+    // Parse and validate request body
     const { newTier, billingInterval = "month" } = await req.json();
     if (!newTier) throw new Error("New tier is required");
+    if (!["month", "year"].includes(billingInterval)) {
+      throw new Error("Invalid billing interval");
+    }
 
     const tierConfig = PLAN_TIERS[newTier as keyof typeof PLAN_TIERS];
-    if (!tierConfig) throw new Error(`Invalid tier: ${newTier}. Enterprise requires contacting sales.`);
+    if (!tierConfig) throw new Error(`Invalid tier: ${newTier}`);
 
-    // Get the correct price ID based on billing interval
     const targetPriceId = billingInterval === "year" ? tierConfig.priceIdYearly : tierConfig.priceIdMonthly;
-    
-    logStep("Request body", { newTier, billingInterval, targetPriceId });
+    logStep("Processing plan change request", { newTier, billingInterval });
 
     // Get user's factory
     const { data: profile } = await supabaseAdmin
@@ -232,7 +182,7 @@ serve(async (req) => {
 
     if (!profile?.factory_id) throw new Error("No factory associated with user");
 
-    // Get factory subscription info
+    // Get factory's current subscription info
     const { data: factory } = await supabaseAdmin
       .from("factory_accounts")
       .select("stripe_subscription_id, stripe_customer_id, subscription_tier")
@@ -241,7 +191,7 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Resolve active subscription (self-heals if stored IDs are stale)
+    // Resolve active subscription (handles stale IDs automatically)
     const { subscription, customerId } = await resolveSubscription({
       stripe,
       supabaseAdmin,
@@ -251,32 +201,27 @@ serve(async (req) => {
       stripeCustomerId: factory?.stripe_customer_id ?? null,
     });
 
+    // Determine current plan from subscription
     const currentPriceId = subscription.items.data[0]?.price?.id;
-    if (!currentPriceId) throw new Error("Could not determine current plan price");
+    if (!currentPriceId) throw new Error("Could not determine current plan");
 
     const currentPriceMapping = PRICE_TO_TIER[currentPriceId];
     const currentTierName = currentPriceMapping?.tier || factory?.subscription_tier || "starter";
     const currentInterval = currentPriceMapping?.interval || "month";
     const currentTierConfig = PLAN_TIERS[currentTierName as keyof typeof PLAN_TIERS];
-    
+
     if (!currentTierConfig) throw new Error("Could not determine current plan tier");
 
-    // Determine if this is an upgrade or downgrade
-    // Compare by tier order first, then by effective monthly amount if same tier
+    // Determine if this is an upgrade or downgrade based on tier order
+    // For same-tier billing interval changes: yearly commitment = upgrade, monthly switch = downgrade
     let isUpgrade: boolean;
     let isDowngrade: boolean;
 
     if (tierConfig.order !== currentTierConfig.order) {
-      // Different tier - compare by order
       isUpgrade = tierConfig.order > currentTierConfig.order;
       isDowngrade = tierConfig.order < currentTierConfig.order;
     } else {
-      // Same tier - compare by effective amount (yearly is cheaper per month)
-      const currentEffective = getEffectiveAmount(currentTierConfig, currentInterval);
-      const newEffective = getEffectiveAmount(tierConfig, billingInterval as "month" | "year");
-      
-      // Switching from monthly to yearly at same tier is technically a "downgrade" in price
-      // but we treat it as an upgrade (immediate) since it's a commitment
+      // Same tier, different billing interval
       if (currentInterval === "month" && billingInterval === "year") {
         isUpgrade = true;
         isDowngrade = false;
@@ -284,133 +229,138 @@ serve(async (req) => {
         isUpgrade = false;
         isDowngrade = true;
       } else {
-        // Same interval, same tier - no change
         throw new Error("You are already on this plan");
       }
     }
 
     if (!isUpgrade && !isDowngrade) throw new Error("You are already on this plan");
 
-    logStep("Plan change type", {
+    logStep("Plan change type determined", {
       currentTier: currentTierName,
-      currentInterval,
       newTier,
-      newInterval: billingInterval,
       isUpgrade,
-      isDowngrade,
-      currentOrder: currentTierConfig.order,
-      newOrder: tierConfig.order,
+      isDowngrade
     });
 
-    let result: any;
+    const requestOrigin = req.headers.get("origin") || "https://productionportal.cloud";
 
+    // ============================================================
+    // UPGRADE FLOW: Redirect to Stripe Checkout for user confirmation
+    // User must explicitly confirm the upgrade and payment before any charge occurs.
+    // The webhook handles the actual plan update after successful payment.
+    // ============================================================
     if (isUpgrade) {
-      // UPGRADE LOGIC
-      // - Immediate change
-      // - Proration invoiced immediately (user pays the prorated difference now)
-      logStep("Processing UPGRADE - immediate with proration");
+      logStep("Creating checkout session for upgrade");
 
-      const updatedSubscription = await stripe.subscriptions.update(subscription.id, {
-        items: [{ id: subscription.items.data[0].id, price: targetPriceId }],
-        proration_behavior: "always_invoice",
+      const checkoutSession = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: "subscription",
+        line_items: [{ price: targetPriceId, quantity: 1 }],
+        success_url: `${requestOrigin}/billing-plan?payment=success&tier=${newTier}&interval=${billingInterval}&change=upgrade`,
+        cancel_url: `${requestOrigin}/billing-plan?payment=cancelled`,
+        subscription_data: {
+          metadata: {
+            factory_id: profile.factory_id,
+            tier: newTier,
+            interval: billingInterval,
+            previous_tier: currentTierName,
+            change_type: "upgrade",
+          },
+        },
         metadata: {
-          ...subscription.metadata,
+          factory_id: profile.factory_id,
           tier: newTier,
           interval: billingInterval,
+          change_type: "upgrade",
         },
       });
 
-      // Update factory record immediately for upgrades
-      await supabaseAdmin
-        .from("factory_accounts")
-        .update({
-          subscription_tier: newTier,
-          max_lines: tierConfig.maxLines,
-        })
-        .eq("id", profile.factory_id);
+      logStep("Checkout session created for upgrade", { sessionId: checkoutSession.id });
 
-      result = {
-        success: true,
-        changeType: "upgrade",
-        newTier,
-        newInterval: billingInterval,
-        maxLines: tierConfig.maxLines,
-        effectiveImmediately: true,
-        message: `Upgraded to ${newTier.charAt(0).toUpperCase() + newTier.slice(1)} plan${billingInterval === "year" ? " (Yearly)" : ""}. Your new limits are active now.`,
-        subscription: {
-          id: updatedSubscription.id,
-          status: updatedSubscription.status,
-          currentPeriodEnd: new Date(updatedSubscription.current_period_end * 1000).toISOString(),
+      return new Response(
+        JSON.stringify({
+          success: true,
+          requiresCheckout: true,
+          checkoutUrl: checkoutSession.url,
+          changeType: "upgrade",
+          message: "Redirecting to checkout to confirm your upgrade...",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+
+    // ============================================================
+    // DOWNGRADE FLOW: Schedule change for end of billing period
+    // No charge occurs. User keeps current plan until period ends.
+    // Uses cancel_at_period_end + metadata to track pending downgrade.
+    // ============================================================
+    logStep("Processing downgrade - scheduling for period end");
+
+    // Get period end timestamp and convert to Date
+    const periodEnd = subscription.current_period_end;
+    if (!periodEnd || typeof periodEnd !== "number") {
+      throw new Error("Could not determine subscription billing period");
+    }
+    const periodEndDate = new Date(periodEnd * 1000);
+    if (isNaN(periodEndDate.getTime())) {
+      throw new Error("Invalid subscription period end date");
+    }
+
+    // Update subscription to cancel at period end and store downgrade info in metadata
+    // The webhook will handle creating the new subscription when this one ends
+    await stripe.subscriptions.update(subscription.id, {
+      cancel_at_period_end: true,
+      metadata: {
+        ...subscription.metadata,
+        pending_downgrade_tier: newTier,
+        pending_downgrade_interval: billingInterval,
+        pending_downgrade_price_id: targetPriceId,
+      },
+    });
+
+    // Store pending downgrade in database for reference
+    await supabaseAdmin
+      .from("factory_accounts")
+      .update({
+        pending_plan_change: {
+          type: "downgrade",
+          newTier,
+          newInterval: billingInterval,
+          effectiveDate: periodEndDate.toISOString(),
+          newPriceId: targetPriceId,
         },
-      };
-    } else {
-      // DOWNGRADE LOGIC
-      // - Change scheduled for next billing cycle (no immediate charge)
-      // - Customer keeps current tier until renewal
-      logStep("Processing DOWNGRADE - scheduled for next billing cycle");
+      })
+      .eq("id", profile.factory_id);
 
-      // Check if customer has a default payment method (advisory only)
-      const customer = (await stripe.customers.retrieve(customerId)) as Stripe.Customer;
-      const hasPaymentMethod =
-        !!customer.invoice_settings?.default_payment_method || customer.default_source !== null;
+    logStep("Downgrade scheduled", { effectiveDate: periodEndDate.toISOString() });
 
-      const periodEnd = subscription.current_period_end;
-      const nextBillingDateIso = new Date(periodEnd * 1000).toISOString();
+    // Format date as readable string (e.g., "Jan 15, 2026")
+    const formattedDate = periodEndDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
 
-      // Schedule downgrade at period end
-      const scheduleFromSub = await stripe.subscriptionSchedules.create({
-        from_subscription: subscription.id,
-      });
-
-      const updatedSchedule = await stripe.subscriptionSchedules.update(scheduleFromSub.id, {
-        phases: [
-          {
-            items: [{ price: currentPriceId, quantity: 1 }],
-            start_date: subscription.current_period_start,
-            end_date: periodEnd,
-          },
-          {
-            items: [{ price: targetPriceId, quantity: 1 }],
-            start_date: periodEnd,
-            metadata: { tier: newTier, interval: billingInterval },
-          },
-        ],
-      });
-
-      result = {
+    return new Response(
+      JSON.stringify({
         success: true,
         changeType: "downgrade",
         newTier,
         newInterval: billingInterval,
         maxLines: tierConfig.maxLines,
-        effectiveImmediately: false,
-        scheduledDate: nextBillingDateIso,
-        message: `Downgrade to ${newTier.charAt(0).toUpperCase() + newTier.slice(1)} plan${billingInterval === "year" ? " (Yearly)" : ""} scheduled. You'll continue on your current plan until ${new Date(nextBillingDateIso).toLocaleDateString()}.`,
-        subscription: {
-          id: subscription.id,
-          status: subscription.status,
-          currentPeriodEnd: nextBillingDateIso,
-        },
-        schedule: {
-          id: updatedSchedule.id,
-          status: updatedSchedule.status,
-        },
-        needsPaymentMethod: !hasPaymentMethod,
-      };
-    }
+        effectiveDate: periodEndDate.toISOString(),
+        message: `Your plan will change to ${newTier.charAt(0).toUpperCase() + newTier.slice(1)} on ${formattedDate}. You'll keep your current features until then.`,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+    );
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
 
-    // Return 200 so the frontend can show a useful error message (instead of generic non-2xx).
-    return new Response(JSON.stringify({ success: false, error: errorMessage }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: errorMessage }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    );
   }
 });

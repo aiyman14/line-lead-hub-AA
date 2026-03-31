@@ -23,14 +23,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
+import { format, parseISO, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
+import { isTodayInTimezone } from "@/lib/date-utils";
 import { FileText, Clock, Target, TrendingUp, Search, Package, Edit2, Eye } from "lucide-react";
-import { FinishingLogDetailModal } from "@/components/FinishingLogDetailModal";
+import { FinishingSubmissionView, FinishingTargetData, FinishingActualData } from "@/components/FinishingSubmissionView";
+import { useEditPermission } from "@/hooks/useEditPermission";
 
 interface FinishingDailyLog {
   id: string;
   production_date: string;
-  line_id: string;
+  line_id: string | null;
   work_order_id: string | null;
   log_type: "TARGET" | "OUTPUT";
   shift: string | null;
@@ -42,6 +44,14 @@ interface FinishingDailyLog {
   get_up: number;
   poly: number;
   carton: number;
+  m_power_planned: number | null;
+  m_power_actual: number | null;
+  planned_hours: number | null;
+  actual_hours: number | null;
+  ot_hours_planned: number | null;
+  ot_manpower_planned: number | null;
+  ot_hours_actual: number | null;
+  ot_manpower_actual: number | null;
   remarks: string | null;
   submitted_at: string;
   is_locked: boolean;
@@ -58,7 +68,8 @@ interface FinishingDailyLog {
 
 export default function FinishingMySubmissions() {
   const navigate = useNavigate();
-  const { profile, user } = useAuth();
+  const { profile, user, factory } = useAuth();
+  const { getTimeUntilCutoff } = useEditPermission();
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<FinishingDailyLog[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -66,6 +77,8 @@ export default function FinishingMySubmissions() {
   const [activeTab, setActiveTab] = useState<"targets" | "outputs">("targets");
   const [selectedLog, setSelectedLog] = useState<FinishingDailyLog | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+
+  const timeUntilCutoff = getTimeUntilCutoff();
 
   useEffect(() => {
     if (profile?.factory_id && user) {
@@ -112,9 +125,9 @@ export default function FinishingMySubmissions() {
       return isWithinInterval(date, { start: weekStart, end: weekEnd });
     });
 
+    // Total output = Poly (primary finishing metric)
     const totalPcs = logsThisWeek.reduce((sum, log) => {
-      return sum + log.thread_cutting + log.inside_check + log.top_side_check + 
-             log.buttoning + log.iron + log.get_up + log.poly + log.carton;
+      return sum + log.poly;
     }, 0);
 
     const avgPerDay = logsThisWeek.length > 0 
@@ -134,7 +147,7 @@ export default function FinishingMySubmissions() {
     let result = currentLogs;
 
     if (dateFilter === "today") {
-      result = result.filter((item) => isToday(parseISO(item.production_date)));
+      result = result.filter((item) => isTodayInTimezone(item.production_date, factory?.timezone || "Asia/Dhaka"));
     } else if (dateFilter === "week") {
       const now = new Date();
       const weekStart = startOfWeek(now, { weekStartsOn: 1 });
@@ -170,7 +183,7 @@ export default function FinishingMySubmissions() {
   const handleEdit = (log: FinishingDailyLog) => {
     const path = log.log_type === "TARGET" ? "/finishing/daily-target" : "/finishing/daily-output";
     const params = new URLSearchParams();
-    params.set("line", log.line_id);
+    if (log.line_id) params.set("line", log.line_id);
     if (log.work_order_id) params.set("wo", log.work_order_id);
     navigate(`${path}?${params.toString()}`);
   };
@@ -181,7 +194,7 @@ export default function FinishingMySubmissions() {
   };
 
   const calculateLogTotal = (log: FinishingDailyLog) => {
-    return (log.carton || 0);
+    return (log.poly || 0);
   };
 
   if (loading) {
@@ -207,12 +220,23 @@ export default function FinishingMySubmissions() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="py-3 md:py-4 lg:py-6 space-y-5 md:space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <FileText className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold">My Finishing Submissions</h1>
+          <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
+            <FileText className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold">My Submissions</h1>
+            <p className="text-sm text-muted-foreground">Your finishing targets and end of day reports</p>
+          </div>
         </div>
+        {timeUntilCutoff && (
+          <Badge variant="outline" className="gap-1">
+            <Clock className="h-3 w-3" />
+            Edit window: {timeUntilCutoff}
+          </Badge>
+        )}
         <Button onClick={handleNewSubmission}>
           + New {activeTab === "targets" ? "Target" : "Output"}
         </Button>
@@ -234,11 +258,11 @@ export default function FinishingMySubmissions() {
         <TabsContent value={activeTab} className="mt-6 space-y-6">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
+            <Card className="bg-gradient-to-br from-violet-50 via-white to-violet-50/50 border-violet-200/60 dark:border-violet-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                    <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <div className="p-3 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25 group-hover:shadow-violet-500/40 transition-shadow">
+                    <FileText className="h-5 w-5 text-white" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">This Week</p>
@@ -248,11 +272,11 @@ export default function FinishingMySubmissions() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-gradient-to-br from-violet-50 via-white to-violet-50/50 border-violet-200/60 dark:border-violet-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/30">
-                    <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  <div className="p-3 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25 group-hover:shadow-violet-500/40 transition-shadow">
+                    <Clock className="h-5 w-5 text-white" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Pcs (Week)</p>
@@ -262,11 +286,11 @@ export default function FinishingMySubmissions() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-gradient-to-br from-violet-50 via-white to-violet-50/50 border-violet-200/60 dark:border-violet-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-green-100 dark:bg-green-900/30">
-                    <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <div className="p-3 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25 group-hover:shadow-violet-500/40 transition-shadow">
+                    <TrendingUp className="h-5 w-5 text-white" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Avg Per Day</p>
@@ -323,7 +347,6 @@ export default function FinishingMySubmissions() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date</TableHead>
-                        <TableHead>Line</TableHead>
                         <TableHead>PO / Style</TableHead>
                         <TableHead>Shift</TableHead>
                         <TableHead className="text-right">Total Pcs</TableHead>
@@ -333,7 +356,7 @@ export default function FinishingMySubmissions() {
                     <TableBody>
                       {filteredLogs.map((log) => {
                         const date = parseISO(log.production_date);
-                        const isTodaySubmission = isToday(date);
+                        const isTodaySubmission = isTodayInTimezone(log.production_date, factory?.timezone || "Asia/Dhaka");
                         const total = calculateLogTotal(log);
 
                         return (
@@ -347,16 +370,6 @@ export default function FinishingMySubmissions() {
                                   </Badge>
                                 )}
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <span className="font-medium">
-                                {log.line?.line_id || "—"}
-                              </span>
-                              {log.line?.name && (
-                                <span className="text-muted-foreground ml-1">
-                                  ({log.line.name})
-                                </span>
-                              )}
                             </TableCell>
                             <TableCell>
                               {log.work_order ? (
@@ -417,11 +430,81 @@ export default function FinishingMySubmissions() {
         </TabsContent>
       </Tabs>
 
-      <FinishingLogDetailModal
-        log={selectedLog}
-        open={detailModalOpen}
-        onOpenChange={setDetailModalOpen}
-      />
+      {(() => {
+        if (!selectedLog) {
+          return (
+            <FinishingSubmissionView
+              target={null}
+              actual={null}
+              open={detailModalOpen}
+              onOpenChange={setDetailModalOpen}
+            />
+          );
+        }
+
+        const counterpart = logs.find(
+          (l) =>
+            l.log_type !== selectedLog.log_type &&
+            l.production_date === selectedLog.production_date &&
+            l.work_order_id === selectedLog.work_order_id
+        ) ?? null;
+
+        const targetLog = selectedLog.log_type === "TARGET" ? selectedLog : counterpart?.log_type === "TARGET" ? counterpart : null;
+        const actualLog = selectedLog.log_type === "OUTPUT" ? selectedLog : counterpart?.log_type === "OUTPUT" ? counterpart : null;
+
+        const target: FinishingTargetData | null = targetLog ? {
+          id: targetLog.id,
+          production_date: targetLog.production_date,
+          submitted_at: targetLog.submitted_at,
+          po_number: targetLog.work_order?.po_number ?? null,
+          buyer: targetLog.work_order?.buyer ?? null,
+          style: targetLog.work_order?.style ?? null,
+          thread_cutting: targetLog.thread_cutting,
+          inside_check: targetLog.inside_check,
+          top_side_check: targetLog.top_side_check,
+          buttoning: targetLog.buttoning,
+          iron: targetLog.iron,
+          get_up: targetLog.get_up,
+          poly: targetLog.poly,
+          carton: targetLog.carton,
+          m_power_planned: targetLog.m_power_planned ?? null,
+          planned_hours: targetLog.planned_hours ?? null,
+          ot_hours_planned: targetLog.ot_hours_planned ?? null,
+          ot_manpower_planned: targetLog.ot_manpower_planned ?? null,
+          remarks: targetLog.remarks ?? null,
+        } : null;
+
+        const actual: FinishingActualData | null = actualLog ? {
+          id: actualLog.id,
+          production_date: actualLog.production_date,
+          submitted_at: actualLog.submitted_at,
+          po_number: actualLog.work_order?.po_number ?? null,
+          buyer: actualLog.work_order?.buyer ?? null,
+          style: actualLog.work_order?.style ?? null,
+          thread_cutting: actualLog.thread_cutting,
+          inside_check: actualLog.inside_check,
+          top_side_check: actualLog.top_side_check,
+          buttoning: actualLog.buttoning,
+          iron: actualLog.iron,
+          get_up: actualLog.get_up,
+          poly: actualLog.poly,
+          carton: actualLog.carton,
+          m_power_actual: actualLog.m_power_actual ?? null,
+          actual_hours: actualLog.actual_hours ?? null,
+          ot_hours_actual: actualLog.ot_hours_actual ?? null,
+          ot_manpower_actual: actualLog.ot_manpower_actual ?? null,
+          remarks: actualLog.remarks ?? null,
+        } : null;
+
+        return (
+          <FinishingSubmissionView
+            target={target}
+            actual={actual}
+            open={detailModalOpen}
+            onOpenChange={setDetailModalOpen}
+          />
+        );
+      })()}
     </div>
   );
 }

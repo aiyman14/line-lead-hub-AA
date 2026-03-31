@@ -2,12 +2,11 @@ import { useState, useEffect } from "react";
 import { openExternalUrl } from "@/lib/capacitor";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFn, networkErrorMessage } from "@/lib/network-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +33,7 @@ import {
   Percent,
   AlertTriangle
 } from "lucide-react";
+import { useSubscription } from "@/hooks/useSubscription";
 import { ActiveLinesMeter } from "@/components/ActiveLinesMeter";
 import { useActiveLines } from "@/hooks/useActiveLines";
 import { 
@@ -52,7 +52,7 @@ import { Label } from "@/components/ui/label";
 export default function BillingPlan() {
   const { user, factory, isAdminOrHigher, signOut } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+
   const [searchParams] = useSearchParams();
   const { status: lineStatus, loading: linesLoading, refresh: refetchLines } = useActiveLines();
   
@@ -62,6 +62,8 @@ export default function BillingPlan() {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>('month');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+
+  const { isTrial, status: subStatus } = useSubscription();
 
   const currentTier = mapLegacyTier(factory?.subscription_tier || 'starter');
   const currentPlan = PLAN_TIERS[currentTier];
@@ -74,9 +76,8 @@ export default function BillingPlan() {
     const interval = searchParams.get('interval');
     
     if (payment === 'success') {
-      toast({
-        title: "Payment Successful!",
-        description: tier 
+      toast.success("Payment Successful!", {
+        description: tier
           ? `You've been upgraded to the ${PLAN_TIERS[tier as PlanTier]?.name || tier} plan${interval === 'year' ? ' (Yearly)' : ''}.`
           : "Your subscription is now active.",
       });
@@ -85,14 +86,10 @@ export default function BillingPlan() {
       // Refetch subscription status
       refetchLines();
     } else if (payment === 'cancelled') {
-      toast({
-        variant: "destructive",
-        title: "Payment Cancelled",
-        description: "You can try again whenever you're ready.",
-      });
+      toast.error("Payment Cancelled", { description: "You can try again whenever you're ready." });
       navigate('/billing-plan', { replace: true });
     }
-  }, [searchParams, toast, navigate, refetchLines]);
+  }, [searchParams, navigate, refetchLines]);
 
   const handleSubscribe = async (tier: PlanTier) => {
     if (tier === 'enterprise') {
@@ -102,12 +99,10 @@ export default function BillingPlan() {
 
     setCheckoutLoading(tier);
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { tier, interval: billingInterval }
-      });
-      
+      const { data, error } = await invokeEdgeFn('create-checkout', { tier, interval: billingInterval });
+
       if (error) throw error;
-      
+
       if (data.url) {
         await openExternalUrl(data.url);
       } else if (data.error) {
@@ -115,17 +110,15 @@ export default function BillingPlan() {
       }
     } catch (err: any) {
       console.error('Error creating checkout:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: err.message || "Failed to start checkout. Please try again.",
-      });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setCheckoutLoading(null);
     }
   };
 
   // Handle plan upgrades and downgrades
+  // Upgrades redirect to Stripe Checkout for user confirmation before any charge
+  // Downgrades are scheduled for the end of the current billing period
   const handleChangePlan = async (tier: PlanTier) => {
     if (tier === 'enterprise') {
       handleContactSales();
@@ -134,53 +127,38 @@ export default function BillingPlan() {
 
     setCheckoutLoading(tier);
     try {
-      const { data, error } = await supabase.functions.invoke('change-subscription', {
-        body: { newTier: tier, billingInterval }
-      });
-      
+      const { data, error } = await invokeEdgeFn('change-subscription', { newTier: tier, billingInterval });
+
       if (error) throw error;
-      
+
       if (data.success) {
-        if (data.changeType === 'upgrade') {
-          toast({
-            title: "Upgrade Complete! 🎉",
-            description: data.message || `You've upgraded to the ${PLAN_TIERS[tier].name} plan. Your new limits are active now.`,
-          });
-          refetchLines();
-          window.location.reload();
-        } else if (data.changeType === 'downgrade') {
-          const scheduledDate = data.scheduledDate 
-            ? new Date(data.scheduledDate).toLocaleDateString() 
-            : 'your next billing date';
-          toast({
-            title: "Downgrade Scheduled",
+        // Upgrades return a checkout URL - redirect user to confirm payment
+        if (data.requiresCheckout && data.checkoutUrl) {
+          await openExternalUrl(data.checkoutUrl);
+          return;
+        }
+
+        // Downgrades are scheduled for period end
+        if (data.changeType === 'downgrade') {
+          // Use the pre-formatted message from backend, or format date locally as fallback
+          let scheduledDate = 'your next billing date';
+          if (data.effectiveDate) {
+            try {
+              scheduledDate = new Date(data.effectiveDate).toLocaleDateString();
+            } catch {
+              // Date parsing failed, use fallback
+            }
+          }
+          toast.success("Downgrade Scheduled", {
             description: data.message || `Your plan will change to ${PLAN_TIERS[tier].name} on ${scheduledDate}. You'll keep your current features until then.`,
           });
-          
-          if (data.needsPaymentMethod) {
-            setTimeout(() => {
-              toast({
-                title: "Payment Method Required",
-                description: "Please add a payment method to ensure your subscription continues at renewal.",
-                action: (
-                  <Button size="sm" variant="outline" onClick={handleManageBilling}>
-                    Add Payment Method
-                  </Button>
-                ),
-              });
-            }, 2000);
-          }
         }
       } else if (data.error) {
         throw new Error(data.error);
       }
     } catch (err: any) {
       console.error('Error changing plan:', err);
-      toast({
-        variant: "destructive",
-        title: "Plan Change Failed",
-        description: err.message || "Failed to change plan. Please try again or contact support.",
-      });
+      toast.error("Plan Change Failed", { description: networkErrorMessage(err) });
     } finally {
       setCheckoutLoading(null);
     }
@@ -189,17 +167,12 @@ export default function BillingPlan() {
   const handleStartTrial = async (tier: PlanTier = 'starter') => {
     setCheckoutLoading(tier);
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { tier, startTrial: true, interval: billingInterval }
-      });
-      
+      const { data, error } = await invokeEdgeFn('create-checkout', { tier, startTrial: true, interval: billingInterval });
+
       if (error) throw error;
       
       if (data.success && data.trial) {
-        toast({
-          title: "Trial Started!",
-          description: `Your 14-day trial of the ${PLAN_TIERS[tier].name} plan has begun.`,
-        });
+        toast.success("Trial Started!", { description: `Your 14-day trial of the ${PLAN_TIERS[tier].name} plan has begun.` });
         refetchLines();
         if (data.redirectUrl) {
           navigate(data.redirectUrl);
@@ -211,35 +184,33 @@ export default function BillingPlan() {
       }
     } catch (err: any) {
       console.error('Error starting trial:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: err.message || "Failed to start trial. Please try again.",
-      });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setCheckoutLoading(null);
     }
   };
 
+  // Opens Stripe Customer Portal for managing payment methods, viewing invoices, etc.
+  // If no billing account exists, redirects user to subscription page
   const handleManageBilling = async () => {
     setPortalLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('customer-portal');
-      
+      const { data, error } = await invokeEdgeFn('customer-portal');
+
       if (error) throw error;
-      
+
       if (data.url) {
         await openExternalUrl(data.url);
+      } else if (data.redirectTo) {
+        // No billing account - redirect to subscription page
+        toast.success("No Billing Account", { description: data.message || "Please subscribe to a plan first." });
+        navigate(data.redirectTo);
       } else if (data.error) {
         throw new Error(data.error);
       }
     } catch (err: any) {
       console.error('Error opening portal:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: err.message || "Failed to open billing portal. Please try again.",
-      });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setPortalLoading(false);
     }
@@ -252,15 +223,12 @@ export default function BillingPlan() {
   const handleCancelSubscription = async () => {
     setCancelLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('cancel-subscription');
-      
+      const { data, error } = await invokeEdgeFn('cancel-subscription');
+
       if (error) throw error;
       
       if (data.success) {
-        toast({
-          title: "Subscription cancelled",
-          description: "Access removed. You will be signed out.",
-        });
+        toast.success("Subscription cancelled", { description: "Access removed. You will be signed out." });
         
         // Sign out and redirect to login
         setTimeout(async () => {
@@ -272,11 +240,7 @@ export default function BillingPlan() {
       }
     } catch (err: any) {
       console.error('Error cancelling subscription:', err);
-      toast({
-        variant: "destructive",
-        title: "Cancellation Failed",
-        description: err.message || "Failed to cancel subscription. Please try again or contact support.",
-      });
+      toast.error("Cancellation Failed", { description: networkErrorMessage(err) });
     } finally {
       setCancelLoading(false);
       setCancelDialogOpen(false);
@@ -284,21 +248,19 @@ export default function BillingPlan() {
   };
 
   const getStatusBadge = (status: string) => {
+    const dot = (color: string, label: string) => (
+      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${color}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${color.replace('text-', 'bg-')}`} />
+        {label}
+      </span>
+    );
     switch (status) {
-      case 'active':
-        return <Badge className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" />Active</Badge>;
-      case 'trialing':
-        return <Badge variant="secondary">Trial</Badge>;
-      case 'past_due':
-        return <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />Past Due</Badge>;
-      case 'canceled':
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Canceled</Badge>;
-      case 'expired':
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Expired</Badge>;
-      case 'trial':
-        return <Badge variant="secondary">Trial</Badge>;
-      default:
-        return <Badge variant="outline">{status || 'Inactive'}</Badge>;
+      case 'active': return dot('text-emerald-600 dark:text-emerald-400', 'Active');
+      case 'trialing': case 'trial': return dot('text-blue-600 dark:text-blue-400', 'Trial');
+      case 'past_due': return dot('text-red-600 dark:text-red-400', 'Past Due');
+      case 'canceled': return dot('text-red-600 dark:text-red-400', 'Canceled');
+      case 'expired': return dot('text-red-600 dark:text-red-400', 'Expired');
+      default: return dot('text-muted-foreground', status || 'Inactive');
     }
   };
 
@@ -327,13 +289,43 @@ export default function BillingPlan() {
   }
 
   return (
-    <div className="container max-w-6xl py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Billing & Plan</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your subscription and active line usage
-        </p>
+    <div className="container max-w-6xl py-3 md:py-4 lg:py-6 px-4">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="h-10 w-10 rounded-xl bg-slate-500/10 flex items-center justify-center">
+          <CreditCard className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+        </div>
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold">Billing & Plan</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage your subscription and active line usage
+          </p>
+        </div>
       </div>
+
+      {/* Trial countdown banner */}
+      {isTrial && (
+        <Card className="mb-6 border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0">
+                  <CreditCard className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-amber-800 dark:text-amber-200">
+                    {subStatus?.daysRemaining != null
+                      ? `${subStatus.daysRemaining} ${subStatus.daysRemaining === 1 ? 'day' : 'days'} left on your trial`
+                      : "You're currently on a trial"}
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Subscribe to a plan below to keep access after your trial ends.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Current Status Overview */}
       <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -341,11 +333,11 @@ export default function BillingPlan() {
         <ActiveLinesMeter showUpgrade={false} />
 
         {/* Current Plan Card */}
-        <Card>
+        <Card className="border-border/50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-primary" />
+                <CreditCard className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                 <div>
                   <p className="font-medium">Current Plan</p>
                   <p className="text-xs text-muted-foreground">Subscription status</p>
@@ -399,14 +391,14 @@ export default function BillingPlan() {
         </Card>
       </div>
 
-      <Separator className="my-8" />
+      <div className="border-t border-border/60 my-8" />
 
       {/* Plan Tiers */}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold mb-2">Available Plans</h2>
-            <p className="text-muted-foreground text-sm">
+            <h2 className="text-lg font-semibold">Available Plans</h2>
+            <p className="text-sm text-muted-foreground">
               All plans include full access to all production modules. Plans are based on active production lines.
             </p>
           </div>
@@ -685,11 +677,11 @@ export default function BillingPlan() {
         </Card>
       )}
 
-      <Separator className="my-8" />
+      <div className="border-t border-border/60 my-8" />
 
       {/* FAQ Section */}
       <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4">Frequently Asked Questions</h2>
+        <h2 className="text-lg font-semibold mb-4">Frequently Asked Questions</h2>
         <div className="grid md:grid-cols-2 gap-6">
           <div>
             <h3 className="font-medium mb-2">What are active production lines?</h3>
@@ -725,7 +717,7 @@ export default function BillingPlan() {
       {/* Cancel Subscription Section */}
       {hasActiveSubscription && (
         <>
-          <Separator className="my-8" />
+          <div className="border-t border-border/60 my-8" />
           <div className="mb-8">
             <Card className="border-destructive/30 bg-destructive/5">
               <CardHeader>

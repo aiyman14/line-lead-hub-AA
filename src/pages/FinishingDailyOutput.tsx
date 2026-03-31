@@ -4,28 +4,25 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Scissors, CheckCircle, Shirt, CircleDot, Flame, Package, Box, Archive, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Loader2, Search, Scissors, CheckCircle, Shirt, CircleDot, Flame, Package, Box, Archive, TrendingUp, TrendingDown, Minus, Clock, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+// Card kept for target comparison section only
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { format } from "date-fns";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { getTodayInTimezone } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-
-interface Line {
-  id: string;
-  line_id: string;
-  name: string | null;
-}
 
 interface WorkOrder {
   id: string;
@@ -39,14 +36,15 @@ interface WorkOrder {
 
 interface TargetLog {
   id: string;
-  thread_cutting: number;
-  inside_check: number;
-  top_side_check: number;
-  buttoning: number;
-  iron: number;
-  get_up: number;
-  poly: number;
-  carton: number;
+  thread_cutting: number | null;
+  inside_check: number | null;
+  top_side_check: number | null;
+  buttoning: number | null;
+  iron: number | null;
+  get_up: number | null;
+  poly: number | null;
+  carton: number | null;
+  planned_hours: number | null;
 }
 
 // Process categories matching the hourly grid
@@ -67,7 +65,7 @@ export default function FinishingDailyOutput() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t } = useTranslation();
-  const { user, profile, isAdminOrHigher } = useAuth();
+  const { user, profile, factory, isAdminOrHigher } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [existingLog, setExistingLog] = useState<any>(null);
@@ -76,13 +74,19 @@ export default function FinishingDailyOutput() {
   const [previousCartonTotal, setPreviousCartonTotal] = useState(0);
 
   // Master data
-  const [lines, setLines] = useState<Line[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
 
   // Form state - date is automatically set to today on submission
-  const [selectedLineId, setSelectedLineId] = useState("");
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [actualHours, setActualHours] = useState("");
+
+  // Manpower
+  const [mPowerActual, setMPowerActual] = useState("");
+
+  // OT fields
+  const [otHoursActual, setOtHoursActual] = useState("0");
+  const [otManpowerActual, setOtManpowerActual] = useState("0");
 
   // Process category values
   const [processValues, setProcessValues] = useState<Record<ProcessKey, string>>({
@@ -98,11 +102,7 @@ export default function FinishingDailyOutput() {
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const filteredWorkOrders = useMemo(() => {
-    if (!selectedLineId) return workOrders;
-    return workOrders.filter(wo => wo.line_id === selectedLineId || !wo.line_id);
-  }, [workOrders, selectedLineId]);
+  const [poSearchOpen, setPoSearchOpen] = useState(false);
 
   const selectedWorkOrder = useMemo(() => {
     return workOrders.find(wo => wo.id === selectedWorkOrderId);
@@ -114,43 +114,30 @@ export default function FinishingDailyOutput() {
     }
   }, [profile?.factory_id]);
 
-  // Check for existing log and target when line/work order changes
+  // Check for existing log and target when work order changes
   useEffect(() => {
-    if (selectedLineId && selectedWorkOrderId && profile?.factory_id) {
+    if (selectedWorkOrderId && profile?.factory_id) {
       checkExistingLogs();
-      fetchPreviousCartonTotal();
     } else {
       setPreviousCartonTotal(0);
     }
-  }, [selectedLineId, selectedWorkOrderId, profile?.factory_id]);
+  }, [selectedWorkOrderId, profile?.factory_id]);
 
   async function fetchFormData() {
     if (!profile?.factory_id) return;
 
     try {
-      const [linesRes, workOrdersRes, assignmentsRes] = await Promise.all([
-        supabase.from("lines").select("id, line_id, name").eq("factory_id", profile.factory_id).eq("is_active", true).order("line_id"),
-        supabase.from("work_orders").select("id, po_number, buyer, style, item, order_qty, line_id").eq("factory_id", profile.factory_id).eq("is_active", true),
-        supabase.from("user_line_assignments").select("line_id").eq("user_id", user?.id || ""),
-      ]);
+      const { data: workOrdersData } = await supabase
+        .from("work_orders")
+        .select("id, po_number, buyer, style, item, order_qty, line_id")
+        .eq("factory_id", profile.factory_id)
+        .eq("is_active", true);
 
-      let availableLines = linesRes.data || [];
-      
-      if (!isAdminOrHigher() && assignmentsRes.data && assignmentsRes.data.length > 0) {
-        const assignedLineIds = assignmentsRes.data.map(a => a.line_id);
-        availableLines = availableLines.filter(l => assignedLineIds.includes(l.id));
-      }
-
-      setLines(availableLines);
-      setWorkOrders(workOrdersRes.data || []);
+      setWorkOrders(workOrdersData || []);
 
       // Pre-select from URL params
-      const lineParam = searchParams.get("line");
       const woParam = searchParams.get("wo");
-      if (lineParam && availableLines.find(l => l.id === lineParam)) {
-        setSelectedLineId(lineParam);
-      }
-      if (woParam && (workOrdersRes.data || []).find(w => w.id === woParam)) {
+      if (woParam && (workOrdersData || []).find(w => w.id === woParam)) {
         setSelectedWorkOrderId(woParam);
       }
     } catch (error) {
@@ -162,18 +149,18 @@ export default function FinishingDailyOutput() {
   }
 
   async function checkExistingLogs() {
-    if (!profile?.factory_id || !selectedLineId || !selectedWorkOrderId) return;
+    if (!profile?.factory_id || !selectedWorkOrderId) return;
 
     try {
-      const today = format(new Date(), "yyyy-MM-dd");
-      
+      const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
+
       // Build query for existing output and target
       const outputQuery = supabase
         .from("finishing_daily_logs")
         .select("*")
         .eq("factory_id", profile.factory_id)
         .eq("production_date", today)
-        .eq("line_id", selectedLineId)
+        .is("line_id", null)
         .eq("work_order_id", selectedWorkOrderId)
         .eq("log_type", "OUTPUT");
 
@@ -182,7 +169,7 @@ export default function FinishingDailyOutput() {
         .select("*")
         .eq("factory_id", profile.factory_id)
         .eq("production_date", today)
-        .eq("line_id", selectedLineId)
+        .is("line_id", null)
         .eq("work_order_id", selectedWorkOrderId)
         .eq("log_type", "TARGET");
 
@@ -205,6 +192,10 @@ export default function FinishingDailyOutput() {
         setExistingLog(outputRes.data);
         // Pre-fill form with existing data
         setRemarks(outputRes.data.remarks || "");
+        setActualHours(outputRes.data.actual_hours?.toString() || "");
+        setMPowerActual(outputRes.data.m_power_actual?.toString() || "");
+        setOtHoursActual(outputRes.data.ot_hours_actual?.toString() || "0");
+        setOtManpowerActual(outputRes.data.ot_manpower_actual?.toString() || "0");
         setProcessValues({
           thread_cutting: outputRes.data.thread_cutting?.toString() || "",
           inside_check: outputRes.data.inside_check?.toString() || "",
@@ -219,6 +210,11 @@ export default function FinishingDailyOutput() {
       } else {
         setExistingLog(null);
         setIsEditing(false);
+        // Prefill actual hours from target's planned_hours
+        setActualHours(targetRes.data?.planned_hours?.toString() || "");
+        setMPowerActual(targetRes.data?.m_power_planned?.toString() || "");
+        setOtHoursActual(targetRes.data?.ot_hours_planned?.toString() || "0");
+        setOtManpowerActual(targetRes.data?.ot_manpower_planned?.toString() || "0");
         // Reset form
         setProcessValues({
           thread_cutting: "",
@@ -231,39 +227,39 @@ export default function FinishingDailyOutput() {
           carton: "",
         });
       }
+
+      // Fetch previous carton total, passing existing log ID directly to avoid stale state
+      fetchPreviousPolyTotal(outputRes.data?.id || null);
     } catch (error) {
       console.error("Error checking existing logs:", error);
     }
   }
 
-  async function fetchPreviousCartonTotal() {
+  async function fetchPreviousPolyTotal(existingLogId: string | null) {
     if (!profile?.factory_id || !selectedWorkOrderId) return;
 
     try {
-      const today = format(new Date(), "yyyy-MM-dd");
-      
-      // Fetch all carton values for this work order (excluding today's entry if editing)
+      // Fetch all poly values for this work order (poly is primary finishing metric)
       const { data, error } = await supabase
         .from("finishing_daily_logs")
-        .select("id, carton")
+        .select("id, poly")
         .eq("factory_id", profile.factory_id)
         .eq("work_order_id", selectedWorkOrderId)
         .eq("log_type", "OUTPUT");
 
       if (error) throw error;
 
-      // Sum all carton values, excluding the current log if editing
+      // Sum all poly values, excluding the current log if editing
       const total = (data || []).reduce((sum, log) => {
-        // If we're editing, exclude the current log's carton from previous total
-        if (existingLog && log.id === existingLog.id) {
+        if (existingLogId && log.id === existingLogId) {
           return sum;
         }
-        return sum + (log.carton || 0);
+        return sum + (log.poly || 0);
       }, 0);
 
       setPreviousCartonTotal(total);
     } catch (error) {
-      console.error("Error fetching previous carton total:", error);
+      console.error("Error fetching previous poly total:", error);
     }
   }
 
@@ -274,7 +270,6 @@ export default function FinishingDailyOutput() {
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedLineId) newErrors.line = "Line is required";
     if (!selectedWorkOrderId) newErrors.workOrder = "PO Number is required";
     
     // At least one process value should be entered
@@ -285,6 +280,14 @@ export default function FinishingDailyOutput() {
     
     if (!hasAnyValue) {
       newErrors.processes = "Enter at least one output value";
+    }
+
+    if (!mPowerActual || parseInt(mPowerActual) <= 0) {
+      newErrors.mPowerActual = "M Power is required";
+    }
+
+    if (!actualHours || parseFloat(actualHours) <= 0) {
+      newErrors.actualHours = "Actual hours must be greater than 0";
     }
 
     setErrors(newErrors);
@@ -307,14 +310,14 @@ export default function FinishingDailyOutput() {
     setSubmitting(true);
 
     try {
-      const today = format(new Date(), "yyyy-MM-dd");
+      const today = getTodayInTimezone(factory?.timezone || "Asia/Dhaka");
       const logData = {
         factory_id: profile.factory_id,
         production_date: today,
-        line_id: selectedLineId,
+        line_id: undefined,
         work_order_id: selectedWorkOrderId,
         log_type: "OUTPUT" as const,
-        shift: null,
+        shift: undefined,
         thread_cutting: processValues.thread_cutting ? parseInt(processValues.thread_cutting) : 0,
         inside_check: processValues.inside_check ? parseInt(processValues.inside_check) : 0,
         top_side_check: processValues.top_side_check ? parseInt(processValues.top_side_check) : 0,
@@ -324,6 +327,10 @@ export default function FinishingDailyOutput() {
         poly: processValues.poly ? parseInt(processValues.poly) : 0,
         carton: processValues.carton ? parseInt(processValues.carton) : 0,
         remarks: remarks || null,
+        m_power_actual: parseInt(mPowerActual) || 0,
+        actual_hours: parseFloat(actualHours),
+        ot_hours_actual: parseFloat(otHoursActual) || 0,
+        ot_manpower_actual: parseInt(otManpowerActual) || 0,
         submitted_by: user.id,
       };
 
@@ -356,7 +363,7 @@ export default function FinishingDailyOutput() {
 
         if (error) {
           if (error.code === "23505") {
-            toast.error("Output already submitted for this date and line. You can edit the existing entry.");
+            toast.error("Output already submitted for this date and PO. You can edit the existing entry.");
             checkExistingLogs();
             return;
           }
@@ -372,25 +379,21 @@ export default function FinishingDailyOutput() {
       }
     } catch (error: any) {
       console.error("Error submitting output:", error);
-      toast.error(error.message || "Failed to submit output");
+      toast.error(error?.message || "Failed to submit output");
     } finally {
       setSubmitting(false);
     }
   }
 
   const calculateTotal = () => {
-    return PROCESS_CATEGORIES.reduce((sum, cat) => {
-      const val = parseInt(processValues[cat.key]) || 0;
-      return sum + val;
-    }, 0);
+    // Total output = Poly (primary finishing metric)
+    return parseInt(processValues.poly) || 0;
   };
 
   const calculateTargetTotal = () => {
+    // Total target = Poly (primary finishing metric)
     if (!targetLog) return 0;
-    return PROCESS_CATEGORIES.reduce((sum, cat) => {
-      const val = (targetLog as any)[cat.key] || 0;
-      return sum + val;
-    }, 0);
+    return (targetLog as any).poly || 0;
   };
 
   const getVariance = (key: ProcessKey): number => {
@@ -426,101 +429,91 @@ export default function FinishingDailyOutput() {
   }
 
   return (
-    <div className="container max-w-2xl py-4 px-4 pb-8">
+    <div className="container max-w-2xl py-3 md:py-4 lg:py-6 px-4 pb-8">
       <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
+        <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+          <ClipboardCheck className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+        </div>
         <div>
-          <h1 className="text-xl font-bold">{t("nav.finishingDailyOutput")}</h1>
-          <p className="text-sm text-muted-foreground">
-            Record end-of-day production output
-          </p>
+          <h1 className="text-xl md:text-2xl font-bold">{t("nav.finishingDailyOutput")}</h1>
+          <p className="text-sm text-muted-foreground">Record end-of-day production output</p>
         </div>
       </div>
 
       {isEditing && existingLog && (
         <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-          <p className="text-sm text-amber-800 dark:text-amber-200">
-            ✏️ Editing existing output for today
-          </p>
+          <p className="text-sm text-amber-800 dark:text-amber-200">Editing existing output for today</p>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Line & PO Selection */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Select Line & PO</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Line No. *</Label>
-              <Select value={selectedLineId} onValueChange={setSelectedLineId}>
-                <SelectTrigger className={errors.line ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select line" />
-                </SelectTrigger>
-                <SelectContent>
-                  {lines.map((line) => (
-                    <SelectItem key={line.id} value={line.id}>
-                      {line.name || line.line_id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.line && <p className="text-sm text-destructive">{errors.line}</p>}
-            </div>
+      <form onSubmit={handleSubmit}>
+      <div className="rounded-xl border border-border/50 bg-card p-5 md:p-6 space-y-6">
+        {/* PO Selection */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground">Select PO</p>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">PO Number *</Label>
+              <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className={`w-full justify-start ${errors.workOrder ? 'border-destructive' : ''}`}
+                  >
+                    <Search className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {selectedWorkOrderId
+                        ? (() => {
+                            const wo = workOrders.find(w => w.id === selectedWorkOrderId);
+                            return wo ? `${wo.po_number} - ${wo.style}` : "Select PO";
+                          })()
+                        : "Select PO"}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[min(350px,calc(100vw-2rem))] p-0" align="start">
+                  <Command shouldFilter={true}>
+                    <CommandInput placeholder="Search PO, buyer, style..." />
+                    <CommandList>
+                      <CommandEmpty>No PO found.</CommandEmpty>
+                      <CommandGroup>
+                        {workOrders.map((wo) => (
+                          <CommandItem
+                            key={wo.id}
+                            value={`${wo.po_number} ${wo.buyer} ${wo.style} ${wo.item || ''}`}
+                            onSelect={() => {
+                              setSelectedWorkOrderId(wo.id);
+                              setPoSearchOpen(false);
+                            }}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-medium">{wo.po_number} - {wo.style}</span>
+                              <span className="text-xs text-muted-foreground">{wo.buyer}{wo.item ? ` / ${wo.item}` : ''}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {errors.workOrder && <p className="text-xs text-destructive">{errors.workOrder}</p>}
+          </div>
+        </div>
 
-            <div className="space-y-2">
-              <Label>PO Number *</Label>
-              <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-                <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select PO" />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredWorkOrders.map((wo) => (
-                    <SelectItem key={wo.id} value={wo.id}>
-                      {wo.po_number} - {wo.style}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Order Details (if PO selected) */}
+        {/* Order Details */}
         {selectedWorkOrder && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Order Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Buyer:</span>
-                  <p className="font-medium">{selectedWorkOrder.buyer}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Style:</span>
-                  <p className="font-medium">{selectedWorkOrder.style}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Item:</span>
-                  <p className="font-medium">{selectedWorkOrder.item || "-"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Order Qty:</span>
-                  <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="rounded-lg bg-muted/30 border border-border/40 px-4 py-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-[11px] text-muted-foreground">Buyer</span><p className="font-medium">{selectedWorkOrder.buyer}</p></div>
+              <div><span className="text-[11px] text-muted-foreground">Style</span><p className="font-medium">{selectedWorkOrder.style}</p></div>
+              <div><span className="text-[11px] text-muted-foreground">Order Qty</span><p className="font-medium font-mono">{selectedWorkOrder.order_qty.toLocaleString()}</p></div>
+            </div>
+          </div>
         )}
 
         {/* Target vs Output Comparison (if target exists) */}
-        {targetLog && selectedLineId && (
+        {targetLog && (
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center justify-between">
@@ -560,57 +553,88 @@ export default function FinishingDailyOutput() {
                     <VarianceIndicator variance={calculateTotal() - calculateTargetTotal()} />
                   </div>
                 </div>
+                {(targetLog?.planned_hours != null || actualHours) && (
+                  <div className="border-t pt-2 mt-2 grid grid-cols-4 gap-2 text-sm">
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3 text-muted-foreground" />
+                      Hours
+                    </div>
+                    <div className="text-right text-muted-foreground">{targetLog?.planned_hours ?? "—"}</div>
+                    <div className="text-right font-medium">{actualHours || "—"}</div>
+                    <div className="text-right">
+                      {targetLog?.planned_hours != null && actualHours ? (
+                        <VarianceIndicator variance={parseFloat(actualHours) - targetLog.planned_hours} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
         )}
 
+        <div className="border-t border-border/40" />
+
         {/* Process Category Outputs */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center justify-between">
-              <span>End-of-Day Output by Process</span>
-              <span className="text-sm font-normal text-muted-foreground">
-                Total: {calculateTotal().toLocaleString()} pcs
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {errors.processes && (
-              <p className="text-sm text-destructive mb-4">{errors.processes}</p>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              {PROCESS_CATEGORIES.map((cat) => {
-                const Icon = cat.icon;
-                const variance = getVariance(cat.key);
-                const hasTarget = targetLog !== null;
-                
-                return (
-                  <div key={cat.key} className="space-y-2">
-                    <Label className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                        {cat.label}
-                      </span>
-                      {hasTarget && processValues[cat.key] && (
-                        <span className="text-xs">
-                          <VarianceIndicator variance={variance} />
-                        </span>
-                      )}
-                    </Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={processValues[cat.key]}
-                      onChange={(e) => handleProcessValueChange(cat.key, e.target.value)}
-                      placeholder={targetLog ? `Target: ${(targetLog as any)[cat.key] || 0}` : "0"}
-                    />
-                  </div>
-                );
-              })}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wider text-foreground">End-of-Day Output by Process</p>
+            <span className="text-xs font-mono text-muted-foreground">Total: {calculateTotal().toLocaleString()} pcs</span>
+          </div>
+          {errors.processes && <p className="text-xs text-destructive mb-3">{errors.processes}</p>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {PROCESS_CATEGORIES.map((cat) => {
+              const Icon = cat.icon;
+              const variance = getVariance(cat.key);
+              const hasTarget = targetLog !== null;
+              return (
+                <div key={cat.key} className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                      {cat.label}
+                    </span>
+                    {hasTarget && processValues[cat.key] && (
+                      <span className="text-[11px]"><VarianceIndicator variance={variance} /></span>
+                    )}
+                  </Label>
+                  <Input type="number" min="0" value={processValues[cat.key]} onChange={(e) => handleProcessValueChange(cat.key, e.target.value)} placeholder={targetLog ? `Target: ${(targetLog as any)[cat.key] || 0}` : "0"} className="h-10" />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-border/40" />
+
+        {/* Manpower & Hours */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground">Manpower & Hours</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">M Power Actual *</Label>
+              <Input type="number" min="1" value={mPowerActual} onChange={(e) => setMPowerActual(e.target.value)} placeholder="0" className={`h-10 ${errors.mPowerActual ? "border-destructive" : ""}`} />
+              {errors.mPowerActual && <p className="text-xs text-destructive">{errors.mPowerActual}</p>}
             </div>
-          </CardContent>
-        </Card>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Actual Hours Worked *</Label>
+              <Input type="number" step="0.5" min="0.5" max="24" value={actualHours} onChange={(e) => setActualHours(e.target.value)} placeholder={targetLog?.planned_hours ? `Planned: ${targetLog.planned_hours}h` : "e.g. 8"} className={`h-10 ${errors.actualHours ? "border-destructive" : ""}`} />
+              {errors.actualHours && <p className="text-xs text-destructive">{errors.actualHours}</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">OT Hours Actual</Label>
+              <Input type="number" step="0.5" value={otHoursActual} onChange={(e) => setOtHoursActual(e.target.value)} placeholder="0" className="h-10" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">OT Manpower Actual</Label>
+              <Input type="number" value={otManpowerActual} onChange={(e) => setOtManpowerActual(e.target.value)} placeholder="0" className="h-10" />
+            </div>
+          </div>
+        </div>
 
         {/* Order Progress - appears when Carton has value */}
         {selectedWorkOrder && processValues.carton && parseInt(processValues.carton) > 0 && (
@@ -623,7 +647,7 @@ export default function FinishingDailyOutput() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Order Qty:</span>
                     <p className="text-lg font-bold">{selectedWorkOrder.order_qty.toLocaleString()}</p>
@@ -634,14 +658,14 @@ export default function FinishingDailyOutput() {
                   </div>
                 </div>
                 <div className="border-t pt-3">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="text-muted-foreground">Today's Carton Entry:</span>
-                      <p className="text-lg font-bold text-primary font-mono">+{parseInt(processValues.carton).toLocaleString()}</p>
+                      <span className="text-muted-foreground">Today's Poly Entry:</span>
+                      <p className="text-lg font-bold text-primary font-mono">+{parseInt(processValues.poly).toLocaleString()}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">New Total Carton:</span>
-                      <p className="text-lg font-bold font-mono">{(previousCartonTotal + parseInt(processValues.carton)).toLocaleString()}</p>
+                      <span className="text-muted-foreground">New Total Poly:</span>
+                      <p className="text-lg font-bold font-mono">{(previousCartonTotal + parseInt(processValues.poly)).toLocaleString()}</p>
                     </div>
                   </div>
                 </div>
@@ -649,7 +673,7 @@ export default function FinishingDailyOutput() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Remaining:</span>
                     {(() => {
-                      const newTotal = previousCartonTotal + parseInt(processValues.carton);
+                      const newTotal = previousCartonTotal + parseInt(processValues.poly);
                       const remaining = selectedWorkOrder.order_qty - newTotal;
                       return (
                         <span className={cn("text-lg font-bold font-mono", remaining > 0 ? "text-amber-600" : remaining < 0 ? "text-green-600" : "text-green-600")}>
@@ -663,17 +687,17 @@ export default function FinishingDailyOutput() {
                     <div 
                       className={cn(
                         "h-full rounded-full transition-all",
-                        (previousCartonTotal + parseInt(processValues.carton)) >= selectedWorkOrder.order_qty 
+                        (previousCartonTotal + parseInt(processValues.poly)) >= selectedWorkOrder.order_qty 
                           ? "bg-green-500" 
                           : "bg-primary"
                       )}
                       style={{ 
-                        width: `${Math.min(100, ((previousCartonTotal + parseInt(processValues.carton)) / selectedWorkOrder.order_qty) * 100)}%` 
+                        width: `${Math.min(100, ((previousCartonTotal + parseInt(processValues.poly)) / selectedWorkOrder.order_qty) * 100)}%` 
                       }}
                     />
                   </div>
                   <p className="text-xs text-muted-foreground mt-1 text-right">
-                    {((previousCartonTotal + parseInt(processValues.carton)) / selectedWorkOrder.order_qty * 100).toFixed(1)}% of order
+                    {((previousCartonTotal + parseInt(processValues.poly)) / selectedWorkOrder.order_qty * 100).toFixed(1)}% of order
                   </p>
                 </div>
               </div>
@@ -681,46 +705,24 @@ export default function FinishingDailyOutput() {
           </Card>
         )}
 
+        <div className="border-t border-border/40" />
+
         {/* Remarks */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Notes (Optional)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Any notes about today's production..."
-              rows={3}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Submit Button */}
-        <div className="mt-6 pb-2">
-          <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                {isEditing ? "Updating..." : "Submitting..."}
-              </>
-            ) : (
-              isEditing ? "Update End-of-Day Output" : "Submit End-of-Day Output"
-            )}
-          </Button>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">Remarks</Label>
+          <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Any notes about today's production..." rows={2} />
         </div>
-      </form>
-
-      {/* Link to hourly archive */}
-      <div className="mt-6 text-center">
-        <Button 
-          variant="link" 
-          className="text-muted-foreground"
-          onClick={() => navigate("/finishing/hourly-archive")}
-        >
-          View Hourly Log (Archive)
-        </Button>
       </div>
+
+        {/* Submit */}
+        <Button type="submit" className="w-full h-11 font-semibold mt-5" disabled={submitting}>
+          {submitting ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {isEditing ? "Updating..." : "Submitting..."}</>
+          ) : (
+            isEditing ? "Update End-of-Day Output" : "Submit End-of-Day Output"
+          )}
+        </Button>
+      </form>
     </div>
   );
 }

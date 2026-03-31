@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { format } from "date-fns";
+import { useOfflineSubmission } from "@/hooks/useOfflineSubmission";
+import { isLateForCutoff, getTodayInTimezone } from "@/lib/date-utils";
 
 interface Line {
   id: string;
@@ -50,6 +62,7 @@ interface Floor {
 export default function FinishingMorningTargetsForm() {
   const navigate = useNavigate();
   const { user, profile, factory, isAdminOrHigher } = useAuth();
+  const { submit: offlineSubmit } = useOfflineSubmission();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -64,6 +77,7 @@ export default function FinishingMorningTargetsForm() {
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
   const [perHourTarget, setPerHourTarget] = useState("");
   const [mPowerPlanned, setMPowerPlanned] = useState("");
+  const [otManpowerPlanned, setOtManpowerPlanned] = useState("0");
   const [dayHourPlanned, setDayHourPlanned] = useState("");
   const [dayOverTimePlanned, setDayOverTimePlanned] = useState("0");
   const [remarks, setRemarks] = useState("");
@@ -74,6 +88,7 @@ export default function FinishingMorningTargetsForm() {
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [poSearchOpen, setPoSearchOpen] = useState(false);
 
   const filteredWorkOrders = useMemo(() => {
     if (!selectedLineId) return workOrders;
@@ -136,18 +151,37 @@ export default function FinishingMorningTargetsForm() {
     }
   }
 
+  const formSchema = z.object({
+    line: z.string().min(1, "Line is required"),
+    workOrder: z.string().min(1, "PO is required"),
+    perHourTarget: z.number().int().positive("Per hour target is required"),
+    mPowerPlanned: z.number().int().positive("M Power is required"),
+    otManpowerPlanned: z.number().int().min(0, "OT Manpower must be 0 or more"),
+    dayHourPlanned: z.number().min(0, "Day hours is required"),
+    dayOverTimePlanned: z.number().min(0, "OT hours must be 0 or more"),
+  });
+
   function validateForm(): boolean {
-    const newErrors: Record<string, string> = {};
+    const result = formSchema.safeParse({
+      line: selectedLineId,
+      workOrder: selectedWorkOrderId,
+      perHourTarget: parseInt(perHourTarget) || 0,
+      mPowerPlanned: parseInt(mPowerPlanned) || 0,
+      otManpowerPlanned: otManpowerPlanned === "" ? -1 : parseInt(otManpowerPlanned),
+      dayHourPlanned: parseFloat(dayHourPlanned) || -1,
+      dayOverTimePlanned: dayOverTimePlanned === "" ? -1 : parseFloat(dayOverTimePlanned),
+    });
 
-    if (!selectedLineId) newErrors.line = "Line is required";
-    if (!selectedWorkOrderId) newErrors.workOrder = "PO is required";
-    if (!perHourTarget || parseInt(perHourTarget) <= 0) newErrors.perHourTarget = "Per hour target is required";
-    if (!mPowerPlanned || parseInt(mPowerPlanned) <= 0) newErrors.mPowerPlanned = "M Power is required";
-    if (!dayHourPlanned || parseFloat(dayHourPlanned) < 0) newErrors.dayHourPlanned = "Day hours is required";
-    if (dayOverTimePlanned === "" || parseFloat(dayOverTimePlanned) < 0) newErrors.dayOverTimePlanned = "OT hours must be 0 or more";
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!result.success) {
+      const newErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) newErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(newErrors);
+      return false;
+    }
+    setErrors({});
+    return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -166,18 +200,15 @@ export default function FinishingMorningTargetsForm() {
     setSubmitting(true);
 
     try {
-      let isLate = false;
-      if (factory?.morning_target_cutoff) {
-        const now = new Date();
-        const [cutoffHour, cutoffMinute] = factory.morning_target_cutoff.split(':').map(Number);
-        const cutoffTime = new Date();
-        cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
-        isLate = now > cutoffTime;
-      }
+      // Check if submission is late (using factory timezone)
+      const timezone = factory?.timezone || "Asia/Dhaka";
+      const isLate = factory?.morning_target_cutoff
+        ? isLateForCutoff(factory.morning_target_cutoff, timezone)
+        : false;
 
       const insertData = {
         factory_id: profile.factory_id,
-        production_date: format(new Date(), "yyyy-MM-dd"),
+        production_date: getTodayInTimezone(timezone),
         submitted_by: user.id,
         line_id: selectedLineId,
         work_order_id: selectedWorkOrderId,
@@ -189,25 +220,38 @@ export default function FinishingMorningTargetsForm() {
         order_qty: selectedWorkOrder?.order_qty || 0,
         per_hour_target: parseInt(perHourTarget),
         m_power_planned: parseInt(mPowerPlanned),
+        ot_manpower_planned: parseInt(otManpowerPlanned) || 0,
         day_hour_planned: parseFloat(dayHourPlanned),
         day_over_time_planned: parseFloat(dayOverTimePlanned),
         remarks: remarks || null,
         is_late: isLate,
       };
 
-      const { error } = await supabase.from("finishing_targets").insert(insertData as any);
+      const result = await offlineSubmit("finishing_targets", "finishing_targets", insertData as Record<string, unknown>, {
+        showSuccessToast: false,
+        showQueuedToast: true,
+      });
 
-      if (error) {
-        if (error.code === "23505") {
+      if (result.queued) {
+        if (isAdminOrHigher()) {
+          navigate("/dashboard");
+        } else {
+          navigate("/my-submissions");
+        }
+        return;
+      }
+
+      if (!result.success) {
+        if (result.error?.includes("duplicate") || result.error?.includes("23505")) {
           toast.error("Target already submitted for this line and PO today");
         } else {
-          throw error;
+          throw new Error(result.error);
         }
         return;
       }
 
       toast.success("Finishing targets submitted successfully!");
-      
+
       if (isAdminOrHigher()) {
         navigate("/dashboard");
       } else {
@@ -215,7 +259,7 @@ export default function FinishingMorningTargetsForm() {
       }
     } catch (error: any) {
       console.error("Error submitting targets:", error);
-      toast.error(error.message || "Failed to submit targets");
+      toast.error(error?.message || "Failed to submit targets");
     } finally {
       setSubmitting(false);
     }
@@ -238,11 +282,11 @@ export default function FinishingMorningTargetsForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {/* Line & PO Selection */}
-      <Card>
+      <Card className="border-border/50">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Select Line & PO</CardTitle>
+          <CardTitle className="text-sm font-semibold">Select Line & PO</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -264,18 +308,50 @@ export default function FinishingMorningTargetsForm() {
 
           <div className="space-y-2">
             <Label>PO Number *</Label>
-            <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-              <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select PO" />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredWorkOrders.map((wo) => (
-                  <SelectItem key={wo.id} value={wo.id}>
-                    {wo.po_number} - {wo.style}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className={`w-full justify-start ${errors.workOrder ? 'border-destructive' : ''}`}
+                >
+                  <Search className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">
+                    {selectedWorkOrderId
+                      ? (() => {
+                          const wo = filteredWorkOrders.find(w => w.id === selectedWorkOrderId);
+                          return wo ? `${wo.po_number} - ${wo.style}` : "Select PO";
+                        })()
+                      : "Select PO"}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[min(350px,calc(100vw-2rem))] p-0" align="start">
+                <Command shouldFilter={true}>
+                  <CommandInput placeholder="Search PO, buyer, style..." />
+                  <CommandList>
+                    <CommandEmpty>No PO found.</CommandEmpty>
+                    <CommandGroup>
+                      {filteredWorkOrders.map((wo) => (
+                        <CommandItem
+                          key={wo.id}
+                          value={`${wo.po_number} ${wo.buyer} ${wo.style} ${wo.item || ''}`}
+                          onSelect={() => {
+                            setSelectedWorkOrderId(wo.id);
+                            setPoSearchOpen(false);
+                          }}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{wo.po_number} - {wo.style}</span>
+                            <span className="text-xs text-muted-foreground">{wo.buyer}{wo.item ? ` / ${wo.item}` : ''}</span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
           </div>
         </CardContent>
@@ -283,45 +359,47 @@ export default function FinishingMorningTargetsForm() {
 
       {/* Auto-filled Details */}
       {selectedWorkOrder && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Order Details (Auto-filled)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Buyer:</span>
-                <p className="font-medium">{selectedWorkOrder.buyer}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Style:</span>
-                <p className="font-medium">{selectedWorkOrder.style}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Item:</span>
-                <p className="font-medium">{selectedWorkOrder.item || "-"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Order Qty:</span>
-                <p className="font-medium">{selectedWorkOrder.order_qty.toLocaleString()}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Unit:</span>
-                <p className="font-medium">{unitName || "-"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Floor:</span>
-                <p className="font-medium">{floorName || "-"}</p>
-              </div>
+        <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Order Details</p>
+          <div className="grid grid-cols-3 gap-x-6 gap-y-2 text-sm">
+            <div>
+              <span className="text-xs text-muted-foreground">Buyer</span>
+              <p className="font-medium">{selectedWorkOrder.buyer}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div>
+              <span className="text-xs text-muted-foreground">Style</span>
+              <p className="font-medium">{selectedWorkOrder.style}</p>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Order Qty</span>
+              <p className="font-medium font-mono">{selectedWorkOrder.order_qty.toLocaleString()}</p>
+            </div>
+            {selectedWorkOrder.item && (
+              <div>
+                <span className="text-xs text-muted-foreground">Item</span>
+                <p className="font-medium">{selectedWorkOrder.item}</p>
+              </div>
+            )}
+            {unitName && (
+              <div>
+                <span className="text-xs text-muted-foreground">Unit</span>
+                <p className="font-medium">{unitName}</p>
+              </div>
+            )}
+            {floorName && (
+              <div>
+                <span className="text-xs text-muted-foreground">Floor</span>
+                <p className="font-medium">{floorName}</p>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Target Fields */}
-      <Card>
+      <Card className="border-border/50">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Today's Targets</CardTitle>
+          <CardTitle className="text-sm font-semibold">Today's Targets</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -377,13 +455,25 @@ export default function FinishingMorningTargetsForm() {
               {errors.dayOverTimePlanned && <p className="text-sm text-destructive">{errors.dayOverTimePlanned}</p>}
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>OT Manpower Planned</Label>
+              <Input
+                type="number"
+                value={otManpowerPlanned}
+                onChange={(e) => setOtManpowerPlanned(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
       {/* Optional Fields */}
-      <Card>
+      <Card className="border-border/50">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Optional</CardTitle>
+          <CardTitle className="text-sm font-semibold">Optional</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -400,7 +490,7 @@ export default function FinishingMorningTargetsForm() {
 
       {/* Submit Button */}
       <div className="mt-6 pb-2">
-        <Button type="submit" className="w-full h-12 text-base font-medium" disabled={submitting}>
+        <Button type="submit" className="w-full h-11 text-sm font-semibold" disabled={submitting}>
           {submitting ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />

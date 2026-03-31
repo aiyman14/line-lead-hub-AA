@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "@/contexts/AuthContext";
+import { getTodayInTimezone } from "@/lib/date-utils";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,6 +12,7 @@ import FinishingEndOfDayForm from "@/components/forms/FinishingEndOfDayForm";
 export default function EndOfDay() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const { factory } = useAuth();
   const [activeTab, setActiveTab] = useState("sewing");
 
   const dateLocale = i18n.language === 'bn' ? 'bn-BD' : 'en-US';
@@ -23,7 +26,7 @@ export default function EndOfDay() {
         <div>
           <h1 className="text-xl font-bold">{t("forms.endOfDayOutput")}</h1>
           <p className="text-sm text-muted-foreground">
-            {new Date().toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date(getTodayInTimezone(factory?.timezone || "Asia/Dhaka") + "T00:00:00").toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
       </div>

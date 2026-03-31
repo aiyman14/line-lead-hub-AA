@@ -7,16 +7,26 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2, Factory, ArrowRight, KeyRound } from "lucide-react";
+import { toast } from "sonner";
+import { Loader2, ArrowRight, KeyRound } from "lucide-react";
+import { SewingMachine } from "@/components/icons/SewingMachine";
+import { Checkbox } from "@/components/ui/checkbox";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { checkRateLimit } from "@/lib/security";
+import { getRememberMe } from "@/lib/auth-storage";
+
 import { getPasswordResetRedirectUrl } from "@/lib/capacitor";
 import logoSvg from "@/assets/logo.svg";
+import i18n from "@/i18n/config";
+
+const strongPassword = z.string()
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[a-z]/, "Must contain a lowercase letter")
+  .regex(/[A-Z]/, "Must contain an uppercase letter")
+  .regex(/[0-9]/, "Must contain a number");
 
 const passwordSchema = z.object({
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: strongPassword,
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
@@ -25,13 +35,13 @@ const passwordSchema = z.object({
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string().min(1, "Password is required"),
 });
 
 const signupSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: strongPassword,
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
@@ -41,10 +51,25 @@ const signupSchema = z.object({
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
-  const { signIn, signUp, user, profile, hasRole, isAdminOrHigher, loading: authLoading } = useAuth();
+  const { signIn, signUp, signOut, user, profile, roles, hasRole, isAdminOrHigher, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { toast } = useToast();
+
+
+  // Force English language on Auth page since it doesn't support translations
+  useEffect(() => {
+    if (i18n.language !== 'en') {
+      i18n.changeLanguage('en');
+    }
+    document.documentElement.lang = 'en';
+
+    return () => {
+      const savedLanguage = localStorage.getItem('app-language');
+      if (savedLanguage && savedLanguage !== 'en') {
+        i18n.changeLanguage(savedLanguage);
+      }
+    };
+  }, []);
 
   const isForcedPasswordReset =
     typeof window !== "undefined" && sessionStorage.getItem("pp_force_password_reset") === "1";
@@ -86,6 +111,7 @@ export default function Auth() {
 
     if (user && !isPasswordResetMode) {
       if (profile?.factory_id) {
+        // User has factory access - redirect to appropriate page
         // Check for cutting role first
         if (hasRole("cutting")) {
           navigate("/cutting/submissions", { replace: true });
@@ -97,27 +123,54 @@ export default function Auth() {
           return;
         }
 
-        // Finishing workers land on the Finishing Daily Sheet
-        if (profile.department === "finishing") {
-          navigate("/finishing/daily-sheet", { replace: true });
+        // Admins and owners always go to dashboard
+        if (isAdminOrHigher()) {
+          navigate("/dashboard", { replace: true });
           return;
         }
 
-        const isWorker =
-          profile.department != null ||
-          (hasRole("worker") && !isAdminOrHigher());
+        // Standalone sewing role
+        if (hasRole("sewing")) {
+          navigate("/sewing/morning-targets", { replace: true });
+          return;
+        }
 
-        navigate(isWorker ? "/sewing/morning-targets" : "/dashboard", { replace: true });
-      } else if (profile) {
+        // Standalone finishing role
+        if (hasRole("finishing")) {
+          navigate("/finishing/daily-target", { replace: true });
+          return;
+        }
+
+        // Legacy: finishing department workers
+        if (profile.department === "finishing") {
+          navigate("/finishing/daily-target", { replace: true });
+          return;
+        }
+
+        // Legacy: sewing department workers
+        if (hasRole("worker")) {
+          navigate("/sewing/morning-targets", { replace: true });
+          return;
+        }
+
+        // No recognized role — go to index which shows an informative message
+        navigate("/", { replace: true });
+      } else if (profile && !profile.is_active) {
+        // User account is deactivated
+        toast.error("Account Deactivated", { description: "Your account has been deactivated. Please contact your administrator." });
+        signOut().catch(console.error);
+      } else if (!profile || profile.factory_id === null) {
+        // User without profile or without factory - redirect to subscription
         navigate("/subscription", { replace: true });
       }
     }
-  }, [authLoading, user, profile, navigate, isPasswordResetMode, hasRole, isAdminOrHigher, isForcedPasswordReset]);
+  }, [authLoading, user, profile, navigate, isPasswordResetMode, hasRole, isAdminOrHigher, isForcedPasswordReset, signOut]);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
+  const [rememberMe, setRememberMe] = useState(getRememberMe);
 
   // Signup form state
   const [signupName, setSignupName] = useState("");
@@ -140,10 +193,7 @@ export default function Auth() {
     const resetSuccess = params.get("reset") === "success";
 
     if (resetSuccess) {
-      toast({
-        title: "Password updated",
-        description: "Please sign in with your new password.",
-      });
+      toast.success("Password updated", { description: "Please sign in with your new password." });
     }
 
     if (shouldOpenForgot) {
@@ -154,17 +204,13 @@ export default function Auth() {
     if (resetSuccess || shouldOpenForgot) {
       navigate("/auth", { replace: true });
     }
-  }, [location.search, navigate, toast]);
+  }, [location.search, navigate]);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!forgotPasswordEmail || !z.string().email().safeParse(forgotPasswordEmail).success) {
-      toast({
-        variant: "destructive",
-        title: "Invalid email",
-        description: "Please enter a valid email address.",
-      });
+      toast.error("Invalid email", { description: "Please enter a valid email address." });
       return;
     }
 
@@ -175,16 +221,9 @@ export default function Auth() {
     setForgotPasswordLoading(false);
 
     if (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
+      toast.error("Error", { description: error.message });
     } else {
-      toast({
-        title: "Check your email",
-        description: "We've sent you a password reset link.",
-      });
+      toast.success("Check your email", { description: "We've sent you a password reset link." });
       setForgotPasswordOpen(false);
       setForgotPasswordEmail("");
     }
@@ -212,16 +251,9 @@ export default function Auth() {
     setResetPasswordLoading(false);
 
     if (error) {
-      toast({
-        variant: "destructive",
-        title: "Error updating password",
-        description: error.message,
-      });
+      toast.error("Error updating password", { description: error.message });
     } else {
-      toast({
-        title: "Password updated!",
-        description: "Your password has been successfully updated.",
-      });
+      toast.success("Password updated!", { description: "Your password has been successfully updated." });
       setIsPasswordResetMode(false);
       setNewPassword("");
       setConfirmNewPassword("");
@@ -250,34 +282,17 @@ export default function Auth() {
 
     setIsLoading(true);
 
-    // Check rate limit before attempting login
-    const rateLimitResult = await checkRateLimit("login", loginEmail);
-    if (!rateLimitResult.allowed) {
-      setIsLoading(false);
-      toast({
-        variant: "destructive",
-        title: "Too many attempts",
-        description: rateLimitResult.error || "Please wait before trying again.",
-      });
-      return;
-    }
-
-    const { error } = await signIn(loginEmail, loginPassword);
+    const { error } = await signIn(loginEmail, loginPassword, rememberMe);
     setIsLoading(false);
 
     if (error) {
-      toast({
-        variant: "destructive",
-        title: "Login failed",
+      toast.error("Login failed", {
         description: error.message === "Invalid login credentials"
           ? "Invalid email or password. Please try again."
           : error.message,
       });
     } else {
-      toast({
-        title: "Welcome back!",
-        description: "You have successfully logged in.",
-      });
+      toast.success("Welcome back!", { description: "You have successfully logged in." });
       // Navigation will happen via the redirect useEffect once profile/roles are loaded
     }
   };
@@ -310,43 +325,32 @@ export default function Auth() {
 
     if (error) {
       if (error.message.includes("already registered")) {
-        toast({
-          variant: "destructive",
-          title: "Account exists",
-          description: "An account with this email already exists. Please log in instead.",
-        });
+        toast.error("Account exists", { description: "An account with this email already exists. Please log in instead." });
         setActiveTab("login");
         setLoginEmail(signupEmail);
       } else {
-        toast({
-          variant: "destructive",
-          title: "Signup failed",
-          description: error.message,
-        });
+        toast.error("Signup failed", { description: error.message });
       }
     } else {
-      toast({
-        title: "Account created!",
-        description: "Welcome to Production Portal.",
-      });
-      // New users need to choose subscription/trial
+      toast.success("Account created!", { description: "Welcome to ProductionPortal." });
+      // New users go to subscription page (native shows AccountNotActive)
       navigate("/subscription");
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background" style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif" }}>
       {/* Hero section */}
       <div className="gradient-industrial text-sidebar-foreground py-12 px-4">
         <div className="container mx-auto max-w-6xl flex flex-col items-center text-center">
           <div className="flex items-center gap-4 mb-4">
             <img 
               src={logoSvg} 
-              alt="Production Portal" 
+              alt="ProductionPortal" 
               className="h-16 w-16 rounded-xl"
             />
             <div className="text-left">
-              <h1 className="text-2xl font-bold">Production Portal</h1>
+              <h1 className="text-2xl font-bold">ProductionPortal</h1>
               <p className="text-sm text-sidebar-foreground/60">Powered by WovenTex</p>
             </div>
           </div>
@@ -379,8 +383,10 @@ export default function Auth() {
                     <Label htmlFor="new-password">New Password</Label>
                     <Input
                       id="new-password"
+                      name="new-password"
                       type="password"
-                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      placeholder="Enter your password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       className="h-11"
@@ -394,8 +400,10 @@ export default function Auth() {
                     <Label htmlFor="confirm-new-password">Confirm New Password</Label>
                     <Input
                       id="confirm-new-password"
+                      name="confirm-password"
                       type="password"
-                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      placeholder="Confirm your password"
                       value={confirmNewPassword}
                       onChange={(e) => setConfirmNewPassword(e.target.value)}
                       className="h-11"
@@ -447,7 +455,9 @@ export default function Auth() {
                         <Label htmlFor="login-email">Email</Label>
                         <Input
                           id="login-email"
+                          name="email"
                           type="email"
+                          autoComplete="username"
                           placeholder="you@example.com"
                           value={loginEmail}
                           onChange={(e) => setLoginEmail(e.target.value)}
@@ -462,8 +472,10 @@ export default function Auth() {
                         <Label htmlFor="login-password">Password</Label>
                         <Input
                           id="login-password"
+                          name="password"
                           type="password"
-                          placeholder="••••••••"
+                          autoComplete="current-password"
+                          placeholder="Enter your password"
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
                           className="h-11"
@@ -473,6 +485,63 @@ export default function Auth() {
                           <p className="text-sm text-destructive">{loginErrors.password}</p>
                         )}
                       </div>
+
+                      {/* Remember me + Forgot password row */}
+                      <div className="flex items-start justify-between">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="remember-me"
+                              checked={rememberMe}
+                              onCheckedChange={(checked) => setRememberMe(checked === true)}
+                              disabled={isLoading}
+                            />
+                            <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
+                              Remember me
+                            </Label>
+                          </div>
+                        </div>
+
+                        <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
+                          <DialogTrigger asChild>
+                            <Button variant="link" type="button" className="px-0 h-auto text-sm text-muted-foreground hover:text-primary">
+                              Forgot password?
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Reset Password</DialogTitle>
+                              <DialogDescription>
+                                Enter your email address and we'll send you a link to reset your password.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleForgotPassword} className="space-y-4 mt-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="forgot-email">Email</Label>
+                                <Input
+                                  id="forgot-email"
+                                  name="email"
+                                  type="email"
+                                  autoComplete="username"
+                                  placeholder="you@example.com"
+                                  value={forgotPasswordEmail}
+                                  onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                                  className="h-11"
+                                  disabled={forgotPasswordLoading}
+                                />
+                              </div>
+                              <Button type="submit" className="w-full h-11" disabled={forgotPasswordLoading}>
+                                {forgotPasswordLoading ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  "Send Reset Link"
+                                )}
+                              </Button>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+
                       <Button type="submit" className="w-full h-11" disabled={isLoading}>
                         {isLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -483,43 +552,6 @@ export default function Auth() {
                           </>
                         )}
                       </Button>
-                      
-                      <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
-                        <DialogTrigger asChild>
-                          <Button variant="link" type="button" className="w-full text-sm text-muted-foreground hover:text-primary">
-                            Forgot your password?
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Reset Password</DialogTitle>
-                            <DialogDescription>
-                              Enter your email address and we'll send you a link to reset your password.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <form onSubmit={handleForgotPassword} className="space-y-4 mt-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="forgot-email">Email</Label>
-                              <Input
-                                id="forgot-email"
-                                type="email"
-                                placeholder="you@example.com"
-                                value={forgotPasswordEmail}
-                                onChange={(e) => setForgotPasswordEmail(e.target.value)}
-                                className="h-11"
-                                disabled={forgotPasswordLoading}
-                              />
-                            </div>
-                            <Button type="submit" className="w-full h-11" disabled={forgotPasswordLoading}>
-                              {forgotPasswordLoading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                "Send Reset Link"
-                              )}
-                            </Button>
-                          </form>
-                        </DialogContent>
-                      </Dialog>
                     </form>
                   </TabsContent>
 
@@ -529,7 +561,9 @@ export default function Auth() {
                         <Label htmlFor="signup-name">Full Name</Label>
                         <Input
                           id="signup-name"
+                          name="name"
                           type="text"
+                          autoComplete="name"
                           placeholder="John Doe"
                           value={signupName}
                           onChange={(e) => setSignupName(e.target.value)}
@@ -544,7 +578,9 @@ export default function Auth() {
                         <Label htmlFor="signup-email">Email</Label>
                         <Input
                           id="signup-email"
+                          name="email"
                           type="email"
+                          autoComplete="username"
                           placeholder="you@example.com"
                           value={signupEmail}
                           onChange={(e) => setSignupEmail(e.target.value)}
@@ -559,8 +595,10 @@ export default function Auth() {
                         <Label htmlFor="signup-password">Password</Label>
                         <Input
                           id="signup-password"
+                          name="new-password"
                           type="password"
-                          placeholder="••••••••"
+                          autoComplete="new-password"
+                          placeholder="Enter your password"
                           value={signupPassword}
                           onChange={(e) => setSignupPassword(e.target.value)}
                           className="h-11"
@@ -574,8 +612,10 @@ export default function Auth() {
                         <Label htmlFor="signup-confirm">Confirm Password</Label>
                         <Input
                           id="signup-confirm"
+                          name="confirm-password"
                           type="password"
-                          placeholder="••••••••"
+                          autoComplete="new-password"
+                          placeholder="Confirm your password"
                           value={signupConfirmPassword}
                           onChange={(e) => setSignupConfirmPassword(e.target.value)}
                           className="h-11"
@@ -619,7 +659,7 @@ export default function Auth() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="flex flex-col items-center text-center p-6">
               <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-                <Factory className="h-6 w-6 text-primary" />
+                <SewingMachine className="h-6 w-6 text-primary" />
               </div>
               <h3 className="font-semibold mb-2">Real-time Tracking</h3>
               <p className="text-sm text-muted-foreground">

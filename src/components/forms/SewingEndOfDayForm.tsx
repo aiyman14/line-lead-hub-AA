@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { format } from "date-fns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { getTodayInTimezone } from "@/lib/date-utils";
+import { useOfflineSubmission } from "@/hooks/useOfflineSubmission";
+import { useHeadcountCost } from "@/hooks/useHeadcountCost";
+import { EstimatedCostDisplay } from "@/components/EstimatedCostDisplay";
 
 interface Line {
   id: string;
@@ -62,7 +75,9 @@ interface DropdownOption {
 export default function SewingEndOfDayForm() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { user, profile, isAdminOrHigher } = useAuth();
+  const { user, profile, factory, isAdminOrHigher } = useAuth();
+  const { submit: offlineSubmit } = useOfflineSubmission();
+  const { calculateEstimatedCost, headcountCost } = useHeadcountCost();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -82,6 +97,7 @@ export default function SewingEndOfDayForm() {
   const [reworkToday, setReworkToday] = useState("");
   const [cumulativeGoodTotal, setCumulativeGoodTotal] = useState("");
   const [manpowerActual, setManpowerActual] = useState("");
+  const [hoursActual, setHoursActual] = useState("");
   const [otHoursActual, setOtHoursActual] = useState("0");
   const [actualStageId, setActualStageId] = useState("");
   const [actualStageProgress, setActualStageProgress] = useState("");
@@ -93,6 +109,7 @@ export default function SewingEndOfDayForm() {
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [poSearchOpen, setPoSearchOpen] = useState(false);
 
   const filteredWorkOrders = useMemo(() => {
     if (!selectedLineId) return workOrders;
@@ -163,21 +180,44 @@ export default function SewingEndOfDayForm() {
   }
 
   function validateForm(): boolean {
-    const newErrors: Record<string, string> = {};
+    const formSchema = z.object({
+      line: z.string().min(1, t("forms.lineRequired")),
+      workOrder: z.string().min(1, t("forms.poRequired")),
+      goodToday: z.number().int().min(0, t("forms.goodOutputRequired")),
+      rejectToday: z.number().int().min(0, t("forms.rejectRequired")),
+      reworkToday: z.number().int().min(0, t("forms.reworkRequired")),
+      cumulativeGoodTotal: z.number().int().min(0, t("forms.cumulativeRequired")),
+      manpowerActual: z.number().int().positive(t("forms.manpowerRequired")),
+      hoursActual: z.number().min(0.5, "Hours actual is required").max(24, "Max 24 hours"),
+      otHoursActual: z.number().min(0, t("forms.otHoursRequired")),
+      actualStage: z.string().min(1, t("forms.stageRequired")),
+      actualStageProgress: z.string().min(1, t("forms.progressRequired")),
+    });
 
-    if (!selectedLineId) newErrors.line = t("forms.lineRequired");
-    if (!selectedWorkOrderId) newErrors.workOrder = t("forms.poRequired");
-    if (!goodToday || parseInt(goodToday) < 0) newErrors.goodToday = t("forms.goodOutputRequired");
-    if (!rejectToday || parseInt(rejectToday) < 0) newErrors.rejectToday = t("forms.rejectRequired");
-    if (!reworkToday || parseInt(reworkToday) < 0) newErrors.reworkToday = t("forms.reworkRequired");
-    if (!cumulativeGoodTotal || parseInt(cumulativeGoodTotal) < 0) newErrors.cumulativeGoodTotal = t("forms.cumulativeRequired");
-    if (!manpowerActual || parseInt(manpowerActual) <= 0) newErrors.manpowerActual = t("forms.manpowerRequired");
-    if (otHoursActual === "" || parseFloat(otHoursActual) < 0) newErrors.otHoursActual = t("forms.otHoursRequired");
-    if (!actualStageId) newErrors.actualStage = t("forms.stageRequired");
-    if (!actualStageProgress) newErrors.actualStageProgress = t("forms.progressRequired");
+    const result = formSchema.safeParse({
+      line: selectedLineId,
+      workOrder: selectedWorkOrderId,
+      goodToday: goodToday ? parseInt(goodToday) : -1,
+      rejectToday: rejectToday ? parseInt(rejectToday) : -1,
+      reworkToday: reworkToday ? parseInt(reworkToday) : -1,
+      cumulativeGoodTotal: cumulativeGoodTotal ? parseInt(cumulativeGoodTotal) : -1,
+      manpowerActual: parseInt(manpowerActual) || 0,
+      hoursActual: hoursActual === "" ? 0 : parseFloat(hoursActual),
+      otHoursActual: otHoursActual === "" ? -1 : parseFloat(otHoursActual),
+      actualStage: actualStageId,
+      actualStageProgress: actualStageProgress,
+    });
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!result.success) {
+      const newErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) newErrors[err.path[0] as string] = err.message;
+      });
+      setErrors(newErrors);
+      return false;
+    }
+    setErrors({});
+    return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -196,9 +236,11 @@ export default function SewingEndOfDayForm() {
     setSubmitting(true);
 
     try {
+      const estimatedCost = calculateEstimatedCost(parseInt(manpowerActual), parseFloat(hoursActual));
+
       const insertData = {
         factory_id: profile.factory_id,
-        production_date: format(new Date(), "yyyy-MM-dd"),
+        production_date: getTodayInTimezone(factory?.timezone || "Asia/Dhaka"),
         submitted_by: user.id,
         line_id: selectedLineId,
         work_order_id: selectedWorkOrderId,
@@ -213,25 +255,42 @@ export default function SewingEndOfDayForm() {
         rework_today: parseInt(reworkToday),
         cumulative_good_total: parseInt(cumulativeGoodTotal),
         manpower_actual: parseInt(manpowerActual),
+        hours_actual: parseFloat(hoursActual),
+        actual_per_hour: parseFloat(hoursActual) > 0 ? Math.round((parseInt(goodToday) / parseFloat(hoursActual)) * 100) / 100 : null,
         ot_hours_actual: parseFloat(otHoursActual),
+        ot_manpower_actual: 0,
         actual_stage_id: actualStageId,
         actual_stage_progress: parseInt(actualStageProgress),
         remarks: remarks || null,
+        estimated_cost_value: estimatedCost.value,
+        estimated_cost_currency: estimatedCost.value != null ? estimatedCost.currency : null,
       };
 
-      const { error } = await supabase.from("sewing_actuals").insert(insertData as any);
+      const result = await offlineSubmit("sewing_actuals", "sewing_actuals", insertData as Record<string, unknown>, {
+        showSuccessToast: false,
+        showQueuedToast: true,
+      });
 
-      if (error) {
-        if (error.code === "23505") {
+      if (result.queued) {
+        if (isAdminOrHigher()) {
+          navigate("/dashboard");
+        } else {
+          navigate("/my-submissions");
+        }
+        return;
+      }
+
+      if (!result.success) {
+        if (result.error?.includes("duplicate") || result.error?.includes("23505")) {
           toast.error(t("common.submissionFailed"));
         } else {
-          throw error;
+          throw new Error(result.error);
         }
         return;
       }
 
       toast.success(t("common.submissionSuccess"));
-      
+
       if (isAdminOrHigher()) {
         navigate("/dashboard");
       } else {
@@ -288,18 +347,50 @@ export default function SewingEndOfDayForm() {
 
           <div className="space-y-2">
             <Label>{t("forms.poNumber")} *</Label>
-            <Select value={selectedWorkOrderId} onValueChange={setSelectedWorkOrderId}>
-              <SelectTrigger className={errors.workOrder ? "border-destructive" : ""}>
-                <SelectValue placeholder={t("forms.selectPO")} />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredWorkOrders.map((wo) => (
-                  <SelectItem key={wo.id} value={wo.id}>
-                    {wo.po_number} - {wo.style}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className={`w-full justify-start ${errors.workOrder ? 'border-destructive' : ''}`}
+                >
+                  <Search className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">
+                    {selectedWorkOrderId
+                      ? (() => {
+                          const wo = filteredWorkOrders.find(w => w.id === selectedWorkOrderId);
+                          return wo ? `${wo.po_number} - ${wo.style}` : t("forms.selectPO");
+                        })()
+                      : t("forms.selectPO")}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[350px] p-0" align="start">
+                <Command shouldFilter={true}>
+                  <CommandInput placeholder={t("forms.selectPO")} />
+                  <CommandList>
+                    <CommandEmpty>No PO found.</CommandEmpty>
+                    <CommandGroup>
+                      {filteredWorkOrders.map((wo) => (
+                        <CommandItem
+                          key={wo.id}
+                          value={`${wo.po_number} ${wo.buyer} ${wo.style} ${wo.item || ''}`}
+                          onSelect={() => {
+                            setSelectedWorkOrderId(wo.id);
+                            setPoSearchOpen(false);
+                          }}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{wo.po_number} - {wo.style}</span>
+                            <span className="text-xs text-muted-foreground">{wo.buyer}{wo.item ? ` / ${wo.item}` : ''}</span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             {errors.workOrder && <p className="text-sm text-destructive">{errors.workOrder}</p>}
           </div>
         </CardContent>
@@ -414,6 +505,23 @@ export default function SewingEndOfDayForm() {
             </div>
 
             <div className="space-y-2">
+              <Label>Hours Actual *</Label>
+              <Input
+                type="number"
+                step="0.5"
+                min="0"
+                max="24"
+                value={hoursActual}
+                onChange={(e) => setHoursActual(e.target.value)}
+                placeholder="0"
+                className={errors.hoursActual ? "border-destructive" : ""}
+              />
+              {errors.hoursActual && <p className="text-sm text-destructive">{errors.hoursActual}</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
               <Label>{t("forms.otHoursActual")} *</Label>
               <Input
                 type="number"
@@ -426,6 +534,8 @@ export default function SewingEndOfDayForm() {
               {errors.otHoursActual && <p className="text-sm text-destructive">{errors.otHoursActual}</p>}
             </div>
           </div>
+
+          <EstimatedCostDisplay manpower={manpowerActual} hours={hoursActual} />
         </CardContent>
       </Card>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ export function DMGWarningModal({
   triggeredByUpdate = false,
   onClose 
 }: DMGWarningModalProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
 
@@ -120,27 +122,26 @@ export function DMGWarningModal({
               <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-500" />
             </div>
             <DialogTitle className="text-xl">
-              Install Required
+              {t('modals.installRequired')}
             </DialogTitle>
           </div>
           <DialogDescription className="text-base leading-relaxed">
-            Production Portal must be moved to Applications to enable updates. 
-            Please drag the app into your Applications folder and reopen it.
+            {t('modals.dmgDescription')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="my-4 rounded-lg bg-muted/50 p-4">
           <p className="text-sm text-muted-foreground">
-            <strong>How to install:</strong>
+            <strong>{t('modals.howToInstall')}</strong>
           </p>
           <ol className="mt-2 space-y-1 text-sm text-muted-foreground list-decimal list-inside">
-            <li>Click "Open Applications" below</li>
-            <li>Drag Production Portal into the Applications folder</li>
-            <li><strong>Eject the disk image</strong> (right-click → Eject, or drag to Trash)</li>
-            <li>Open the app from Applications</li>
+            <li>{t('modals.dmgStep1')}</li>
+            <li>{t('modals.dmgStep2')}</li>
+            <li><strong>{t('modals.dmgStep3')}</strong></li>
+            <li>{t('modals.dmgStep4')}</li>
           </ol>
           <p className="mt-3 text-xs text-amber-600 dark:text-amber-400 font-medium">
-            ⚠️ Important: You must eject the disk image for automatic updates to work!
+            ⚠️ {t('modals.dmgEjectWarning')}
           </p>
         </div>
 
@@ -151,14 +152,14 @@ export function DMGWarningModal({
             className="w-full sm:w-auto"
           >
             <LogOut className="h-4 w-4 mr-2" />
-            Quit
+            {t('modals.quit')}
           </Button>
           <Button
             onClick={handleOpenApplications}
             className="w-full sm:w-auto"
           >
             <FolderOpen className="h-4 w-4 mr-2" />
-            Open Applications
+            {t('modals.openApplications')}
           </Button>
         </DialogFooter>
       </DialogContent>

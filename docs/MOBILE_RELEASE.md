@@ -1,6 +1,6 @@
 # Mobile Release Guide (Capacitor + Android)
 
-This guide explains how to build, test, and release the Production Portal mobile app for Android (and optionally iOS).
+This guide explains how to build, test, and release the ProductionPortal mobile app for Android (and optionally iOS).
 
 ## Prerequisites
 
@@ -169,7 +169,7 @@ For consistency, you may want to match the version in:
 Add these to your Supabase project's **Authentication → URL Configuration → Redirect URLs**:
 
 ```
-https://phbehenczyryrlxmgjju.supabase.co/auth/v1/callback
+https://varolnwetchstlfholbl.supabase.co/auth/v1/callback
 productionportal://callback
 capacitor://localhost
 http://localhost

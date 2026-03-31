@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -48,14 +49,14 @@ interface HourlyEntryDialogProps {
 }
 
 const PROCESSES = [
-  { key: "thread_cutting", label: "Thread Cutting" },
-  { key: "inside_check", label: "Inside Check" },
-  { key: "top_side_check", label: "Top Side Check" },
-  { key: "buttoning", label: "Buttoning" },
-  { key: "iron", label: "Iron" },
-  { key: "get_up", label: "Get-up" },
-  { key: "poly", label: "Poly" },
-  { key: "carton", label: "Carton" },
+  { key: "thread_cutting", label: "threadCutting" },
+  { key: "inside_check", label: "insideCheck" },
+  { key: "top_side_check", label: "topSideCheck" },
+  { key: "buttoning", label: "buttoning" },
+  { key: "iron", label: "iron" },
+  { key: "get_up", label: "getUp" },
+  { key: "poly", label: "poly" },
+  { key: "carton", label: "carton" },
 ];
 
 export function HourlyEntryDialog({
@@ -66,6 +67,7 @@ export function HourlyEntryDialog({
   onSave,
   isAdmin,
 }: HourlyEntryDialogProps) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Record<string, number | string>>({});
 
@@ -127,24 +129,24 @@ export function HourlyEntryDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {existingLog ? "Edit" : "Log"} Hour: {hourSlot}
+            {existingLog ? t('modals.hourlyEditHour') : t('modals.hourlyLogHour')} {t('modals.hourlyHour')}: {hourSlot}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {isLocked && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
-              This hour is locked. Contact an admin to make changes.
+              {t('modals.hourlyLocked')}
             </div>
           )}
 
           <div className="grid grid-cols-1 gap-4">
             {PROCESSES.map(process => (
               <div key={process.key} className="border rounded-lg p-3">
-                <Label className="font-medium mb-2 block">{process.label}</Label>
+                <Label className="font-medium mb-2 block">{t('modals.' + process.label)}</Label>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Target</Label>
+                    <Label className="text-xs text-muted-foreground">{t('modals.target')}</Label>
                     <Input
                       type="number"
                       value={formData[`${process.key}_target`] || 0}
@@ -154,7 +156,7 @@ export function HourlyEntryDialog({
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Actual</Label>
+                    <Label className="text-xs text-muted-foreground">{t('modals.actual')}</Label>
                     <Input
                       type="number"
                       value={formData[`${process.key}_actual`] || 0}
@@ -169,11 +171,11 @@ export function HourlyEntryDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Remarks (Optional)</Label>
+            <Label>{t('modals.hourlyRemarksOptional')}</Label>
             <Textarea
               value={formData.remarks as string || ""}
               onChange={(e) => handleChange("remarks", e.target.value)}
-              placeholder="Any notes for this hour..."
+              placeholder={t('modals.hourlyRemarksPlaceholder')}
               rows={2}
               disabled={isLocked}
             />
@@ -182,16 +184,16 @@ export function HourlyEntryDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('modals.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={saving || isLocked}>
             {saving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t('modals.saving')}
               </>
             ) : (
-              "Save Hour"
+              t('modals.saveHour')
             )}
           </Button>
         </DialogFooter>

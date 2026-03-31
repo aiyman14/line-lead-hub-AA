@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFn, networkErrorMessage } from "@/lib/network-utils";
 import { openExternalUrl } from "@/lib/capacitor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { 
@@ -48,7 +49,7 @@ export default function Subscription() {
   const { user, profile, isAdminOrHigher, signOut } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { toast } = useToast();
+
   
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
@@ -61,18 +62,11 @@ export default function Subscription() {
     const payment = searchParams.get('payment');
     const interval = searchParams.get('interval');
     if (payment === 'success') {
-      toast({
-        title: "Payment successful!",
-        description: `Your subscription is now active${interval === 'year' ? ' (Yearly)' : ''}.`,
-      });
+      toast.success("Payment successful!", { description: `Your subscription is now active${interval === 'year' ? ' (Yearly)' : ''}.` });
     } else if (payment === 'cancelled') {
-      toast({
-        variant: "destructive",
-        title: "Payment cancelled",
-        description: "You can try again when you're ready.",
-      });
+      toast.error("Payment cancelled", { description: "You can try again when you're ready." });
     }
-  }, [searchParams, toast]);
+  }, [searchParams]);
 
   useEffect(() => {
     checkSubscription();
@@ -80,20 +74,31 @@ export default function Subscription() {
 
   const checkSubscription = async () => {
     if (!user) return;
-    
+
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('check-subscription');
-      
+      // Get the session token to pass explicitly
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        // No valid session yet, show subscription options without status
+        setStatus({ subscribed: false, hasAccess: false, needsFactory: true });
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await invokeEdgeFn('check-subscription', undefined, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
       if (error) throw error;
       setStatus(data);
     } catch (err) {
       console.error('Error checking subscription:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to check subscription status.",
-      });
+      // Set a fallback status so the page still renders subscription options
+      setStatus({ subscribed: false, hasAccess: false, needsFactory: !profile?.factory_id });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setLoading(false);
     }
@@ -102,22 +107,26 @@ export default function Subscription() {
   const handleStartTrial = async () => {
     setTrialLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { tier: 'starter', startTrial: true, interval: billingInterval }
-      });
-      
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        navigate('/auth', { replace: true });
+        throw new Error('Session expired. Please sign in again.');
+      }
+
+      const { data, error } = await invokeEdgeFn('create-checkout',
+        { tier: 'starter', startTrial: true, interval: billingInterval },
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+
       if (error) throw error;
-      
+
       if (data.url) {
         await openExternalUrl(data.url);
       }
     } catch (err) {
       console.error('Error starting trial:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to start trial. Please try again.",
-      });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setTrialLoading(false);
     }
@@ -131,22 +140,26 @@ export default function Subscription() {
     
     setCheckoutLoading(tier.id);
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { tier: tier.id, interval: billingInterval }
-      });
-      
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        navigate('/auth', { replace: true });
+        throw new Error('Session expired. Please sign in again.');
+      }
+
+      const { data, error } = await invokeEdgeFn('create-checkout',
+        { tier: tier.id, interval: billingInterval },
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+
       if (error) throw error;
-      
+
       if (data.url) {
         await openExternalUrl(data.url);
       }
     } catch (err) {
       console.error('Error creating checkout:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to create checkout session. Please try again.",
-      });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setCheckoutLoading(null);
     }
@@ -155,20 +168,16 @@ export default function Subscription() {
   const handleManageSubscription = async () => {
     setPortalLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('customer-portal');
-      
+      const { data, error } = await invokeEdgeFn('customer-portal');
+
       if (error) throw error;
-      
+
       if (data.url) {
         await openExternalUrl(data.url);
       }
     } catch (err) {
       console.error('Error opening portal:', err);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to open billing portal. Please try again.",
-      });
+      toast.error("Error", { description: networkErrorMessage(err) });
     } finally {
       setPortalLoading(false);
     }
@@ -187,7 +196,9 @@ export default function Subscription() {
     );
   }
 
-  if (!isAdminOrHigher()) {
+  // Only restrict access for users who already belong to a factory but aren't admin/owner.
+  // New users without a factory_id must be allowed through so they can subscribe.
+  if (profile?.factory_id && !isAdminOrHigher()) {
     return (
       <div className="container max-w-2xl py-8 px-4">
         <Card>
@@ -289,9 +300,18 @@ export default function Subscription() {
           )}
 
           <div className="flex flex-wrap gap-3">
-            {status?.hasAccess && (
-              <Button 
-                onClick={() => navigate('/dashboard')} 
+            {status?.hasAccess && status?.needsFactory && (
+              <Button
+                onClick={() => navigate('/setup/factory')}
+              >
+                <ArrowRight className="h-4 w-4 mr-2" />
+                Create Your Factory
+              </Button>
+            )}
+
+            {status?.hasAccess && !status?.needsFactory && (
+              <Button
+                onClick={() => navigate('/dashboard')}
               >
                 <ArrowRight className="h-4 w-4 mr-2" />
                 Go to Dashboard

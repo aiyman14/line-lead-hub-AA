@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,11 +23,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
+import { format, parseISO, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
+import { isTodayInTimezone } from "@/lib/date-utils";
 import { FileText, Target, TrendingUp, Search, Users, Crosshair, ClipboardCheck, Pencil, Clock } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TargetDetailModal } from "@/components/TargetDetailModal";
 import { SubmissionDetailModal } from "@/components/SubmissionDetailModal";
+import { SewingSubmissionView, SewingTargetData, SewingActualData } from "@/components/SewingSubmissionView";
 import { EditSewingTargetModal } from "@/components/EditSewingTargetModal";
 import { EditSewingActualModal } from "@/components/EditSewingActualModal";
 import { useEditPermission } from "@/hooks/useEditPermission";
@@ -38,6 +41,8 @@ interface SewingTarget {
   per_hour_target: number;
   manpower_planned: number;
   ot_hours_planned: number;
+  hours_planned: number | null;
+  target_total_planned: number | null;
   work_order_id: string;
   line_id: string;
   is_late: boolean | null;
@@ -62,6 +67,9 @@ interface SewingActual {
   rework_today: number;
   manpower_actual: number;
   ot_hours_actual: number;
+  ot_manpower_actual: number;
+  hours_actual: number | null;
+  actual_per_hour: number | null;
   cumulative_good_total: number;
   work_order_id: string;
   line_id: string;
@@ -80,7 +88,8 @@ interface SewingActual {
 
 export default function SewingMySubmissions() {
   const navigate = useNavigate();
-  const { profile, user } = useAuth();
+  const { t } = useTranslation();
+  const { profile, user, factory } = useAuth();
   const { canEditSubmission, getTimeUntilCutoff } = useEditPermission();
   const [loading, setLoading] = useState(true);
   const [targets, setTargets] = useState<SewingTarget[]>([]);
@@ -112,6 +121,8 @@ export default function SewingMySubmissions() {
           per_hour_target,
           manpower_planned,
           ot_hours_planned,
+          hours_planned,
+          target_total_planned,
           work_order_id,
           line_id,
           is_late,
@@ -137,6 +148,9 @@ export default function SewingMySubmissions() {
           rework_today,
           manpower_actual,
           ot_hours_actual,
+          ot_manpower_actual,
+          hours_actual,
+          actual_per_hour,
           cumulative_good_total,
           work_order_id,
           line_id,
@@ -193,7 +207,7 @@ export default function SewingMySubmissions() {
 
     // Date filter
     if (dateFilter === "today") {
-      result = result.filter((item) => isToday(parseISO(item.production_date)));
+      result = result.filter((item) => isTodayInTimezone(item.production_date, factory?.timezone || "Asia/Dhaka"));
     } else if (dateFilter === "week") {
       const now = new Date();
       const weekStart = startOfWeek(now, { weekStartsOn: 1 });
@@ -245,11 +259,16 @@ export default function SewingMySubmissions() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="py-3 md:py-4 lg:py-6 space-y-5 md:space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <FileText className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold">My Sewing Submissions</h1>
+          <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+            <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold">{t('sewingMySubmissions.title')}</h1>
+            <p className="text-sm text-muted-foreground">{t('sewingMySubmissions.description')}</p>
+          </div>
         </div>
         {timeUntilCutoff && (
           <Badge variant="outline" className="gap-1">
@@ -261,56 +280,56 @@ export default function SewingMySubmissions() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 via-white to-blue-50/50 border-blue-200/60 dark:border-blue-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                <Crosshair className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="p-3 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25 group-hover:shadow-blue-500/40 transition-shadow">
+                <Crosshair className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Targets This Week</p>
+                <p className="text-sm text-muted-foreground">{t('sewingMySubmissions.targetsThisWeek')}</p>
                 <p className="text-2xl font-bold">{stats.targetsThisWeek}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 via-white to-blue-50/50 border-blue-200/60 dark:border-blue-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-green-100 dark:bg-green-900/30">
-                <ClipboardCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <div className="p-3 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25 group-hover:shadow-blue-500/40 transition-shadow">
+                <ClipboardCheck className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">End of Day This Week</p>
+                <p className="text-sm text-muted-foreground">{t('sewingMySubmissions.eodThisWeek')}</p>
                 <p className="text-2xl font-bold">{stats.actualsThisWeek}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 via-white to-blue-50/50 border-blue-200/60 dark:border-blue-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900/30">
-                <Target className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <div className="p-3 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25 group-hover:shadow-blue-500/40 transition-shadow">
+                <Target className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Avg Per Hour Target</p>
+                <p className="text-sm text-muted-foreground">{t('sewingMySubmissions.avgPerHourTarget')}</p>
                 <p className="text-2xl font-bold">{stats.avgTarget.toLocaleString()}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 via-white to-blue-50/50 border-blue-200/60 dark:border-blue-800/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/30">
-                <TrendingUp className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="p-3 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25 group-hover:shadow-blue-500/40 transition-shadow">
+                <TrendingUp className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Good Output</p>
+                <p className="text-sm text-muted-foreground">{t('sewingMySubmissions.totalGoodOutput')}</p>
                 <p className="text-2xl font-bold">{stats.totalGoodOutput.toLocaleString()}</p>
               </div>
             </div>
@@ -323,7 +342,7 @@ export default function SewingMySubmissions() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by PO, style, buyer, line..."
+            placeholder={t('sewingMySubmissions.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -334,9 +353,9 @@ export default function SewingMySubmissions() {
             <SelectValue placeholder="Filter by date" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Time</SelectItem>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="week">This Week</SelectItem>
+            <SelectItem value="all">{t('sewingMySubmissions.allTime')}</SelectItem>
+            <SelectItem value="today">{t('sewingMySubmissions.today')}</SelectItem>
+            <SelectItem value="week">{t('sewingMySubmissions.thisWeek')}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -345,12 +364,12 @@ export default function SewingMySubmissions() {
         <TabsList className="w-auto inline-flex">
           <TabsTrigger value="targets" className="gap-2">
             <Crosshair className="h-4 w-4" />
-            Morning Targets
+            {t('sewingMySubmissions.morningTargets')}
             <Badge variant="secondary">{filteredTargets.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="actuals" className="gap-2">
             <ClipboardCheck className="h-4 w-4" />
-            End of Day
+            {t('sewingMySubmissions.endOfDay')}
             <Badge variant="secondary">{filteredActuals.length}</Badge>
           </TabsTrigger>
         </TabsList>
@@ -358,37 +377,36 @@ export default function SewingMySubmissions() {
         <TabsContent value="targets">
           <Card>
             <CardHeader>
-              <CardTitle>Morning Targets</CardTitle>
+              <CardTitle>{t('sewingMySubmissions.morningTargets')}</CardTitle>
             </CardHeader>
             <CardContent>
               {filteredTargets.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Crosshair className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No targets found</p>
+                  <p>{t('sewingMySubmissions.noTargetsFound')}</p>
                   <p className="text-sm mt-2">
                     {searchQuery || dateFilter !== "all"
-                      ? "Try adjusting your filters"
-                      : "Submit morning targets to start tracking"}
+                      ? t('sewingMySubmissions.tryAdjustingFilters')
+                      : t('sewingMySubmissions.submitTargetsToStart')}
                   </p>
                 </div>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Line</TableHead>
-                      <TableHead>PO / Style</TableHead>
-                      <TableHead className="text-right">Target/Hr</TableHead>
-                      <TableHead className="text-right">Manpower</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>{t('sewingMySubmissions.date')}</TableHead>
+                      <TableHead>{t('sewingMySubmissions.time')}</TableHead>
+                      <TableHead>{t('sewingMySubmissions.line')}</TableHead>
+                      <TableHead>{t('sewingMySubmissions.poStyle')}</TableHead>
+                      <TableHead className="text-right">{t('sewingMySubmissions.targetHr')}</TableHead>
+                      <TableHead className="text-right">{t('sewingMySubmissions.manpower')}</TableHead>
                       <TableHead className="w-[60px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredTargets.map((target) => {
                       const date = parseISO(target.production_date);
-                      const isTodayItem = isToday(date);
+                      const isTodayItem = isTodayInTimezone(target.production_date, factory?.timezone || "Asia/Dhaka");
                       const editCheck = canEditSubmission(target.production_date);
 
                       return (
@@ -402,7 +420,7 @@ export default function SewingMySubmissions() {
                               <span>{format(date, "MMM dd")}</span>
                               {isTodayItem && (
                                 <Badge variant="secondary" className="text-xs">
-                                  Today
+                                  {t('sewingMySubmissions.today')}
                                 </Badge>
                               )}
                             </div>
@@ -437,11 +455,6 @@ export default function SewingMySubmissions() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={target.is_late ? "destructive" : "default"}>
-                              {target.is_late ? "Late" : "On Time"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
                             {editCheck.canEdit && (
                               <TooltipProvider>
                                 <Tooltip>
@@ -457,7 +470,7 @@ export default function SewingMySubmissions() {
                                       <Pencil className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Edit submission</TooltipContent>
+                                  <TooltipContent>{t('sewingMySubmissions.editSubmission')}</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
                             )}
@@ -475,38 +488,38 @@ export default function SewingMySubmissions() {
         <TabsContent value="actuals">
           <Card>
             <CardHeader>
-              <CardTitle>End of Day Reports</CardTitle>
+              <CardTitle>{t('sewingMySubmissions.endOfDayReports')}</CardTitle>
             </CardHeader>
             <CardContent>
               {filteredActuals.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No end of day reports found</p>
+                  <p>{t('sewingMySubmissions.noEodFound')}</p>
                   <p className="text-sm mt-2">
                     {searchQuery || dateFilter !== "all"
-                      ? "Try adjusting your filters"
-                      : "Submit end of day reports to track actual production"}
+                      ? t('sewingMySubmissions.tryAdjustingFilters')
+                      : t('sewingMySubmissions.submitEodToTrack')}
                   </p>
                 </div>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Line</TableHead>
-                      <TableHead>PO / Style</TableHead>
-                      <TableHead className="text-right">Good</TableHead>
-                      <TableHead className="text-right">Reject</TableHead>
-                      <TableHead className="text-right">Rework</TableHead>
-                      <TableHead className="text-right">Cumulative</TableHead>
+                      <TableHead>{t('sewingMySubmissions.date')}</TableHead>
+                      <TableHead>{t('sewingMySubmissions.time')}</TableHead>
+                      <TableHead>{t('sewingMySubmissions.line')}</TableHead>
+                      <TableHead>{t('sewingMySubmissions.poStyle')}</TableHead>
+                      <TableHead className="text-right">{t('sewingMySubmissions.good')}</TableHead>
+                      <TableHead className="text-right">{t('sewingMySubmissions.reject')}</TableHead>
+                      <TableHead className="text-right">{t('sewingMySubmissions.rework')}</TableHead>
+                      <TableHead className="text-right">{t('sewingMySubmissions.cumulative')}</TableHead>
                       <TableHead className="w-[60px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredActuals.map((actual) => {
                       const date = parseISO(actual.production_date);
-                      const isTodayItem = isToday(date);
+                      const isTodayItem = isTodayInTimezone(actual.production_date, factory?.timezone || "Asia/Dhaka");
                       const editCheck = canEditSubmission(actual.production_date);
 
                       return (
@@ -520,7 +533,7 @@ export default function SewingMySubmissions() {
                               <span>{format(date, "MMM dd")}</span>
                               {isTodayItem && (
                                 <Badge variant="secondary" className="text-xs">
-                                  Today
+                                  {t('sewingMySubmissions.today')}
                                 </Badge>
                               )}
                             </div>
@@ -573,7 +586,7 @@ export default function SewingMySubmissions() {
                                       <Pencil className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Edit submission</TooltipContent>
+                                  <TooltipContent>{t('sewingMySubmissions.editSubmission')}</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
                             )}
@@ -589,55 +602,137 @@ export default function SewingMySubmissions() {
         </TabsContent>
       </Tabs>
 
-      {/* Target Detail Modal */}
-      <TargetDetailModal
-        target={selectedTarget ? {
-          id: selectedTarget.id,
-          type: 'sewing',
-          line_name: selectedTarget.line?.line_id || 'Unknown Line',
-          po_number: selectedTarget.work_order?.po_number || null,
-          buyer: selectedTarget.work_order?.buyer || null,
-          style: selectedTarget.work_order?.style || null,
-          per_hour_target: selectedTarget.per_hour_target,
-          order_qty: selectedTarget.work_order?.order_qty || null,
-          submitted_at: selectedTarget.submitted_at || '',
-          production_date: selectedTarget.production_date,
-          manpower_planned: selectedTarget.manpower_planned,
-          ot_hours_planned: selectedTarget.ot_hours_planned,
-        } : null}
-        open={!!selectedTarget}
-        onOpenChange={(open) => !open && setSelectedTarget(null)}
-      />
-
-      {/* Actual/End of Day Detail Modal */}
-      <SubmissionDetailModal
-        submission={selectedActual ? {
-          id: selectedActual.id,
-          type: 'sewing',
-          line_name: selectedActual.line?.line_id || 'Unknown Line',
-          po_number: selectedActual.work_order?.po_number || null,
-          buyer: selectedActual.work_order?.buyer || null,
-          style: selectedActual.work_order?.style || null,
-          output_qty: selectedActual.good_today,
-          target_qty: null,
-          manpower: selectedActual.manpower_actual,
-          reject_qty: selectedActual.reject_today,
-          rework_qty: selectedActual.rework_today,
-          stage_progress: null,
-          ot_hours: selectedActual.ot_hours_actual,
-          ot_manpower: null,
-          has_blocker: false,
+      {/* Sewing Submission View (Target) */}
+      {(() => {
+        if (!selectedTarget) return null;
+        const t = selectedTarget;
+        const sewingTarget: SewingTargetData = {
+          id: t.id,
+          production_date: t.production_date,
+          line_name: t.line?.name || t.line?.line_id || 'Unknown Line',
+          po_number: t.work_order?.po_number || null,
+          buyer: t.work_order?.buyer || null,
+          style: t.work_order?.style || null,
+          order_qty: t.work_order?.order_qty ?? null,
+          submitted_at: t.submitted_at,
+          per_hour_target: t.per_hour_target,
+          manpower_planned: t.manpower_planned,
+          ot_hours_planned: t.ot_hours_planned,
+          hours_planned: t.hours_planned ?? null,
+          target_total_planned: t.target_total_planned ?? null,
+          stage_name: null,
+          planned_stage_progress: null,
+          next_milestone: null,
+          estimated_ex_factory: null,
+          remarks: null,
+        };
+        const ma = actuals.find(a =>
+          a.line_id === t.line_id && a.work_order_id === t.work_order_id && a.production_date === t.production_date
+        );
+        const sewingActual: SewingActualData | null = ma ? {
+          id: ma.id,
+          production_date: ma.production_date,
+          line_name: ma.line?.name || ma.line?.line_id || 'Unknown Line',
+          po_number: ma.work_order?.po_number || null,
+          buyer: ma.work_order?.buyer || null,
+          style: ma.work_order?.style || null,
+          order_qty: ma.work_order?.order_qty ?? null,
+          submitted_at: ma.submitted_at,
+          good_today: ma.good_today,
+          reject_today: ma.reject_today,
+          rework_today: ma.rework_today,
+          cumulative_good_total: ma.cumulative_good_total,
+          manpower_actual: ma.manpower_actual,
+          ot_hours_actual: ma.ot_hours_actual,
+          ot_manpower_actual: ma.ot_manpower_actual ?? null,
+          hours_actual: ma.hours_actual ?? null,
+          actual_per_hour: ma.actual_per_hour ?? null,
+          stage_name: null,
+          actual_stage_progress: null,
+          remarks: null,
+          has_blocker: null,
           blocker_description: null,
           blocker_impact: null,
           blocker_owner: null,
-          blocker_status: null,
-          notes: null,
-          submitted_at: selectedActual.submitted_at || '',
-          production_date: selectedActual.production_date,
-        } : null}
-        open={!!selectedActual}
-        onOpenChange={(open) => !open && setSelectedActual(null)}
-      />
+           blocker_status: null,
+           estimated_cost_value: null,
+           estimated_cost_currency: null,
+         } : null;
+        return (
+          <SewingSubmissionView
+            target={sewingTarget}
+            actual={sewingActual}
+            open={!!selectedTarget}
+            onOpenChange={(open) => !open && setSelectedTarget(null)}
+          />
+        );
+      })()}
+
+      {/* Sewing Submission View (Actual) */}
+      {(() => {
+        if (!selectedActual) return null;
+        const a = selectedActual;
+        const sewingActual: SewingActualData = {
+          id: a.id,
+          production_date: a.production_date,
+          line_name: a.line?.name || a.line?.line_id || 'Unknown Line',
+          po_number: a.work_order?.po_number || null,
+          buyer: a.work_order?.buyer || null,
+          style: a.work_order?.style || null,
+          order_qty: a.work_order?.order_qty ?? null,
+          submitted_at: a.submitted_at,
+          good_today: a.good_today,
+          reject_today: a.reject_today,
+          rework_today: a.rework_today,
+          cumulative_good_total: a.cumulative_good_total,
+          manpower_actual: a.manpower_actual,
+          ot_hours_actual: a.ot_hours_actual,
+          ot_manpower_actual: a.ot_manpower_actual ?? null,
+          hours_actual: a.hours_actual ?? null,
+          actual_per_hour: a.actual_per_hour ?? null,
+          stage_name: null,
+          actual_stage_progress: null,
+          remarks: null,
+          has_blocker: null,
+          blocker_description: null,
+          blocker_impact: null,
+          blocker_owner: null,
+           blocker_status: null,
+           estimated_cost_value: (a as any).estimated_cost_value ?? null,
+           estimated_cost_currency: (a as any).estimated_cost_currency ?? null,
+         };
+        const mt = targets.find(t =>
+          t.line_id === a.line_id && t.work_order_id === a.work_order_id && t.production_date === a.production_date
+        );
+        const sewingTarget: SewingTargetData | null = mt ? {
+          id: mt.id,
+          production_date: mt.production_date,
+          line_name: mt.line?.name || mt.line?.line_id || 'Unknown Line',
+          po_number: mt.work_order?.po_number || null,
+          buyer: mt.work_order?.buyer || null,
+          style: mt.work_order?.style || null,
+          order_qty: mt.work_order?.order_qty ?? null,
+          submitted_at: mt.submitted_at,
+          per_hour_target: mt.per_hour_target,
+          manpower_planned: mt.manpower_planned,
+          ot_hours_planned: mt.ot_hours_planned,
+          hours_planned: mt.hours_planned ?? null,
+          target_total_planned: mt.target_total_planned ?? null,
+          stage_name: null,
+          planned_stage_progress: null,
+          next_milestone: null,
+          estimated_ex_factory: null,
+          remarks: null,
+        } : null;
+        return (
+          <SewingSubmissionView
+            target={sewingTarget}
+            actual={sewingActual}
+            open={!!selectedActual}
+            onOpenChange={(open) => !open && setSelectedActual(null)}
+          />
+        );
+      })()}
 
       {/* Edit Target Modal */}
       <EditSewingTargetModal

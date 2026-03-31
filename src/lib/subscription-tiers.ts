@@ -1,5 +1,5 @@
 // Subscription tier configuration
-// Using existing Production Portal product/price as Professional tier
+// Using existing ProductionPortal product/price as Professional tier
 
 export interface SubscriptionTier {
   id: string;

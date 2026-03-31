@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Check, AlertTriangle, Info, CheckCircle2, Clock, Trash2 } from "lucide-react";
+import { Bell, Check, AlertTriangle, Info, CheckCircle2, Clock, Trash2, Settings, Scissors, FileText, Target, Truck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
@@ -39,25 +39,79 @@ export function NotificationBell() {
     const data = notification.data as Record<string, unknown> | null;
 
     switch (notification.type) {
-      // Blocker notifications
+      // Blocker notifications → Blockers page
       case "blocker":
       case "blocker_reported":
+      case "critical_blocker":
+      case "blocker_on_my_line":
+      case "blocker_resolved":
         return "/blockers";
 
-      // Efficiency alerts (current data uses type="warning" and data.line_id)
+      // Efficiency alerts → Lines page (to see the specific line)
+      case "low_efficiency":
       case "efficiency_alert":
-      case "warning": {
-        const lineId = (data?.lineId as string | undefined) ?? (data?.line_id as string | undefined);
-        if (lineId) {
-          return `/insights?line=${lineId}`;
-        }
+      case "warning":
+        return "/lines";
+
+      // Target achieved → Lines page
+      case "target_achieved":
+        return "/lines";
+
+      // Production notes → Today page (where submissions/notes live)
+      case "production_notes":
+        return "/today";
+
+      // Late submission → Today page (to see what's missing)
+      case "late_submission":
+        return "/today";
+
+      // Daily summary → Insights page (overview analytics)
+      case "daily_summary":
         return "/insights";
+
+      // Cutting handoff → Cutting handoffs page
+      case "cutting_handoff":
+        return "/sewing/cutting-handoffs";
+
+      // Work order updates → Work orders page
+      case "work_order_updates":
+        return "/work-orders";
+
+      // Dispatch notifications
+      case "dispatch_submitted": {
+        const dispatchId = data?.dispatch_request_id as string | undefined;
+        if (dispatchId) return `/dispatch/review/${dispatchId}`;
+        return "/dispatch/approvals";
+      }
+      case "dispatch_approved":
+      case "dispatch_rejected": {
+        const dispatchId = data?.dispatch_request_id as string | undefined;
+        if (dispatchId) return `/dispatch/pass/${dispatchId}`;
+        return "/dispatch/history";
       }
 
+      // Shift reminders → Dashboard (home/overview)
+      case "shift_reminder":
+        return "/dashboard";
+
+      // Target/submission reminders → respective form pages
       case "target_reminder":
         return "/morning-targets";
       case "submission_reminder":
         return "/end-of-day";
+
+      // Buyer-specific notifications
+      case "po_production_update":
+      case "po_milestone":
+      case "po_status_change": {
+        const poId = data?.po_id as string | undefined;
+        if (poId) return `/buyer/po/${poId}`;
+        return "/buyer/dashboard";
+      }
+
+      // General / fallback
+      case "general":
+        return "/dashboard";
       default:
         return null;
     }
@@ -66,7 +120,8 @@ export function NotificationBell() {
   useEffect(() => {
     if (user) {
       fetchNotifications();
-      subscribeToNotifications();
+      const cleanup = subscribeToNotifications();
+      return cleanup;
     }
   }, [user]);
 
@@ -154,11 +209,39 @@ export function NotificationBell() {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "blocker":
+      case "critical_blocker":
+      case "blocker_on_my_line":
         return <AlertTriangle className="h-4 w-4 text-warning" />;
       case "success":
+      case "blocker_resolved":
         return <CheckCircle2 className="h-4 w-4 text-success" />;
+      case "production_notes":
+        return <Info className="h-4 w-4 text-primary" />;
       case "reminder":
+      case "shift_reminder":
         return <Clock className="h-4 w-4 text-info" />;
+      case "late_submission":
+        return <Clock className="h-4 w-4 text-destructive" />;
+      case "low_efficiency":
+        return <Info className="h-4 w-4 text-warning" />;
+      case "daily_summary":
+        return <Info className="h-4 w-4 text-primary" />;
+      case "cutting_handoff":
+        return <Scissors className="h-4 w-4 text-primary" />;
+      case "work_order_updates":
+        return <FileText className="h-4 w-4 text-primary" />;
+      case "target_achieved":
+        return <Target className="h-4 w-4 text-success" />;
+      case "po_production_update":
+      case "po_milestone":
+      case "po_status_change":
+        return <FileText className="h-4 w-4 text-primary" />;
+      case "dispatch_submitted":
+        return <Truck className="h-4 w-4 text-amber-500" />;
+      case "dispatch_approved":
+        return <Truck className="h-4 w-4 text-emerald-500" />;
+      case "dispatch_rejected":
+        return <Truck className="h-4 w-4 text-destructive" />;
       default:
         return <Info className="h-4 w-4 text-muted-foreground" />;
     }
@@ -179,17 +262,31 @@ export function NotificationBell() {
       <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuLabel className="flex items-center justify-between">
           <span>Notifications</span>
-          {unreadCount > 0 && (
+          <div className="flex items-center gap-1">
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto py-1 px-2 text-xs"
+                onClick={markAllAsRead}
+              >
+                <Check className="h-3 w-3 mr-1" />
+                Mark all read
+              </Button>
+            )}
             <Button
               variant="ghost"
-              size="sm"
-              className="h-auto py-1 px-2 text-xs"
-              onClick={markAllAsRead}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => {
+                setOpen(false);
+                setTimeout(() => navigate("/preferences#notifications"), 0);
+              }}
+              title="Notification settings"
             >
-              <Check className="h-3 w-3 mr-1" />
-              Mark all read
+              <Settings className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
-          )}
+          </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <ScrollArea className="h-[300px]">
